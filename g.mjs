@@ -84,6 +84,42 @@ let test = async () => {
     console.log('invalid key:', r6.ok, r6.code, r6.error, r6.stderr.includes('Invalid API key'))
     // => invalid key: false 1 Exit code 1 true
 
+    //多供應商自動遞補: providers順序即優先序, 組內keys以游標輪替
+    //此例第1把金鑰無效 → 自動換組內下一把成功; 若整組用盡會遞補下一組(claude), 再失敗遞補codex
+    let r7 = await wdi.dispatchAiFallback(prompt, {
+        providers: [
+            {
+                id: 'deepseek',
+                kind: 'opencode',
+                model: 'opencode/deepseek-v4-flash-free',
+                provider: 'opencode',
+                keys: ['sk-invalid-key-demo', opencodeKeys[0]], //第1把無效, 示範組內輪替
+                timeoutMs: 180000,
+            },
+            {
+                id: 'agnes',
+                kind: 'opencode',
+                model: 'agnes-ai/agnes-2.0-flash',
+                provider: 'agnes-ai',
+                keys: agnesKeys,
+                config: configAgnes, //第三方provider須另給定義
+                timeoutMs: 180000,
+            },
+            { id: 'claude', kind: 'claude', model: 'sonnet' },
+            { id: 'codex', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
+        ],
+        budgetMs: 600000,
+        onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
+    })
+    console.log('fallback:', r7.ok, r7.providerId, r7.keyIndex, r7.stdout.trim())
+    console.log('tried:', r7.tried.map((x) => `${x.keyId}:${x.outcome}`).join(', '))
+    // =>   event: try deepseek#0
+    // =>   event: next-key deepseek#0 Exit code 1
+    // =>   event: try deepseek#1
+    // =>   event: ok deepseek#1
+    // => fallback: true deepseek 1 完成
+    // => tried: deepseek#0:next-key, deepseek#1:ok
+
 }
 await test()
     .catch((err) => {

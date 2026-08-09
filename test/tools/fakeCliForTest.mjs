@@ -40,6 +40,14 @@ if (mErr) {
 //--fake-sleep=N, 令假CLI延遲N毫秒才結束, 供測試逾時路徑
 let mSleep = args.map((a) => /^--fake-sleep=(\\d+)$/.exec(a)).find((m) => !!m)
 
+//--fake-fail-key=SUBSTR, 注入之OPENCODE_AUTH_CONTENT含該子字串時, 模擬額度/金鑰錯誤
+//供fallback測試構造「某把金鑰失敗、其他把成功」之差異行為
+let mFailKey = args.map((a) => /^--fake-fail-key=(.+)$/.exec(a)).find((m) => !!m)
+if (mFailKey && (process.env.OPENCODE_AUTH_CONTENT || '').includes(mFailKey[1])) {
+    process.stderr.write('Invalid API key.')
+    process.exit(1)
+}
+
 let chunks = []
 process.stdin.on('data', (c) => {
     chunks.push(c)

@@ -3,6 +3,7 @@ import keys from 'lodash-es/keys.js'
 import map from 'lodash-es/map.js'
 import wi from '../src/WDispatchAi.mjs'
 import dispatchAi from '../src/dispatchAi.mjs'
+import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
 import dispatchOpencode from '../src/dispatchOpencode.mjs'
 import dispatchClaude from '../src/dispatchClaude.mjs'
 import dispatchCodex from '../src/dispatchCodex.mjs'
@@ -15,6 +16,7 @@ describe('WDispatchAi', function() {
         let rr = [
             'KINDS',
             'dispatchAi',
+            'dispatchAiFallback',
             'dispatchOpencode',
             'dispatchClaude',
             'dispatchCodex',
@@ -30,18 +32,19 @@ describe('WDispatchAi', function() {
 
     it('除KINDS外各鍵值皆為函數', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'function', 'function', 'function', 'function']
+        let rr = ['object', 'function', 'function', 'function', 'function', 'function']
         assert.strict.deepEqual(r, rr)
     })
 
     it('各鍵值即為對應模組之預設匯出', function() {
         let r = [
             wi.dispatchAi === dispatchAi,
+            wi.dispatchAiFallback === dispatchAiFallback,
             wi.dispatchOpencode === dispatchOpencode,
             wi.dispatchClaude === dispatchClaude,
             wi.dispatchCodex === dispatchCodex,
         ]
-        let rr = [true, true, true, true]
+        let rr = [true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 

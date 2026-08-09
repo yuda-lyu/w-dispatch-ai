@@ -30,6 +30,7 @@ Note:
 | function | description |
 | --- | --- |
 | `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'` |
+| `dispatchAiFallback(prompt, opt)` | call ai with an ordered provider list, auto rotating keys within a group and falling back to the next group |
 | `dispatchOpencode(prompt, opt)` | call an ai model by opencode cli, supports per-call api key and provider config |
 | `dispatchClaude(prompt, opt)` | call a claude model by claude code cli |
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
@@ -124,6 +125,42 @@ let test = async () => {
     console.log('invalid key:', r6.ok, r6.code, r6.error, r6.stderr.includes('Invalid API key'))
     // => invalid key: false 1 Exit code 1 true
 
+    //多供應商自動遞補: providers順序即優先序, 組內keys以游標輪替
+    //此例第1把金鑰無效 → 自動換組內下一把成功; 若整組用盡會遞補下一組(claude), 再失敗遞補codex
+    let r7 = await wdi.dispatchAiFallback(prompt, {
+        providers: [
+            {
+                id: 'deepseek',
+                kind: 'opencode',
+                model: 'opencode/deepseek-v4-flash-free',
+                provider: 'opencode',
+                keys: ['sk-invalid-key-demo', opencodeKeys[0]], //第1把無效, 示範組內輪替
+                timeoutMs: 180000,
+            },
+            {
+                id: 'agnes',
+                kind: 'opencode',
+                model: 'agnes-ai/agnes-2.0-flash',
+                provider: 'agnes-ai',
+                keys: agnesKeys,
+                config: configAgnes, //第三方provider須另給定義
+                timeoutMs: 180000,
+            },
+            { id: 'claude', kind: 'claude', model: 'sonnet' },
+            { id: 'codex', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
+        ],
+        budgetMs: 600000,
+        onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
+    })
+    console.log('fallback:', r7.ok, r7.providerId, r7.keyIndex, r7.stdout.trim())
+    console.log('tried:', r7.tried.map((x) => `${x.keyId}:${x.outcome}`).join(', '))
+    // =>   event: try deepseek#0
+    // =>   event: next-key deepseek#0 Exit code 1
+    // =>   event: try deepseek#1
+    // =>   event: ok deepseek#1
+    // => fallback: true deepseek 1 完成
+    // => tried: deepseek#0:next-key, deepseek#1:ok
+
 }
 await test()
     .catch((err) => {
@@ -161,6 +198,31 @@ await test()
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `sandbox` | String | `'workspace-write'` | 沙箱模式，可用`'read-only'`、`'workspace-write'`、`'danger-full-access'` |
+
+#### Options for dispatchAiFallback:
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `providers` | Array | 必填 | 供應商條目陣列，**順序即優先序**。條目除`id`、`keys`外即該次調用之opt，原樣透傳對應轉接器（`kind`、`model`、`exe`、`provider`、`config`、`sandbox`、`timeoutMs`等皆放條目內） |
+| `providers[].id` | String | 條目索引 | 群組識別，游標以此為鍵，多金鑰條目應給予穩定`id` |
+| `providers[].keys` | Array | `[]` | 同一服務之多把API key，逐次注入輪替（`kind`為`opencode`時須同時給`provider`）；省略代表沿用CLI登入狀態 |
+| `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs` |
+| `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
+| `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state僅含`cursors`（逐群組游標）；假定單行程序列調用 |
+| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`；回調拋出例外不影響主流程 |
+
+頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
+
+**失敗分流規則**：
+| 失敗 | 判定 | 處置 |
+| --- | --- | --- |
+| 逾時 | `error`以`TIMEOUT`開頭 | 整組跳過 |
+| 執行檔不存在 | `error`含`ENOENT` | 整組跳過 |
+| 參數錯誤 | `code === 2` | 整組跳過 |
+| 輸出未過驗證 | `error === 'OUTPUT_VALIDATION_FAILED'` | 整組跳過 |
+| kind無效 | `error`以`unknown ai kind`開頭 | 整組跳過 |
+| 其餘（含額度上限、金鑰無效、服務回錯） | — | 換組內下一把 |
+
+整組跳過的理由：同組各金鑰共用同一`exe`與`model`，這些失敗換金鑰必然再敗，逐把嘗試純屬空耗。其餘失敗一律換下一把、**不記憶不停用**——額度視窗形態多樣（5小時滾動、逐時、逐日），停用清單會把已恢復的金鑰閒置，而重探的代價僅一次快速失敗；跨次執行僅記憶游標（成功後推進，令額度在多把金鑰間均攤）。
 
 #### Result of dispatch functions:
 ```alias
@@ -200,8 +262,25 @@ await test()
 }
 ```
 
+#### Result of dispatchAiFallback:
+於execCli既有欄位外追加：
+```alias
+{
+    // ...ok, stdout, stderr, code, error, durationMs, attempts, pid...
+    providerId: 'deepseek',    //實際使用之群組
+    keyIndex: 1,               //實際使用之金鑰索引, 無keys時為null
+    kind: 'opencode',
+    model: 'opencode/deepseek-v4-flash-free',
+    tried: [                   //完整嘗試歷程, 成功時亦回傳
+        { providerId: 'deepseek', keyIndex: 0, keyId: 'deepseek#0', outcome: 'next-key', error: 'Exit code 1', durationMs: 3049 },
+        { providerId: 'deepseek', keyIndex: 1, keyId: 'deepseek#1', outcome: 'ok', durationMs: 11742 },
+    ],
+}
+```
+
 #### Known design notes:
-- `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法。
+- `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。
+- `dispatchAiFallback`為單向單輪：全數群組試畢即回傳最後一筆失敗結果與`tried`歷程，不回頭重試已敗的組。跨次執行僅記憶游標，不設金鑰停用清單（理由見上方失敗分流說明）；需跨次跳過特定金鑰時，由呼叫端依`tried`／`onEvent`內之`error`與`stderr`自行決策。
 - `dispatchOpencode`之`key`與`provider`須同時給予才會注入金鑰；只給其一（或範例中`.env`缺鍵導致`key`為`undefined`）時不會報錯，而是靜默沿用CLI既有登入狀態。
 - 範例中之`process.loadEnvFile`需Node.js >= 20.12，僅範例使用，套件本身無此限制。
 - `config`以`OPENCODE_CONFIG_CONTENT`注入後，與使用者既有`opencode.jsonc`為覆蓋或合併關係未經實測確認；建議`config`內含該次調用所需之完整provider定義，不依賴與既有設定檔之合併行為。
