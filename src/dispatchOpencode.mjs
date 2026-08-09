@@ -1,0 +1,188 @@
+import get from 'lodash-es/get.js'
+import omit from 'lodash-es/omit.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import execCli from 'wsemi/src/execCli.mjs'
+import getCliArgs from './getCliArgs.mjs'
+import getErrorResult from './getErrorResult.mjs'
+
+
+// dispatchOpencode.mjs — 以opencode CLI呼叫AI模型
+//
+// 【金鑰注入(2026-08-08於本機實測確認，非讀碼推論)】
+//   OPENCODE_AUTH_CONTENT環境變數會「完全覆蓋」opencode的auth.json：
+//   實測帶入無效key → `Error: Invalid API key.`(code=1、訊息在stderr、stdout空)；
+//   帶入真實key → 正常回應。以env傳入「不會改寫」auth.json(實測md5前後一致)，
+//   屬process層級，可與同時執行的其他專案並行而互不干擾。
+//   註：OPENCODE_API_KEY在auth.json已有憑證時不生效，故一律走OPENCODE_AUTH_CONTENT。
+//
+// 【provider與model必須配對】不同provider的金鑰不可互換：
+//   實測把agnes-ai的金鑰用於opencode/...模型 → `Invalid API key`。
+//   故呼叫端傳入的key／provider／model須為同一組。
+//
+// 【第三方provider須另給config(2026-08-09於本機實測確認)】
+//   opencode僅內建自家provider，第三方(例如agnes-ai)未定義於設定檔時，
+//   只注入金鑰仍無法使用：實測`opencode models`不列出該provider之模型，
+//   直接指定模型則回`UnknownError／Unexpected server error`。
+//   OPENCODE_CONFIG_CONTENT環境變數可逐次注入設定內容，補上provider定義後
+//   `opencode models`即列出agnes-ai/agnes-2.0-flash且可正常對話，
+//   與OPENCODE_AUTH_CONTENT同為process層級，不改寫使用者設定檔。
+
+
+//預設值
+let DEFAULT_EXE = 'opencode'
+let DEFAULT_AGENT = 'build'
+
+
+//本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli
+let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'agent', 'config', 'extraArgs', 'input', 'env']
+
+
+/**
+ * 以opencode CLI呼叫AI模型
+ *
+ * 特點：
+ * prompt一律走stdin而非位置參數，因摘要內文可達數萬字，當命令列參數會spawn ENAMETOOLONG，
+ * 而opencode run未帶位置message時即從stdin讀取；
+ * 同時給予key與provider時，以OPENCODE_AUTH_CONTENT環境變數逐次注入金鑰，
+ * 該注入僅作用於當次子進程且不改寫auth.json，故可多把金鑰輪替並與其他程序並行；
+ * 未給key或provider時沿用CLI既有登入狀態；
+ * 使用opencode未內建之第三方provider時，須另以config給予其provider定義；
+ * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
+ *
+ * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析，預設'opencode'
+ * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/deepseek-v4-flash-free'，預設''代表不帶`-m`旗標
+ * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，預設''代表沿用CLI既有登入狀態
+ * @param {String} [opt.provider=''] 輸入key所屬provider名稱字串，須與key同時給予才會注入，且須與model為同一組，預設''
+ * @param {Object|String} [opt.config=null] 輸入opencode設定內容物件或其JSON字串，將以OPENCODE_CONFIG_CONTENT逐次注入，供補上第三方provider之定義，預設null代表沿用使用者既有設定檔
+ * @param {String} [opt.agent='build'] 輸入opencode代理名稱字串，預設'build'
+ * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
+ * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined
+ * @param {Number} [opt.timeoutMs=120000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，預設120000
+ * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @example
+ * //need opencode cli in system PATH
+ *
+ * import dispatchOpencode from './src/dispatchOpencode.mjs'
+ *
+ * let test = async () => {
+ *
+ *     //沿用CLI既有登入狀態
+ *     let r1 = await dispatchOpencode('請只回覆兩個字：完成', { model: 'opencode/deepseek-v4-flash-free' })
+ *     console.log(r1.ok, r1.stdout.includes('完成'))
+ *     // => true true
+ *
+ *     //逐次注入金鑰, key與provider與model須為同一組
+ *     let r2 = await dispatchOpencode('請只回覆兩個字：完成', {
+ *         model: 'opencode/deepseek-v4-flash-free',
+ *         provider: 'opencode',
+ *         key: 'sk-xxxxxx',
+ *     })
+ *     console.log(r2.ok)
+ *     // => true
+ *
+ *     //opencode未內建之第三方provider, 須另以config給予其定義
+ *     let r3 = await dispatchOpencode('請只回覆兩個字：完成', {
+ *         model: 'agnes-ai/agnes-2.0-flash',
+ *         provider: 'agnes-ai',
+ *         key: 'sk-xxxxxx',
+ *         config: {
+ *             provider: {
+ *                 'agnes-ai': {
+ *                     npm: '@ai-sdk/openai-compatible',
+ *                     name: 'Agnes',
+ *                     options: { baseURL: 'https://apihub.agnes-ai.com/v1' },
+ *                     models: { 'agnes-2.0-flash': { name: 'Agnes 2.0 Flash' } },
+ *                 },
+ *             },
+ *         },
+ *     })
+ *     console.log(r3.ok)
+ *     // => true
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function dispatchOpencode(prompt, opt = {}) {
+
+    //check prompt, 不reject故以錯誤結果物件回報
+    if (!isestr(prompt)) {
+        return getErrorResult('prompt must be a non-empty string')
+    }
+
+    //exe, 無效回退預設'opencode', 由execCli自系統PATH解析實體路徑
+    let exe = get(opt, 'exe', null)
+    if (!isestr(exe)) {
+        exe = DEFAULT_EXE
+    }
+
+    //model, 無效時整段`-m`旗標不出現, 由CLI自行決定使用模型
+    let model = get(opt, 'model', null)
+
+    //agent, 無效回退預設'build'
+    let agent = get(opt, 'agent', null)
+    if (!isestr(agent)) {
+        agent = DEFAULT_AGENT
+    }
+
+    //extraArgs
+    let extraArgs = get(opt, 'extraArgs', null)
+
+    //args
+    let args = getCliArgs(
+        'run',
+        ['--agent', agent],
+        isestr(model) ? ['-m', model] : [],
+        extraArgs,
+    )
+
+    //env, 無效回退undefined代表不覆寫任何變數
+    let env = get(opt, 'env', null)
+    if (!isobj(env)) {
+        env = undefined
+    }
+
+    //config有效才注入, 否則沿用使用者既有設定檔, 物件則序列化為JSON字串
+    let config = get(opt, 'config', null)
+    if (isobj(config)) {
+        config = JSON.stringify(config)
+    }
+    if (isestr(config)) {
+        env = {
+            ...env,
+            OPENCODE_CONFIG_CONTENT: config,
+        }
+    }
+
+    //key與provider皆有效才注入, 否則沿用auth.json既有登入狀態(單金鑰時即為原有行為)
+    let key = get(opt, 'key', null)
+    let provider = get(opt, 'provider', null)
+    if (isestr(key) && isestr(provider)) {
+        env = {
+            ...env,
+            OPENCODE_AUTH_CONTENT: JSON.stringify({ [provider]: { type: 'api', key } }),
+        }
+    }
+
+    //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
+    let optCli = omit(opt, OWN_KEYS)
+
+    //execCli, prompt一律走stdin
+    return execCli(exe, args, {
+        ...optCli,
+        input: prompt,
+        env,
+    })
+}
+
+
+export default dispatchOpencode

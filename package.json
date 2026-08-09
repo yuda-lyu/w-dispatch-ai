@@ -1,0 +1,38 @@
+{
+  "name": "w-dispatch-ai",
+  "version": "1.0.0",
+  "main": "dist/w-dispatch-ai.umd.js",
+  "dependencies": {
+    "wsemi": "^1.8.70"
+  },
+  "devDependencies": {
+    "w-package-tools": "^1.1.12"
+  },
+  "scripts": {
+    "test": "mocha --parallel --timeout 60000",
+    "deploy": "gh-pages -d docs"
+  },
+  "mocha": {
+    "spec": [
+      "test/unit-*.test.mjs"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuda-lyu/w-dispatch-ai.git"
+  },
+  "keywords": [
+    "package",
+    "tool",
+    "dispatch",
+    "ai",
+    "llm",
+    "cli",
+    "claude",
+    "codex",
+    "opencode",
+    "nodejs"
+  ],
+  "author": "yuda-lyu(semisphere)",
+  "license": "MIT"
+}
