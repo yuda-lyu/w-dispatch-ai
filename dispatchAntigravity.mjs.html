@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>dispatchAntigravity.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">dispatchAntigravity.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import omit from 'lodash-es/omit.js'
+import isarr from 'wsemi/src/isarr.mjs'
+import isbol from 'wsemi/src/isbol.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import ispint from 'wsemi/src/ispint.mjs'
+import cint from 'wsemi/src/cint.mjs'
+import execCli from 'wsemi/src/execCli.mjs'
+import getCliArgs from './getCliArgs.mjs'
+import getErrorResult from './getErrorResult.mjs'
+
+
+// dispatchAntigravity.mjs — 以Google Antigravity CLI(agy)呼叫AI模型
+//
+// agy為Google官方之Gemini CLI後繼者(Gemini CLI已於2026-06-18停服), 命令名為agy非antigravity。
+// 實測其models清單除Gemini系外亦含claude與gpt-oss等模型, 屬多模型閘道。
+//
+// 【prompt走--print旗標, 不走stdin(2026-08-10於本機agy 1.1.11實測確認)】
+//   --print為帶值旗標(無值即回`flag needs an argument: -print`), 不可能由stdin取prompt;
+//   把prompt塞stdin而args無--print會進互動模式卡住。此為與另三家轉接器最大差異。
+//
+// 【命令列長度上限(實測)】prompt作為命令列參數受Windows CreateProcess之32767字元上限:
+//   純文字32600可spawn、32700即spawn ENAMETOOLONG(同步拋出, 會穿透execCli成rejection)。
+//   且含引號之prompt經spawn轉義後長度會膨脹(實測2萬個引號轉義後仍炸), 故防護須兩層:
+//   前置長度檢查(常見情境給清楚錯誤訊息) + try/catch兜底(轉義膨脹等漏網情境),
+//   兩層皆回錯誤結果物件, 維持本套件「不reject」之契約。
+//
+// 【model與effort之衝突規則(實測)】帶檔位之slug(如gemini-3.1-pro-high)與--effort同時給定時,
+//   檔位「不一致」才拒絕(`--model gemini-3.1-pro-high conflicts with --effort=low`, exit 1),
+//   一致(gemini-3.1-pro-high + --effort high)則放行; 基礎slug(如gemini-3.1-pro)搭配effort亦放行。
+//   本轉接器不預判slug格式(模型清單會演進), 衝突時由agy回報conflicts錯誤。
+//
+// 【雙逾時對齊】agy自身有--print-timeout(預設5m0s), 與execCli之timeoutMs為兩層獨立逾時。
+//   printTimeout未給時由timeoutMs推導並預留30秒緩衝, 令CLI先於外層逾時,
+//   使錯誤訊息來自agy自身而非被外層強殺。
+
+
+//預設值
+let DEFAULT_EXE = 'agy'
+let DEFAULT_TIMEOUT_MS = 300000 //agent型CLI, 對齊agy自身print-timeout預設5m0s, 不沿用套件通用120000
+let MAX_PROMPT_LENGTH = 30000 //命令列上限32767扣除exe路徑與旗標後之保守值
+let PRINT_TIMEOUT_BUFFER_S = 30
+let MIN_PRINT_TIMEOUT_S = 30
+
+
+//本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli
+let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'addDirs', 'extraArgs', 'input']
+
+
+/**
+ * 以Google Antigravity CLI(agy)呼叫AI模型
+ *
+ * 特點：
+ * prompt作為`--print`旗標之值傳遞而非stdin(agy介面如此，塞stdin會進互動模式卡住)，
+ * 故prompt受命令列長度上限約束，超過30000字元回傳錯誤結果物件；
+ * model須為`agy models`第一欄之slug(如gemini-3.6-flash-low)，注意agy錯誤訊息列出的是顯示名稱而非slug；
+ * 帶檔位之slug(-high/-medium/-low結尾)與effort同時給定且檔位不一致時agy回conflicts錯誤(一致則放行)，
+ * effort需agy>=1.1.11，建議搭配不帶檔位之基礎slug(如gemini-3.1-pro)使用；
+ * 預設帶`--dangerously-skip-permissions`令非互動print模式不卡權限確認，可給予skipPermissions為false保留權限閘門；
+ * agy自身之--print-timeout未給時由timeoutMs推導並預留30秒緩衝，令CLI先於外層逾時；
+ * 沿用agy既有OAuth登入狀態(首次須於桌面互動模式完成登入)；
+ * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
+ *
+ * @param {String} prompt 輸入提示詞字串，作為`--print`旗標之值傳遞，長度上限30000字元
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析，預設'agy'
+ * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.6-flash-low'、'gemini-3.1-pro-high'，預設''代表不帶`--model`旗標由agy自行決定
+ * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶
+ * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
+ * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'570s')，預設''代表由timeoutMs推導(扣30秒緩衝，下限30秒)
+ * @param {Array} [opt.addDirs=[]] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`，預設[]
+ * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`之前，預設[]
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，agy為agent型CLI故預設較長之300000，預設300000
+ * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @example
+ * //need agy cli in system PATH, and OAuth login completed
+ *
+ * import dispatchAntigravity from './src/dispatchAntigravity.mjs'
+ *
+ * let test = async () => {
+ *
+ *     let r = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.6-flash-low' })
+ *     console.log(r.ok, r.stdout.trim())
+ *     // => true 完成
+ *
+ *     //基礎slug搭配effort(不可用帶檔位之slug併用effort)
+ *     let r2 = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.1-pro', effort: 'low' })
+ *     console.log(r2.ok)
+ *     // => true
+ *
+ *     let re = await dispatchAntigravity('')
+ *     console.log(re.ok, re.error)
+ *     // => false 'prompt must be a non-empty string'
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function dispatchAntigravity(prompt, opt = {}) {
+
+    //check prompt, 不reject故以錯誤結果物件回報
+    if (!isestr(prompt)) {
+        return getErrorResult('prompt must be a non-empty string')
+    }
+
+    //check prompt length, agy之prompt走命令列旗標而非stdin, 受CreateProcess 32767字元上限約束
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+        return getErrorResult(`prompt too long (${prompt.length} chars > ${MAX_PROMPT_LENGTH}), agy passes prompt via --print flag and Windows command line is capped at 32767 chars`)
+    }
+
+    //exe, 無效回退預設'agy', 由execCli自系統PATH解析實體路徑
+    let exe = get(opt, 'exe', null)
+    if (!isestr(exe)) {
+        exe = DEFAULT_EXE
+    }
+
+    //model, 無效時整段`--model`旗標不出現, 由agy自行決定使用模型
+    let model = get(opt, 'model', null)
+
+    //effort, 無效時整段`--effort`旗標不出現; 與帶檔位slug之衝突由agy判定(檔位不一致時conflicts錯誤, exit 1)
+    let effort = get(opt, 'effort', null)
+
+    //skipPermissions, 非布林值回退預設true(非互動print模式不卡權限確認)
+    let skipPermissions = get(opt, 'skipPermissions', null)
+    if (!isbol(skipPermissions)) {
+        skipPermissions = true
+    }
+
+    //timeoutMs, 先行取值以供printTimeout推導, agy專屬預設300000
+    let timeoutMs = get(opt, 'timeoutMs', null)
+    if (!ispint(timeoutMs)) {
+        timeoutMs = DEFAULT_TIMEOUT_MS
+    }
+    else {
+        timeoutMs = cint(timeoutMs)
+    }
+
+    //printTimeout, 未給時由timeoutMs推導並預留緩衝, 令agy先於外層逾時而回報自身錯誤訊息
+    let printTimeout = get(opt, 'printTimeout', null)
+    if (!isestr(printTimeout)) {
+        printTimeout = `${Math.max(MIN_PRINT_TIMEOUT_S, Math.floor(timeoutMs / 1000) - PRINT_TIMEOUT_BUFFER_S)}s`
+    }
+
+    //addDirs, 逐項展開為--add-dir(agy該旗標可重複)
+    let addDirs = get(opt, 'addDirs', null)
+    let addDirArgs = []
+    if (isarr(addDirs)) {
+        for (let d of addDirs) {
+            if (isestr(d)) {
+                addDirArgs.push('--add-dir', d)
+            }
+        }
+    }
+
+    //extraArgs
+    let extraArgs = get(opt, 'extraArgs', null)
+
+    //args, prompt作為--print之值放最後
+    let args = getCliArgs(
+        skipPermissions ? '--dangerously-skip-permissions' : [],
+        ['--print-timeout', printTimeout],
+        isestr(model) ? ['--model', model] : [],
+        isestr(effort) ? ['--effort', effort] : [],
+        addDirArgs,
+        extraArgs,
+        ['--print', prompt],
+    )
+
+    //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
+    let optCli = omit(opt, OWN_KEYS)
+
+    //execCli, 不帶input(agy由--print取得prompt); try/catch兜底轉義膨脹等
+    //前置檢查漏網之spawn同步拋出(如ENAMETOOLONG), 維持不reject契約
+    try {
+        return await execCli(exe, args, {
+            ...optCli,
+            timeoutMs,
+        })
+    }
+    catch (err) {
+        return getErrorResult(`${err.code || 'UNKNOWN'}: ${err.message}`)
+    }
+}
+
+
+export default dispatchAntigravity
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Mon Aug 10 2026 09:36:49 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
