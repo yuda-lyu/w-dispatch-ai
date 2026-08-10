@@ -22,19 +22,22 @@ Note:
 - `dispatchClaude` needs [Claude Code CLI](https://claude.com/claude-code) (`claude`) in system PATH, and uses its existing login state.
 - `dispatchCodex` needs [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) in system PATH, and uses its existing login state.
 - `dispatchOpencode` needs [opencode CLI](https://opencode.ai/) (`opencode`) in system PATH. Unlike the other two, it accepts a per-call `key`+`provider`, injected through `OPENCODE_AUTH_CONTENT`, so multiple api keys can be rotated without rewriting `auth.json`.
-- The prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
+- `dispatchAntigravity` needs [Google Antigravity CLI](https://antigravity.google/) (`agy`, not `antigravity`) in system PATH, and uses its existing OAuth login state (first login requires an interactive desktop session). Unlike the other three, agy takes the prompt via the `--print` flag instead of stdin, so the prompt is capped at 30000 chars (Windows command line limit); longer prompts return an error result.
+- Each adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
+- For the other three adapters the prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
 - All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object.
 - **Security**: `dispatchClaude` passes `--dangerously-skip-permissions` by default, so the non-interactive `-p` mode will not hang on permission prompts. If the prompt embeds untrusted content (e.g. a web page to summarize), instructions inside that content would also run without the permission gate. Pass `skipPermissions: false` to keep the CLI permission gate.
 
 #### Functions:
 | function | description |
 | --- | --- |
-| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'` |
+| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'` |
 | `dispatchAiFallback(prompt, opt)` | call ai with an ordered provider list, auto rotating keys within a group and falling back to the next group |
 | `dispatchOpencode(prompt, opt)` | call an ai model by opencode cli, supports per-call api key and provider config |
 | `dispatchClaude(prompt, opt)` | call a claude model by claude code cli |
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
-| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex']` |
+| `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
+| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity']` |
 
 #### Example:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/g.mjs)]
@@ -68,7 +71,7 @@ let test = async () => {
 
     //可用之AI供應商種類
     console.log('KINDS:', wdi.KINDS)
-    // => KINDS: [ 'opencode', 'claude', 'codex' ]
+    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity' ]
 
     let prompt = '請只回覆兩個字：完成，不要有任何其他文字'
 
@@ -87,6 +90,11 @@ let test = async () => {
     console.log('opencode:', r3.ok, r3.stdout.trim())
     // => opencode: true 完成
 
+    //以antigravity CLI(agy)呼叫, prompt走--print旗標(長度上限30000字元), model須為`agy models`第一欄slug
+    let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.6-flash-low' })
+    console.log('antigravity:', r3b.ok, r3b.stdout.trim())
+    // => antigravity: true 完成
+
     //以供應商條目輪替, 一個條目即一組(kind, model, 可選的key與provider與config), 輪到誰就用誰的CLI與模型
     //opencode支援逐次注入金鑰, 故同一provider之多把金鑰可各成一個條目
     let items = [
@@ -95,6 +103,7 @@ let test = async () => {
         { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', key: opencodeKeys[0], timeoutMs: 180000 },
         { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', key: opencodeKeys[1], timeoutMs: 180000 },
         { kind: 'opencode', model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: agnesKeys[0], config: configAgnes, timeoutMs: 180000 },
+        { kind: 'antigravity', model: 'gemini-3.6-flash-low' },
     ]
     for (let item of items) {
         let r = await wdi.dispatchAi(item.kind, prompt, item)
@@ -104,12 +113,13 @@ let test = async () => {
         // => dispatchAi opencode/deepseek-v4-flash-free: true 完成
         // => dispatchAi opencode/deepseek-v4-flash-free: true 完成
         // => dispatchAi agnes-ai/agnes-2.0-flash: true 完成
+        // => dispatchAi gemini-3.6-flash-low: true 完成
     }
 
     //未知供應商回傳error結果物件, 不會reject
     let r4 = await wdi.dispatchAi('gemini', prompt)
     console.log('invalid kind:', r4.ok, r4.error)
-    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex)
+    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity)
 
     //prompt非有效字串亦回傳error結果物件
     let r5 = await wdi.dispatchClaude('')
@@ -148,6 +158,7 @@ let test = async () => {
             },
             { id: 'claude', kind: 'claude', model: 'sonnet' },
             { id: 'codex', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
+            { id: 'antigravity', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
         ],
         budgetMs: 600000,
         onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
@@ -198,6 +209,18 @@ await test()
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `sandbox` | String | `'workspace-write'` | 沙箱模式，可用`'read-only'`、`'workspace-write'`、`'danger-full-access'` |
+
+#### Options only for dispatchAntigravity:
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `model` | String | `''` | 須為`agy models`**第一欄之slug**（如`gemini-3.6-flash-low`）；agy錯誤訊息列出的是顯示名稱而非slug，勿照抄 |
+| `effort` | String | `''` | `'low'`、`'medium'`、`'high'`，需agy>=1.1.11；建議搭配不帶檔位之基礎slug（如`gemini-3.1-pro`），與帶檔位slug併用且檔位不一致時agy回conflicts錯誤 |
+| `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標 |
+| `printTimeout` | String | 由`timeoutMs`推導 | agy自身等待上限（如`'10m'`、`'570s'`），預設`timeoutMs`扣30秒緩衝（下限30秒），令CLI先於外層逾時而回報自身錯誤訊息 |
+| `addDirs` | Array | `[]` | 加入workspace之目錄字串陣列，逐項展開為`--add-dir` |
+| `timeoutMs` | Integer | `300000` | agy為agent型CLI，預設較其他轉接器長 |
+
+注意：agy之prompt走`--print`旗標而非stdin（agy介面如此），故prompt長度上限30000字元，超過回傳錯誤結果物件（不reject）。
 
 #### Options for dispatchAiFallback:
 | key | type | default | description |

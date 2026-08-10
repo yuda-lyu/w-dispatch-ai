@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li></ul>
     
 </nav>
 
@@ -140,7 +140,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line30">line 30</a>
+        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line31">line 31</a>
     </li></ul></dd>
     
 
@@ -191,7 +191,7 @@
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>詳見dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex範例</code></pre>
+    <pre class="prettyprint"><code>詳見dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity範例</code></pre>
 
 
 
@@ -214,7 +214,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="adapters.mjs.html">adapters.mjs</a>, <a href="adapters.mjs.html#line21">line 21</a>
+        <a href="adapters.mjs.html">adapters.mjs</a>, <a href="adapters.mjs.html#line22">line 22</a>
     </li></ul></dd>
     
 
@@ -270,7 +270,7 @@
     <pre class="prettyprint"><code>import adapters from './src/adapters.mjs'
 
 console.log(Object.keys(adapters))
-// => ['opencode', 'claude', 'codex']</code></pre>
+// => ['opencode', 'claude', 'codex', 'antigravity']</code></pre>
 
 
 
@@ -1250,6 +1250,729 @@ await test()
         
 <div class="param-desc">
     <p>回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳)，本函數不會reject</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Promise</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="dispatchAntigravity"><span class="type-signature type-signature-async">(async) </span>dispatchAntigravity<span class="signature">(prompt, opt<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {Promise}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>以Google Antigravity CLI(agy)呼叫AI模型</p>
+<p>特點：
+prompt作為<code>--print</code>旗標之值傳遞而非stdin(agy介面如此，塞stdin會進互動模式卡住)，
+故prompt受命令列長度上限約束，超過30000字元回傳錯誤結果物件；
+model須為<code>agy models</code>第一欄之slug(如gemini-3.6-flash-low)，注意agy錯誤訊息列出的是顯示名稱而非slug；
+帶檔位之slug(-high/-medium/-low結尾)與effort同時給定且檔位不一致時agy回conflicts錯誤(一致則放行)，
+effort需agy&gt;=1.1.11，建議搭配不帶檔位之基礎slug(如gemini-3.1-pro)使用；
+預設帶<code>--dangerously-skip-permissions</code>令非互動print模式不卡權限確認，可給予skipPermissions為false保留權限閘門；
+agy自身之--print-timeout未給時由timeoutMs推導並預留30秒緩衝，令CLI先於外層逾時；
+沿用agy既有OAuth登入狀態(首次須於桌面互動模式完成登入)；
+本函數不會reject，一律以結果物件之ok與error欄位回報成敗</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="dispatchAntigravity.mjs.html">dispatchAntigravity.mjs</a>, <a href="dispatchAntigravity.mjs.html#line105">line 105</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>//need agy cli in system PATH, and OAuth login completed
+
+import dispatchAntigravity from './src/dispatchAntigravity.mjs'
+
+let test = async () => {
+
+    let r = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.6-flash-low' })
+    console.log(r.ok, r.stdout.trim())
+    // => true 完成
+
+    //基礎slug搭配effort(不可用帶檔位之slug併用effort)
+    let r2 = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.1-pro', effort: 'low' })
+    console.log(r2.ok)
+    // => true
+
+    let re = await dispatchAntigravity('')
+    console.log(re.ok, re.error)
+    // => false 'prompt must be a non-empty string'
+
+}
+await test()
+    .catch((err) => {
+        console.log(err)
+    })</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>prompt</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入提示詞字串，作為<code>--print</code>旗標之值傳遞，長度上限30000字元</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>opt</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>{}</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入設定物件，預設{}</p>
+                <h6>Properties</h6>
+                
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>exe</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>'agy'</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析，預設'agy'</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>model</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>''</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入模型slug字串，須為<code>agy models</code>第一欄之slug，例如'gemini-3.6-flash-low'、'gemini-3.1-pro-high'，預設''代表不帶<code>--model</code>旗標由agy自行決定</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>effort</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>''</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入推理深度字串，可選'low'、'medium'、'high'，需agy&gt;=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>skipPermissions</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Boolean</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>true</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入是否帶<code>--dangerously-skip-permissions</code>旗標布林值，false代表保留CLI權限閘門，預設true</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>printTimeout</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>''</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入agy自身等待上限字串(如'10m'、'570s')，預設''代表由timeoutMs推導(扣30秒緩衝，下限30秒)</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>addDirs</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>[]</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入加入workspace之目錄字串陣列，逐項展開為<code>--add-dir</code>，預設[]</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>extraArgs</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>[]</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、<code>--print</code>之前，預設[]</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>timeoutMs</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>300000</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，agy為agent型CLI故預設較長之300000，預設300000</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>cwd</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>process.cwd()</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入子進程工作目錄字串，預設process.cwd()</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>validate</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+|
+
+<span class="param-type">function</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>maxRetries</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>0</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入失敗後最大重試次數非負整數，預設0</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+            </td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject</p>
 </div>
 
 
@@ -3782,7 +4505,7 @@ console.log(getErrorResult(null).error)
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Aug 09 2026 23:14:54 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Mon Aug 10 2026 09:36:49 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

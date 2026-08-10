@@ -20,7 +20,7 @@ describe('dispatchAi', function() {
     it('未知kind時回傳錯誤結果物件且不reject', async function() {
         let t = await dispatchAi('gemini', 'abc')
         let r = [t.ok, t.error, t.attempts]
-        let rr = [false, 'unknown ai kind: "gemini" (available: opencode, claude, codex)', 0]
+        let rr = [false, 'unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity)', 0]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -46,11 +46,12 @@ describe('dispatchAi', function() {
 
     it('prompt之檢核由各轉接器負責, 錯誤結果物件一致', async function() {
         let r = []
-        for (let kind of ['opencode', 'claude', 'codex']) {
+        for (let kind of ['opencode', 'claude', 'codex', 'antigravity']) {
             let t = await dispatchAi(kind, '')
             r.push([t.ok, t.error])
         }
         let rr = [
+            [false, 'prompt must be a non-empty string'],
             [false, 'prompt must be a non-empty string'],
             [false, 'prompt must be a non-empty string'],
             [false, 'prompt must be a non-empty string'],
@@ -60,7 +61,7 @@ describe('dispatchAi', function() {
 
     it('各kind分派至對應轉接器, 由其固定旗標可辨識', async function() {
         let r = []
-        for (let kind of ['opencode', 'claude', 'codex']) {
+        for (let kind of ['opencode', 'claude', 'codex', 'antigravity']) {
             let t = await dispatchAi(kind, 'abc', { exe: fake.exe, model: 'mdl' })
             let o = JSON.parse(t.stdout)
             r.push([t.ok, o.args])
@@ -69,6 +70,7 @@ describe('dispatchAi', function() {
             [true, ['run', '--agent', 'build', '-m', 'mdl']],
             [true, ['-p', '--dangerously-skip-permissions', '--model', 'mdl']],
             [true, ['exec', '--sandbox', 'workspace-write', '--skip-git-repo-check', '-m', 'mdl']],
+            [true, ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'mdl', '--print', 'abc']],
         ]
         assert.strict.deepEqual(r, rr)
     })
@@ -86,6 +88,7 @@ describe('dispatchAi', function() {
             { kind: 'opencode', model: 'opencode/free', provider: 'opencode', key: 'sk-1' },
             { kind: 'claude', model: 'sonnet' },
             { kind: 'codex', model: 'gpt-5.6-luna' },
+            { kind: 'antigravity', model: 'gemini-3.6-flash-low' },
         ]
         let r = []
         for (let item of items) {
@@ -97,6 +100,7 @@ describe('dispatchAi', function() {
             ['opencode', 'run', true],
             ['claude', '-p', true],
             ['codex', 'exec', true],
+            ['antigravity', '--dangerously-skip-permissions', true],
         ]
         assert.strict.deepEqual(r, rr)
     })

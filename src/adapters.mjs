@@ -1,6 +1,7 @@
 import dispatchOpencode from './dispatchOpencode.mjs'
 import dispatchClaude from './dispatchClaude.mjs'
 import dispatchCodex from './dispatchCodex.mjs'
+import dispatchAntigravity from './dispatchAntigravity.mjs'
 
 
 /**
@@ -15,13 +16,14 @@ import dispatchCodex from './dispatchCodex.mjs'
  * import adapters from './src/adapters.mjs'
  *
  * console.log(Object.keys(adapters))
- * // => ['opencode', 'claude', 'codex']
+ * // => ['opencode', 'claude', 'codex', 'antigravity']
  *
  */
 let adapters = {
     opencode: dispatchOpencode,
     claude: dispatchClaude,
     codex: dispatchCodex,
+    antigravity: dispatchAntigravity,
 }
 
 

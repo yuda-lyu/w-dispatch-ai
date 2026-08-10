@@ -27,7 +27,7 @@ let test = async () => {
 
     //可用之AI供應商種類
     console.log('KINDS:', wdi.KINDS)
-    // => KINDS: [ 'opencode', 'claude', 'codex' ]
+    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity' ]
 
     let prompt = '請只回覆兩個字：完成，不要有任何其他文字'
 
@@ -46,6 +46,11 @@ let test = async () => {
     console.log('opencode:', r3.ok, r3.stdout.trim())
     // => opencode: true 完成
 
+    //以antigravity CLI(agy)呼叫, prompt走--print旗標(長度上限30000字元), model須為`agy models`第一欄slug
+    let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.6-flash-low' })
+    console.log('antigravity:', r3b.ok, r3b.stdout.trim())
+    // => antigravity: true 完成
+
     //以供應商條目輪替, 一個條目即一組(kind, model, 可選的key與provider與config), 輪到誰就用誰的CLI與模型
     //opencode支援逐次注入金鑰, 故同一provider之多把金鑰可各成一個條目
     let items = [
@@ -54,6 +59,7 @@ let test = async () => {
         { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', key: opencodeKeys[0], timeoutMs: 180000 },
         { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', key: opencodeKeys[1], timeoutMs: 180000 },
         { kind: 'opencode', model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: agnesKeys[0], config: configAgnes, timeoutMs: 180000 },
+        { kind: 'antigravity', model: 'gemini-3.6-flash-low' },
     ]
     for (let item of items) {
         let r = await wdi.dispatchAi(item.kind, prompt, item)
@@ -63,12 +69,13 @@ let test = async () => {
         // => dispatchAi opencode/deepseek-v4-flash-free: true 完成
         // => dispatchAi opencode/deepseek-v4-flash-free: true 完成
         // => dispatchAi agnes-ai/agnes-2.0-flash: true 完成
+        // => dispatchAi gemini-3.6-flash-low: true 完成
     }
 
     //未知供應商回傳error結果物件, 不會reject
     let r4 = await wdi.dispatchAi('gemini', prompt)
     console.log('invalid kind:', r4.ok, r4.error)
-    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex)
+    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity)
 
     //prompt非有效字串亦回傳error結果物件
     let r5 = await wdi.dispatchClaude('')
@@ -107,6 +114,7 @@ let test = async () => {
             },
             { id: 'claude', kind: 'claude', model: 'sonnet' },
             { id: 'codex', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
+            { id: 'antigravity', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
         ],
         budgetMs: 600000,
         onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
