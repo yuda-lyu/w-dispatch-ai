@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>wkf/extractJsonLoose.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">wkf/extractJsonLoose.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// extractJsonLoose.mjs — 從AI回覆文字中寬鬆抽取JSON(工作流層預設解析器, 可被注入覆寫)
+//
+// 【為何需要】各家CLI的回覆常帶code fence、前後說明文字、ANSI色碼;
+//   直接JSON.parse必炸。本函數做清理後以「括號配對」找出第一個完整
+//   物件或陣列再解析。呼叫端若有更強的解析器(如含截斷搶救), 以opt.parse注入即可。
+
+
+/**
+ * 從文字中抽取第一個完整的JSON物件或陣列
+ *
+ * 特點：
+ * 先去除ANSI色碼與code fence標記後嘗試整段解析(最常見情境之最快路徑)；
+ * 整段非法時自第一個`{`或`[`起以括號配對(跳過字串與跳脫)取得第一個完整片段再解析；
+ * 僅接受物件與陣列，純量(字串/數字/布林)回傳null；
+ * 括號未閉合(輸出被截斷)或片段非法一律回傳null，不throw
+ *
+ * @param {String} text 輸入AI回覆文字字串
+ * @returns {Object|Array|null} 回傳解析成功之物件或陣列，失敗回傳null
+ * @example
+ *
+ * import extractJsonLoose from './src/wkf/extractJsonLoose.mjs'
+ *
+ * console.log(extractJsonLoose('{"a":1}'))
+ * // => { a: 1 }
+ *
+ * console.log(extractJsonLoose('說明文字\n```json\n{"a":1}\n```\n後記'))
+ * // => { a: 1 }
+ *
+ * console.log(extractJsonLoose('{"a":1')) //截斷
+ * // => null
+ *
+ * console.log(extractJsonLoose('純文字回覆'))
+ * // => null
+ *
+ */
+function extractJsonLoose(text) {
+    let s = String(text || '')
+
+    //去ANSI色碼與code fence標記
+    s = s.replace(new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g'), '')
+    s = s.replace(/```(?:json)?/g, '')
+    s = s.trim()
+    if (s === '') {
+        return null
+    }
+
+    //整段直接解析(最常見情境, 最快路徑)
+    try {
+        let j = JSON.parse(s)
+        if (j !== null &amp;&amp; typeof j === 'object') {
+            return j
+        }
+    }
+    catch (e) { /* 進入括號配對路徑 */ }
+
+    //括號配對: 自第一個{或[起, 逐字元追蹤深度(跳過字串與跳脫), 取得第一個完整片段
+    let start = -1
+    for (let i = 0; i &lt; s.length; i++) {
+        if (s[i] === '{' || s[i] === '[') {
+            start = i
+            break
+        }
+    }
+    if (start &lt; 0) {
+        return null
+    }
+    let depth = 0
+    let inStr = false
+    let esc = false
+    for (let i = start; i &lt; s.length; i++) {
+        let c = s[i]
+        if (inStr) {
+            if (esc) {
+                esc = false
+            }
+            else if (c === '\\') {
+                esc = true
+            }
+            else if (c === '"') {
+                inStr = false
+            }
+            continue
+        }
+        if (c === '"') {
+            inStr = true
+        }
+        else if (c === '{' || c === '[') {
+            depth++
+        }
+        else if (c === '}' || c === ']') {
+            depth--
+            if (depth === 0) {
+                try {
+                    let j = JSON.parse(s.slice(start, i + 1))
+                    if (j !== null &amp;&amp; typeof j === 'object') {
+                        return j
+                    }
+                }
+                catch (e) { /* 片段仍非法, 視為失敗 */ }
+                return null
+            }
+        }
+    }
+    return null //括號未閉合(輸出被截斷)
+}
+
+
+export default extractJsonLoose
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 11 2026 13:18:34 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
