@@ -2,6 +2,7 @@ import dispatchOpencode from './dispatchOpencode.mjs'
 import dispatchClaude from './dispatchClaude.mjs'
 import dispatchCodex from './dispatchCodex.mjs'
 import dispatchAntigravity from './dispatchAntigravity.mjs'
+import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
 
 
 /**
@@ -16,14 +17,15 @@ import dispatchAntigravity from './dispatchAntigravity.mjs'
  * import adapters from './src/adapters.mjs'
  *
  * console.log(Object.keys(adapters))
- * // => ['opencode', 'claude', 'codex', 'antigravity']
+ * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']
  *
  */
 let adapters = {
-    opencode: dispatchOpencode,
-    claude: dispatchClaude,
-    codex: dispatchCodex,
-    antigravity: dispatchAntigravity,
+    'opencode': dispatchOpencode,
+    'claude': dispatchClaude,
+    'codex': dispatchCodex,
+    'antigravity': dispatchAntigravity,
+    'api-openai-compat': dispatchApiOpenaiCompat,
 }
 
 

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>wkf/callAiWithFallback.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">wkf/callAiWithFallback.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import isearr from 'wsemi/src/isearr.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import dispatchAiFallback from '../dispatchAiFallback.mjs'
+import extractJsonLoose from './extractJsonLoose.mjs'
+
+
+// callAiWithFallback.mjs — 工作流的最小呼叫單元: 一個「AI名額」＝主模型＋自帶遞補鏈
+//
+// 【設計】呼叫端以名稱宣告主模型與遞補(use:'deepseek', fallback:['agnes-ai','sonnet']),
+//   本函數依providers定義表把名稱展開成dispatchAiFallback的providers陣列
+//   (順序即優先序), 故「各AI名額可各自指定fallback」天然成立。
+//   名稱查無定義時視為設定錯誤直接回報(fail fast), 不靜默略過——
+//   否則fallback名稱打錯字只會讓遞補鏈無感知地短一截, 事後無從察覺。
+//
+// 【JSON驗證接進遞補層】parse＋check包成dispatchAiFallback的validate:
+//   回覆非法(空回、截斷、缺欄位)時為OUTPUT_VALIDATION_FAILED, 遞補層視為
+//   與金鑰無關之失敗而「整組跳過換下一家」(不換組內金鑰——同模型換金鑰仍是
+//   同樣的產出習慣); 端點不穩而偶發空回的模型, 以maxRetries調高令同鍵重試。
+//
+// 【防寫檔前綴】agentic CLI對cwd隔離免疫(會自行解析專案根目錄寫檔),
+//   故預設在prompt前掛「禁止建檔」約束(實測有效); 不需要時傳promptPrefix:''關閉。
+//   殷鑑: 2026-08-10執行任務歷史.md遭AI覆寫、評比腳本繞過前綴又產生根目錄孤兒檔。
+
+
+//預設防寫檔前綴
+let NO_SIDE_EFFECT = [
+    '【執行約束】你只需把結果輸出在回覆內容中。',
+    '禁止建立、修改或刪除任何檔案，禁止執行任何指令——呼叫端只讀取你的回覆文字，',
+    '任何寫入磁碟的動作都不會被採用，只會製造無人讀取的垃圾檔。',
+    '', '',
+].join('\n')
+
+
+/**
+ * 依providers定義表把「名稱規格」展開成dispatchAiFallback的providers陣列
+ *
+ * @param {Object} providers 輸入定義表物件(名稱 → 條目)
+ * @param {Object} spec 輸入名額規格物件{ use, fallback }
+ * @returns {Object} 回傳物件，內含chain(條目物件陣列，id一律用名稱)與missing(查無定義之名稱字串陣列)
+ * @example
+ *
+ * import { buildChain } from './src/wkf/callAiWithFallback.mjs'
+ *
+ * let providers = { a: { kind: 'claude' }, b: { kind: 'codex' } }
+ * console.log(buildChain(providers, { use: 'a', fallback: ['b', 'c'] }))
+ * // => { chain: [ { id: 'a', kind: 'claude' }, { id: 'b', kind: 'codex' } ], missing: [ 'c' ] }
+ *
+ */
+function buildChain(providers, spec) {
+    let names = [get(spec, 'use', '')]
+    let fallback = get(spec, 'fallback', null)
+    if (isearr(fallback)) {
+        names = [...names, ...fallback]
+    }
+    let chain = []
+    let missing = []
+    for (let name of names) {
+        let entry = get(providers, name, null)
+        if (isobj(entry)) {
+            chain.push({ id: name, ...entry }) //id一律用名稱, 令游標與事件可讀
+        }
+        else {
+            missing.push(String(name))
+        }
+    }
+    return { chain, missing }
+}
+
+
+/**
+ * 呼叫一個AI名額(主模型＋自帶遞補鏈)，回覆經parse＋check驗證後回傳結構化結果
+ *
+ * 特點：
+ * spec.use為主模型名稱、spec.fallback為遞補名稱陣列，依序展開為遞補鏈，名稱查無定義即回報錯誤(fail fast)；
+ * parse＋check接進遞補層之validate——非法回覆視為該家失敗而自動換下一家，不把壞結果帶回來；
+ * 預設掛防寫檔前綴(promptPrefix傳空字串可關閉)；
+ * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
+ *
+ * @param {String} prompt 輸入提示詞字串
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Object} opt.providers 輸入provider定義表物件(名稱 → dispatchAiFallback條目，條目內含kind、model、keys、exe、provider、config等)
+ * @param {Object} opt.spec 輸入名額規格物件{ use:'主模型名稱', fallback:['遞補名稱', ...] }
+ * @param {Function} [opt.check=null] 輸入結果檢核函數(json)=>Boolean，預設null代表只要能解析出JSON即通過
+ * @param {Function} [opt.parse=extractJsonLoose] 輸入回覆解析函數(stdout)=>Object|null，預設寬鬆JSON抽取
+ * @param {Boolean} [opt.rawText=false] 輸入是否以純文字模式運作布林值，true代表不解析JSON(json欄位為修剪後文字、check收文字)，預設false
+ * @param {String} [opt.promptPrefix=防寫檔約束] 輸入prompt前綴字串，預設為防寫檔約束，傳''關閉
+ * @param {Number} [opt.timeoutMs=300000] 輸入單次嘗試逾時毫秒正整數，預設300000
+ * @param {Number} [opt.budgetMs=null] 輸入整條遞補鏈之時間預算毫秒正整數，預設null代表不限
+ * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試)
+ * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
+ * @param {Object} [opt.store=null] 輸入游標持久化物件{get,set}，預設null代表用行程內記憶體
+ * @param {Function} [opt.onEvent=null] 輸入遞補層事件回調函數，預設null
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、error(錯誤訊息字串)，本函數不會reject
+ * @example
+ * //need cli in system PATH
+ *
+ * import callAiWithFallback from './src/wkf/callAiWithFallback.mjs'
+ *
+ * let providers = {
+ *     'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
+ *     'sonnet': { kind: 'claude', model: 'sonnet' },
+ * }
+ *
+ * let test = async () => {
+ *
+ *     let r = await callAiWithFallback('只回覆JSON: {"a":1}', {
+ *         providers,
+ *         spec: { use: 'deepseek', fallback: ['sonnet'] },
+ *         check: (j) => j.a === 1,
+ *     })
+ *     console.log(r.ok, r.json, r.providerId)
+ *     // => true { a: 1 } 'deepseek'
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function callAiWithFallback(prompt, opt = {}) {
+    let t0 = Date.now()
+
+    if (!isestr(prompt)) {
+        return { ok: false, json: null, error: 'prompt must be a non-empty string', ms: 0, tried: [] }
+    }
+
+    let providers = get(opt, 'providers', null)
+    let spec = get(opt, 'spec', null)
+    if (!isobj(providers) || !isobj(spec)) {
+        return { ok: false, json: null, error: `no valid provider for spec: ${JSON.stringify(spec)}`, ms: 0, tried: [] }
+    }
+
+    //buildChain, 名稱查無定義即回報(fail fast), 不讓打錯字的fallback靜默消失
+    let { chain, missing } = buildChain(providers, spec)
+    if (missing.length > 0) {
+        return { ok: false, json: null, error: `unknown provider name(s): ${missing.join(', ')}`, ms: 0, tried: [] }
+    }
+    if (chain.length === 0) {
+        return { ok: false, json: null, error: `no valid provider for spec: ${JSON.stringify(spec)}`, ms: 0, tried: [] }
+    }
+
+    let rawText = get(opt, 'rawText', false) === true
+    let parse = get(opt, 'parse', null)
+    if (!isfun(parse)) {
+        parse = extractJsonLoose
+    }
+    let check = get(opt, 'check', null)
+    if (!isfun(check)) {
+        check = null
+    }
+
+    let promptPrefix = get(opt, 'promptPrefix', null)
+    if (!isestr(promptPrefix)) {
+        promptPrefix = (promptPrefix === '') ? '' : NO_SIDE_EFFECT
+    }
+
+    //validate接進遞補層: 非法回覆＝這一家失敗, 遞補層換下一家
+    let validate = (stdout) => {
+        if (rawText) {
+            let s = String(stdout || '').trim()
+            if (s === '') {
+                return false
+            }
+            return check ? check(s) === true : true
+        }
+        let j = parse(stdout)
+        if (j === null) {
+            return false
+        }
+        return check ? check(j) === true : true
+    }
+
+    let r = await dispatchAiFallback(promptPrefix + prompt, {
+        providers: chain,
+        validate,
+        timeoutMs: get(opt, 'timeoutMs', null) || 300000,
+        budgetMs: get(opt, 'budgetMs', null) || undefined,
+        maxRetries: get(opt, 'maxRetries', null) || 0,
+        cwd: get(opt, 'cwd', null) || process.cwd(),
+        store: get(opt, 'store', null) || undefined,
+        onEvent: get(opt, 'onEvent', null) || undefined,
+    })
+
+    //result, 已過validate故此處parse必然成功(同一解析器), 重解析僅為取出物件
+    let result = null
+    if (r.ok) {
+        result = rawText ? String(r.stdout || '').trim() : parse(r.stdout)
+    }
+    let providerId = get(r, 'providerId', null)
+    let keyIndex = get(r, 'keyIndex', null)
+    return {
+        ok: r.ok &amp;&amp; result !== null,
+        json: result, //rawText模式下此欄為文字
+        providerId,
+        keyIndex,
+        keyId: (keyIndex === null) ? providerId : `${providerId}#${keyIndex}`,
+        ms: Date.now() - t0,
+        tried: get(r, 'tried', []),
+        error: r.ok ? '' : get(r, 'error', 'unknown error'),
+    }
+}
+
+
+export default callAiWithFallback
+export { buildChain, NO_SIDE_EFFECT }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 11 2026 13:18:34 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

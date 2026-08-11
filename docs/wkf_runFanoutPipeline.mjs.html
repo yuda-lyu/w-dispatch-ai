@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>wkf/runFanoutPipeline.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">wkf/runFanoutPipeline.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import runFanout from './runFanout.mjs'
+import runRolePipeline from './runRolePipeline.mjs'
+
+
+// runFanoutPipeline.mjs — FanoutPipeline工作流(Fanout+RolePipeline): 多開收斂成果接串行角色鏈
+//
+// 【結構】先跑runFanout(多開 → 整合), 其成果作為runRolePipeline的input
+//   (各階段以ctx.input取用), 最末階段回傳即工作流成果。
+//
+// 【實測依據(2026-08-10評比)】Fanout+RolePipeline是品質天花板: 前段的多樣性擇優給出最豐底稿、
+//   審計鏈再修幻覺與證據標注; 六模型的歷史最高品質全部出現在此組合(或與純RolePipeline並列)。
+//
+// 【部分接受】前段失敗即回(附前段完整明細, 含已成功候選);
+//   後段失敗回傳前段成果與後段已完成階段——呼叫端可只重跑失敗段。
+
+
+/**
+ * 執行FanoutPipeline工作流(Fanout+RolePipeline)：多開＋整合＋串行角色鏈
+ *
+ * 特點：
+ * 前段同runFanout(agents各名額可自帶fallback、integrate單點整合)；
+ * 後段同runRolePipeline(stages各階段可自帶AI／fallback／提示詞)，其input即前段成果；
+ * 本函數不會reject
+ *
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Object} opt.providers 輸入provider定義表物件(名稱 → 條目)
+ * @param {String} opt.task 輸入前段各名額共用之任務提示詞字串
+ * @param {Array} opt.agents 輸入前段名額規格陣列(同runFanout)
+ * @param {Object} opt.integrate 輸入前段整合名額規格物件(同runFanout)
+ * @param {Array} opt.stages 輸入後段階段規格陣列(同runRolePipeline)，各階段以ctx.input取得前段成果
+ * @param {Function} [opt.check=null] 輸入前段共用檢核函數，後段各階段自帶check，預設null
+ * @param {String} [opt.schema=''] 輸入輸出格式示意字串(供前段預設整合模板)，預設''
+ * @param {Number} [opt.minCandidates=2] 輸入前段整合門檻正整數，預設2
+ * @param {Object} [opt.callOpt={}] 輸入透傳兩段之共用呼叫設定，預設{}
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(布林值)、result(工作流成果)、A(前段runFanout完整結果)、B(後段runRolePipeline完整結果)、totalMs(總耗時毫秒)、error(錯誤訊息字串)，本函數不會reject
+ * @example
+ * //need cli in system PATH
+ *
+ * import runFanoutPipeline from './src/wkf/runFanoutPipeline.mjs'
+ *
+ * let providers = {
+ *     'sonnet': { kind: 'claude', model: 'sonnet' },
+ *     'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+ * }
+ *
+ * let test = async () => {
+ *
+ *     let r = await runFanoutPipeline({
+ *         providers,
+ *         task: '分析並只回覆JSON: {"essence":"..."}',
+ *         agents: [{ use: 'sonnet' }, { use: 'luna' }],
+ *         integrate: { use: 'sonnet' },
+ *         stages: [
+ *             { id: 'audit', use: 'luna', prompt: (ctx) => `審計此稿並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.input)}` },
+ *         ],
+ *         check: (j) => !!j.essence,
+ *     })
+ *     console.log(r.ok, r.A.integrated, r.B.order)
+ *     // => true true [ 'audit' ]
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function runFanoutPipeline(opt = {}) {
+    let t0 = Date.now()
+
+    //前段: Fanout(多開 → 整合)
+    let rA = await runFanout({
+        providers: get(opt, 'providers', null),
+        task: get(opt, 'task', ''),
+        agents: get(opt, 'agents', null),
+        integrate: get(opt, 'integrate', null),
+        check: get(opt, 'check', null),
+        schema: get(opt, 'schema', ''),
+        minCandidates: get(opt, 'minCandidates', null),
+        callOpt: get(opt, 'callOpt', {}),
+    })
+    if (!rA.ok) {
+        return { ok: false, result: null, A: rA, B: null, totalMs: Date.now() - t0, error: `A failed: ${rA.error}` }
+    }
+
+    //後段: RolePipeline, input即前段成果
+    let rB = await runRolePipeline({
+        providers: get(opt, 'providers', null),
+        input: rA.result,
+        stages: get(opt, 'stages', null),
+        callOpt: get(opt, 'callOpt', {}),
+    })
+
+    return {
+        ok: rB.ok,
+        result: rB.ok ? rB.result : null,
+        A: rA, //前段成果與明細一律回傳——後段失敗時可據此只重跑後段
+        B: rB,
+        totalMs: Date.now() - t0,
+        error: rB.ok ? '' : `B failed: ${rB.error}`,
+    }
+}
+
+
+export default runFanoutPipeline
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 11 2026 13:18:34 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

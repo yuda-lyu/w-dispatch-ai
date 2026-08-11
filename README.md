@@ -23,7 +23,8 @@ Note:
 - `dispatchCodex` needs [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) in system PATH, and uses its existing login state.
 - `dispatchOpencode` needs [opencode CLI](https://opencode.ai/) (`opencode`) in system PATH. Unlike the other two, it accepts a per-call `key`+`provider`, injected through `OPENCODE_AUTH_CONTENT`, so multiple api keys can be rotated without rewriting `auth.json`.
 - `dispatchAntigravity` needs [Google Antigravity CLI](https://antigravity.google/) (`agy`, not `antigravity`) in system PATH, and uses its existing OAuth login state (first login requires an interactive desktop session). Unlike the other three, agy takes the prompt via the `--print` flag instead of stdin, so the prompt is capped at 30000 chars (Windows command line limit); longer prompts return an error result.
-- Each adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
+- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `deepseek-v4-flash-free`) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-2.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
+- Each cli adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
 - For the other three adapters the prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
 - All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object.
 - **Security**: `dispatchClaude` passes `--dangerously-skip-permissions` by default, so the non-interactive `-p` mode will not hang on permission prompts. If the prompt embeds untrusted content (e.g. a web page to summarize), instructions inside that content would also run without the permission gate. Pass `skipPermissions: false` to keep the CLI permission gate.
@@ -31,13 +32,15 @@ Note:
 #### Functions:
 | function | description |
 | --- | --- |
-| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'` |
+| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'` |
 | `dispatchAiFallback(prompt, opt)` | call ai with an ordered provider list, auto rotating keys within a group and falling back to the next group |
+| `dispatchAiWkf(opt)` | workflow factory: inject a named provider table once, returns bound `callAi`／`runFanout`／`runRolePipeline`／`runFanoutPipeline` |
 | `dispatchOpencode(prompt, opt)` | call an ai model by opencode cli, supports per-call api key and provider config |
 | `dispatchClaude(prompt, opt)` | call a claude model by claude code cli |
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
-| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity']` |
+| `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
+| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']` |
 
 #### Example:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/g.mjs)]
@@ -71,7 +74,7 @@ let test = async () => {
 
     //可用之AI供應商種類
     console.log('KINDS:', wdi.KINDS)
-    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity' ]
+    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat' ]
 
     let prompt = '請只回覆兩個字：完成，不要有任何其他文字'
 
@@ -94,6 +97,15 @@ let test = async () => {
     let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.6-flash-low' })
     console.log('antigravity:', r3b.ok, r3b.stdout.trim())
     // => antigravity: true 完成
+
+    //以OpenAI相容API直呼(免CLI免登入), 給baseURL+key+model即可; Zen端點即opencode CLI之自家閘道
+    let r3c = await wdi.dispatchApiOpenaiCompat(prompt, {
+        baseURL: 'https://apihub.agnes-ai.com/v1',
+        key: agnesKeys[0],
+        model: 'agnes-2.0-flash',
+    })
+    console.log('api-openai-compat:', r3c.ok, r3c.code, r3c.stdout.trim())
+    // => api-openai-compat: true 200 完成
 
     //以供應商條目輪替, 一個條目即一組(kind, model, 可選的key與provider與config), 輪到誰就用誰的CLI與模型
     //opencode支援逐次注入金鑰, 故同一provider之多把金鑰可各成一個條目
@@ -119,7 +131,7 @@ let test = async () => {
     //未知供應商回傳error結果物件, 不會reject
     let r4 = await wdi.dispatchAi('gemini', prompt)
     console.log('invalid kind:', r4.ok, r4.error)
-    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity)
+    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat)
 
     //prompt非有效字串亦回傳error結果物件
     let r5 = await wdi.dispatchClaude('')
@@ -222,6 +234,21 @@ await test()
 
 注意：agy之prompt走`--print`旗標而非stdin（agy介面如此），故prompt長度上限30000字元，超過回傳錯誤結果物件（不reject）。
 
+#### Options only for dispatchApiOpenaiCompat:
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `baseURL` | String | 必填 | API基底網址，將於尾端接上`/chat/completions` |
+| `model` | String | 必填 | 模型ID（Zen之模型名不帶`opencode/`前綴） |
+| `key` | String | `''` | API key，以`Bearer`置於`Authorization`標頭，省略代表不帶認證 |
+| `system` | String | `''` | system提示詞，置於messages首位 |
+| `body` | Object | `{}` | 額外請求本體（`temperature`、`max_tokens`、`response_format`等），同名鍵覆寫預設 |
+| `headers` | Object | `{}` | 額外請求標頭 |
+| `timeoutMs` | Integer | `120000` | 逾時毫秒，逾時中止請求（含回應串流讀取） |
+| `maxRetries` | Integer | `0` | 失敗重試次數；**4xx(429除外)為客戶端錯誤不重試**，429/5xx/網路錯誤/逾時線性退避重試 |
+| `retryDelayMs` | Integer | `5000` | 重試間隔，實際為`retryDelayMs`×次數且上限15000ms |
+
+結果結構對齊execCli：`stdout`為回覆內容、`code`為HTTP狀態碼（網路錯誤/逾時為`null`）、逾時`error`以`TIMEOUT`開頭、驗證失敗為`OUTPUT_VALIDATION_FAILED`——故可直接作為`dispatchAiFallback`條目（`kind: 'api-openai-compat'`，`keys`多金鑰輪替同樣適用）與工作流provider。
+
 #### Options for dispatchAiFallback:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -300,6 +327,34 @@ await test()
     ],
 }
 ```
+
+#### dispatchAiWkf (workflow factory):
+注入一次provider定義表(名稱 → `dispatchAiFallback`條目)與共用預設，之後以名稱宣告工作流；名稱查無定義即回報錯誤(fail fast)。回覆經寬鬆JSON解析(`extractJsonLoose`)＋自訂`check`驗證，非法回覆視為該家失敗而自動遞補；預設於prompt前掛「禁止建檔」約束(`promptPrefix: ''`可關閉)。
+
+```alias
+let wkf = wdi.dispatchAiWkf({
+    providers: {
+        'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: [...] },
+        'sonnet': { kind: 'claude', model: 'sonnet' },
+        'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+    },
+    defaults: { timeoutMs: 300000 },
+})
+
+//單一名額: 主模型＋自帶遞補鏈
+let r1 = await wkf.callAi('...prompt...', { spec: { use: 'deepseek', fallback: ['sonnet'] }, check: (j) => !!j.essence })
+
+//Fanout: 並行多開執行 → 單點整合收斂(候選未達minCandidates時以首位候選為成果不硬整合)
+let r2 = await wkf.runFanout({ task, agents: [{ use: 'deepseek', fallback: ['sonnet'] }, { use: 'sonnet' }], integrate: { use: 'luna' }, check })
+
+//RolePipeline: 多角色串行鏈, 各階段可自帶AI/遞補/檢核, prompt收ctx={input,prev,results,index}
+let r3 = await wkf.runRolePipeline({ input, stages: [{ id: 'draft', use: 'sonnet', prompt: (ctx) => `...` }, { id: 'audit', use: 'luna', prompt: (ctx) => `...${JSON.stringify(ctx.prev)}` }] })
+
+//FanoutPipeline: Fanout成果接RolePipeline(品質天花板組合)
+let r4 = await wkf.runFanoutPipeline({ task, agents, integrate, stages, check })
+```
+
+各工作流皆部分接受：個別名額/階段失敗不炸整輪，已完成成果完整回傳(`candidates`／`results`＋`failedStage`)，可只重跑失敗段。
 
 #### Known design notes:
 - `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。

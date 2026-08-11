@@ -1,0 +1,123 @@
+import get from 'lodash-es/get.js'
+import omit from 'lodash-es/omit.js'
+import isearr from 'wsemi/src/isearr.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import callAiWithFallback from './callAiWithFallback.mjs'
+
+
+// runRolePipeline.mjs — RolePipeline工作流: 多角色串行鏈(stage1 → … → stageN)
+//
+// 【結構】各階段可各自指定AI(use)、遞補鏈(fallback)、提示詞(角色與任務)與檢核;
+//   前一階段的成果傳給下一階段、一路傳到最末階段, 其成果即工作流成果。
+//
+// 【提示詞為函數】stage.prompt收ctx = { input, prev, results, index }:
+//   input＝工作流輸入(如原始任務或Fanout的整合稿)、prev＝上一階段成果、
+//   results＝已完成各階段成果(依id查詢, 例如修訂階段要同時引用初稿與審計意見)。
+//
+// 【部分接受】某階段(含遞補全敗)失敗即中止後續, 但已完成階段之成果完整回傳
+//   (failedStage標明斷點), 呼叫端可據此只重跑失敗段而非整條鏈。
+//
+// 【實測依據(2026-08-10評比)】審計類角色鏈曾出現「審計刪過頭」——
+//   修訂／終審提示詞應包含護欄「意見未涉及的內容不可刪除」; 此屬提示詞設計,
+//   本函數不代寫角色提示詞, 由呼叫端(或上層預設模板)自理。
+
+
+//各階段規格自用之鍵, 其餘鍵覆寫該階段之呼叫設定
+let STAGE_KEYS = ['id', 'use', 'fallback', 'prompt', 'check']
+
+
+/**
+ * 執行RolePipeline工作流：多角色串行鏈
+ *
+ * 特點：
+ * 各階段可各自指定use／fallback／prompt／check(含rawText純文字階段)；
+ * 階段成果依序傳遞，最末階段成果即工作流成果；
+ * 失敗即止但已完成成果完整回傳(部分接受、便於接續重跑失敗段)；
+ * 本函數不會reject
+ *
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Object} opt.providers 輸入provider定義表物件(名稱 → 條目)
+ * @param {*} [opt.input=null] 輸入工作流輸入(原始任務字串或前一工作流之成果物件)，提供給各階段ctx.input，預設null
+ * @param {Array} opt.stages 輸入階段規格陣列，各元素{ id, use, fallback, prompt:(ctx)=>String, check?, rawText?, maxRetries?, timeoutMs? }等
+ * @param {Object} [opt.callOpt={}] 輸入透傳callAiWithFallback之共用設定，預設{}
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(布林值)、result(最末階段成果)、stages(id對階段完整呼叫結果之物件)、results(id對階段成果之物件)、order(階段id順序陣列)、failedStage(失敗階段id，無失敗為null)、totalMs(總耗時毫秒)、error(錯誤訊息字串)，本函數不會reject
+ * @example
+ * //need cli in system PATH
+ *
+ * import runRolePipeline from './src/wkf/runRolePipeline.mjs'
+ *
+ * let providers = {
+ *     'sonnet': { kind: 'claude', model: 'sonnet' },
+ *     'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+ * }
+ *
+ * let test = async () => {
+ *
+ *     let r = await runRolePipeline({
+ *         providers,
+ *         input: '原始任務',
+ *         stages: [
+ *             { id: 'draft', use: 'sonnet', prompt: (ctx) => `就「${ctx.input}」寫初稿, 只回覆JSON: {"text":"..."}` },
+ *             { id: 'review', use: 'luna', prompt: (ctx) => `審閱並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.prev)}` },
+ *         ],
+ *     })
+ *     console.log(r.ok, r.order, r.failedStage)
+ *     // => true [ 'draft', 'review' ] null
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function runRolePipeline(opt = {}) {
+    let t0 = Date.now()
+    let providers = get(opt, 'providers', null)
+    let input = get(opt, 'input', null)
+    let stages = get(opt, 'stages', null)
+    let callOpt = get(opt, 'callOpt', {})
+
+    if (!isearr(stages)) {
+        return { ok: false, result: null, stages: {}, results: {}, order: [], failedStage: null, totalMs: 0, error: 'stages must be a non-empty array' }
+    }
+
+    let results = {} //id → 成果(json或文字)
+    let details = {} //id → 完整呼叫結果
+    let order = []
+    let prev = null
+
+    for (let i = 0; i < stages.length; i++) {
+        let stage = stages[i]
+        let id = isestr(get(stage, 'id', '')) ? stage.id : `stage${i + 1}`
+        order.push(id)
+
+        let promptFn = get(stage, 'prompt', null)
+        if (!isfun(promptFn)) {
+            details[id] = { ok: false, error: `stage[${id}].prompt must be a function` }
+            return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
+        }
+        let prompt = promptFn({ input, prev, results, index: i })
+        if (!isestr(prompt)) {
+            details[id] = { ok: false, error: `stage[${id}].prompt returned empty` }
+            return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
+        }
+
+        //overrides, 剔除階段自用鍵後其餘鍵覆寫該階段呼叫設定(rawText、maxRetries、timeoutMs等)
+        let overrides = omit(stage, STAGE_KEYS)
+        let r = await callAiWithFallback(prompt, { ...callOpt, ...overrides, providers, spec: { use: get(stage, 'use', ''), fallback: get(stage, 'fallback', null) }, check: get(stage, 'check', null) })
+        details[id] = r
+        if (!r.ok) {
+            //失敗即止: 已完成階段成果保留於results, 供呼叫端接續重跑
+            return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: `stage[${id}] failed: ${r.error}` }
+        }
+        results[id] = r.json
+        prev = r.json
+    }
+
+    return { ok: true, result: prev, stages: details, results, order, failedStage: null, totalMs: Date.now() - t0, error: '' }
+}
+
+
+export default runRolePipeline

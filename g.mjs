@@ -27,7 +27,7 @@ let test = async () => {
 
     //可用之AI供應商種類
     console.log('KINDS:', wdi.KINDS)
-    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity' ]
+    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat' ]
 
     let prompt = '請只回覆兩個字：完成，不要有任何其他文字'
 
@@ -50,6 +50,15 @@ let test = async () => {
     let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.6-flash-low' })
     console.log('antigravity:', r3b.ok, r3b.stdout.trim())
     // => antigravity: true 完成
+
+    //以OpenAI相容API直呼(免CLI免登入), 給baseURL+key+model即可; Zen端點即opencode CLI之自家閘道
+    let r3c = await wdi.dispatchApiOpenaiCompat(prompt, {
+        baseURL: 'https://apihub.agnes-ai.com/v1',
+        key: agnesKeys[0],
+        model: 'agnes-2.0-flash',
+    })
+    console.log('api-openai-compat:', r3c.ok, r3c.code, r3c.stdout.trim())
+    // => api-openai-compat: true 200 完成
 
     //以供應商條目輪替, 一個條目即一組(kind, model, 可選的key與provider與config), 輪到誰就用誰的CLI與模型
     //opencode支援逐次注入金鑰, 故同一provider之多把金鑰可各成一個條目
@@ -75,7 +84,7 @@ let test = async () => {
     //未知供應商回傳error結果物件, 不會reject
     let r4 = await wdi.dispatchAi('gemini', prompt)
     console.log('invalid kind:', r4.ok, r4.error)
-    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity)
+    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat)
 
     //prompt非有效字串亦回傳error結果物件
     let r5 = await wdi.dispatchClaude('')

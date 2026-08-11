@@ -20,7 +20,7 @@ describe('dispatchAi', function() {
     it('未知kind時回傳錯誤結果物件且不reject', async function() {
         let t = await dispatchAi('gemini', 'abc')
         let r = [t.ok, t.error, t.attempts]
-        let rr = [false, 'unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity)', 0]
+        let rr = [false, 'unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat)', 0]
         assert.strict.deepEqual(r, rr)
     })
 
