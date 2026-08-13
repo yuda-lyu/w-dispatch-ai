@@ -40,8 +40,8 @@ import runRolePipeline from './runRolePipeline.mjs'
  * import runFanoutPipeline from './src/wkf/runFanoutPipeline.mjs'
  *
  * let providers = {
- *     'sonnet': { kind: 'claude', model: 'sonnet' },
- *     'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+ *     'claude:sonnet': { kind: 'claude', model: 'sonnet' },
+ *     'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
  * }
  *
  * let test = async () => {
@@ -49,10 +49,10 @@ import runRolePipeline from './runRolePipeline.mjs'
  *     let r = await runFanoutPipeline({
  *         providers,
  *         task: '分析並只回覆JSON: {"essence":"..."}',
- *         agents: [{ use: 'sonnet' }, { use: 'luna' }],
- *         integrate: { use: 'sonnet' },
+ *         agents: [{ use: 'claude:sonnet' }, { use: 'codex:gpt-5.6-luna' }],
+ *         integrate: { use: 'claude:sonnet' },
  *         stages: [
- *             { id: 'audit', use: 'luna', prompt: (ctx) => `審計此稿並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.input)}` },
+ *             { id: 'audit', use: 'codex:gpt-5.6-luna', prompt: (ctx) => `審計此稿並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.input)}` },
  *         ],
  *         check: (j) => !!j.essence,
  *     })

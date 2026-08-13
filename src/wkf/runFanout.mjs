@@ -63,8 +63,8 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  * import runFanout from './src/wkf/runFanout.mjs'
  *
  * let providers = {
- *     'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
- *     'sonnet': { kind: 'claude', model: 'sonnet' },
+ *     'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+ *     'claude:sonnet': { kind: 'claude', model: 'sonnet' },
  * }
  *
  * let test = async () => {
@@ -73,10 +73,10 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  *         providers,
  *         task: '分析並只回覆JSON: {"essence":"..."}',
  *         agents: [
- *             { use: 'deepseek', fallback: ['sonnet'] },
- *             { use: 'sonnet' },
+ *             { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+ *             { use: 'claude:sonnet' },
  *         ],
- *         integrate: { use: 'sonnet' },
+ *         integrate: { use: 'claude:sonnet' },
  *         check: (j) => !!j.essence,
  *     })
  *     console.log(r.ok, r.integrated, r.candidates.length)

@@ -661,7 +661,7 @@ parse＋check接進遞補層之validate——非法回覆視為該家失敗而�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line124">line 124</a>
+        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line125">line 125</a>
     </li></ul></dd>
     
 
@@ -712,20 +712,21 @@ parse＋check接進遞補層之validate——非法回覆視為該家失敗而�
 
 import callAiWithFallback from './src/wkf/callAiWithFallback.mjs'
 
+//鍵名須區分到模型並帶上路徑, 詳見dispatchAiFallback.mjs檔頭之id設計規則
 let providers = {
-    'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
-    'sonnet': { kind: 'claude', model: 'sonnet' },
+    'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+    'claude:sonnet': { kind: 'claude', model: 'sonnet' },
 }
 
 let test = async () => {
 
     let r = await callAiWithFallback('只回覆JSON: {"a":1}', {
         providers,
-        spec: { use: 'deepseek', fallback: ['sonnet'] },
+        spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
         check: (j) => j.a === 1,
     })
     console.log(r.ok, r.json, r.providerId)
-    // => true { a: 1 } 'deepseek'
+    // => true { a: 1 } 'zen:deepseek-v4-flash-free'
 
 }
 await test()
@@ -2162,7 +2163,7 @@ providers陣列順序即優先序，排前面的先用；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line152">line 152</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line186">line 186</a>
     </li></ul></dd>
     
 
@@ -2218,21 +2219,29 @@ let test = async () => {
     let r = await dispatchAiFallback('請只回覆兩個字：完成', {
         providers: [
             {
-                id: 'deepseek',
+                //id區分到模型且帶路徑: 同一模型經REST與CLI取得屬兩個供應商
+                id: 'zen:deepseek-v4-flash-free',
+                kind: 'api-openai-compat',
+                baseURL: 'https://opencode.ai/zen/v1',
+                model: 'deepseek-v4-flash-free',
+                keys: ['sk-aaa', 'sk-bbb'], //多把金鑰, 某把失敗自動換下一把
+            },
+            {
+                id: 'oc:opencode/deepseek-v4-flash-free', //同一模型之CLI版(有工具, 較慢)
                 kind: 'opencode',
                 model: 'opencode/deepseek-v4-flash-free',
                 provider: 'opencode',
-                keys: ['sk-aaa', 'sk-bbb'], //多把金鑰, 某把失敗自動換下一把
+                keys: ['sk-aaa', 'sk-bbb'],
                 timeoutMs: 180000,
             },
-            { id: 'claude', kind: 'claude', model: 'sonnet' }, //deepseek全敗時遞補
-            { id: 'codex', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
+            { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' }, //以上全敗時遞補
+            { id: 'codex:gpt-5.6-luna', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
         ],
         budgetMs: 600000,
         onEvent: (ev) => console.log(ev.type, ev.providerId, ev.keyIndex),
     })
     console.log(r.ok, r.providerId, r.keyIndex, r.tried.length)
-    // => true 'deepseek' 0 1
+    // => true 'zen:deepseek-v4-flash-free' 0 1
 
 }
 await test()
@@ -2463,7 +2472,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入群組識別字串，游標以此為鍵，多金鑰條目應給予穩定id，預設為條目索引字串</p></td>
+            <td class="description last"><p>輸入群組識別字串，游標以此為鍵、亦為日誌標籤，本套件不解讀其內容。須區分到「模型」而非只到「廠商」(如'claude:sonnet'而非'claude')，同一模型經不同路徑取得時須帶上路徑(如'poolside:laguna-s-2.1'與'or:poolside/laguna-s-2.1:free')，且務必唯一。省略時回退為陣列索引字串——索引是位置不是身分，日後插入條目會令後續條目繼承他人游標進度，故正式設定一律明給。詳見本檔檔頭之id設計規則</p></td>
         </tr>
 
     
@@ -2871,7 +2880,7 @@ defaults為共用呼叫設定，各工作流之callOpt與名額規格可逐項�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiWkf.mjs.html">dispatchAiWkf.mjs</a>, <a href="dispatchAiWkf.mjs.html#line83">line 83</a>
+        <a href="dispatchAiWkf.mjs.html">dispatchAiWkf.mjs</a>, <a href="dispatchAiWkf.mjs.html#line97">line 97</a>
     </li></ul></dd>
     
 
@@ -2922,11 +2931,15 @@ defaults為共用呼叫設定，各工作流之callOpt與名額規格可逐項�
 
 import dispatchAiWkf from './src/dispatchAiWkf.mjs'
 
+//定義表之鍵名即dispatchAiFallback之條目id, 須區分到模型而非只到廠商,
+//同一模型經不同路徑取得時須帶上路徑(REST與CLI屬兩個供應商, 能力與速度皆不同)
 let wkf = dispatchAiWkf({
     providers: {
-        'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
-        'sonnet': { kind: 'claude', model: 'sonnet' },
-        'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+        'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+        'oc:opencode/deepseek-v4-flash-free': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
+        'claude:sonnet': { kind: 'claude', model: 'sonnet' },
+        'claude:opus': { kind: 'claude', model: 'opus' },
+        'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
     },
     defaults: { timeoutMs: 300000 },
 })
@@ -2934,15 +2947,19 @@ let wkf = dispatchAiWkf({
 let test = async () => {
 
     //單一名額: 主模型＋遞補鏈
-    let r1 = await wkf.callAi('只回覆JSON: {"a":1}', { spec: { use: 'deepseek', fallback: ['sonnet'] }, check: (j) => j.a === 1 })
+    let r1 = await wkf.callAi('只回覆JSON: {"a":1}', { spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] }, check: (j) => j.a === 1 })
     console.log(r1.ok, r1.json)
     // => true { a: 1 }
 
     //Fanout工作流: 多開執行＋單點整合
+    //純文字階段用REST(快), 需要讀專案檔案之階段才用CLI(有工具)
     let r2 = await wkf.runFanout({
         task: '分析並只回覆JSON: {"essence":"..."}',
-        agents: [{ use: 'deepseek', fallback: ['sonnet'] }, { use: 'sonnet' }],
-        integrate: { use: 'luna' },
+        agents: [
+            { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+            { use: 'claude:sonnet' },
+        ],
+        integrate: { use: 'codex:gpt-5.6-luna' },
         check: (j) => !!j.essence,
     })
     console.log(r2.ok, r2.integrated)
@@ -7098,7 +7115,7 @@ console.log(getErrorResult(null).error)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line56">line 56</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line82">line 82</a>
     </li></ul></dd>
     
 
@@ -7314,8 +7331,8 @@ console.log(getErrorResult(null).error)
 import runFanout from './src/wkf/runFanout.mjs'
 
 let providers = {
-    'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
-    'sonnet': { kind: 'claude', model: 'sonnet' },
+    'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+    'claude:sonnet': { kind: 'claude', model: 'sonnet' },
 }
 
 let test = async () => {
@@ -7324,10 +7341,10 @@ let test = async () => {
         providers,
         task: '分析並只回覆JSON: {"essence":"..."}',
         agents: [
-            { use: 'deepseek', fallback: ['sonnet'] },
-            { use: 'sonnet' },
+            { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+            { use: 'claude:sonnet' },
         ],
-        integrate: { use: 'sonnet' },
+        integrate: { use: 'claude:sonnet' },
         check: (j) => !!j.essence,
     })
     console.log(r.ok, r.integrated, r.candidates.length)
@@ -7863,8 +7880,8 @@ await test()
 import runFanoutPipeline from './src/wkf/runFanoutPipeline.mjs'
 
 let providers = {
-    'sonnet': { kind: 'claude', model: 'sonnet' },
-    'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+    'claude:sonnet': { kind: 'claude', model: 'sonnet' },
+    'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
 }
 
 let test = async () => {
@@ -7872,10 +7889,10 @@ let test = async () => {
     let r = await runFanoutPipeline({
         providers,
         task: '分析並只回覆JSON: {"essence":"..."}',
-        agents: [{ use: 'sonnet' }, { use: 'luna' }],
-        integrate: { use: 'sonnet' },
+        agents: [{ use: 'claude:sonnet' }, { use: 'codex:gpt-5.6-luna' }],
+        integrate: { use: 'claude:sonnet' },
         stages: [
-            { id: 'audit', use: 'luna', prompt: (ctx) => `審計此稿並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.input)}` },
+            { id: 'audit', use: 'codex:gpt-5.6-luna', prompt: (ctx) => `審計此稿並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.input)}` },
         ],
         check: (j) => !!j.essence,
     })
@@ -8449,8 +8466,8 @@ await test()
 import runRolePipeline from './src/wkf/runRolePipeline.mjs'
 
 let providers = {
-    'sonnet': { kind: 'claude', model: 'sonnet' },
-    'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+    'claude:sonnet': { kind: 'claude', model: 'sonnet' },
+    'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
 }
 
 let test = async () => {
@@ -8459,8 +8476,8 @@ let test = async () => {
         providers,
         input: '原始任務',
         stages: [
-            { id: 'draft', use: 'sonnet', prompt: (ctx) => `就「${ctx.input}」寫初稿, 只回覆JSON: {"text":"..."}` },
-            { id: 'review', use: 'luna', prompt: (ctx) => `審閱並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.prev)}` },
+            { id: 'draft', use: 'claude:sonnet', prompt: (ctx) => `就「${ctx.input}」寫初稿, 只回覆JSON: {"text":"..."}` },
+            { id: 'review', use: 'codex:gpt-5.6-luna', prompt: (ctx) => `審閱並修訂, 只回覆同格式JSON: ${JSON.stringify(ctx.prev)}` },
         ],
     })
     console.log(r.ok, r.order, r.failedStage)
@@ -8787,7 +8804,7 @@ await test()
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Aug 13 2026 07:11:22 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Aug 13 2026 21:57:54 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

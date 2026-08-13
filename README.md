@@ -138,29 +138,36 @@ let test = async () => {
     console.log('invalid prompt:', r5.ok, r5.error)
     // => invalid prompt: false prompt must be a non-empty string
 
-    //CLI執行失敗時, 由ok、code、error與stderr判斷原因
-    let r6 = await wdi.dispatchOpencode(prompt, {
-        model: 'opencode/deepseek-v4-flash-free',
-        provider: 'opencode',
+    //執行失敗時, 由ok、code、error與stderr判斷原因
+    //REST路徑之錯誤依HTTP狀態碼分流(401金鑰無效、429限流、5xx服務端), 判別比CLI之stderr字串可靠
+    let r6 = await wdi.dispatchApiOpenaiCompat(prompt, {
+        baseURL: 'https://apihub.agnes-ai.com/v1',
+        model: 'agnes-2.0-flash',
         key: 'sk-invalid-key',
     })
-    console.log('invalid key:', r6.ok, r6.code, r6.error, r6.stderr.includes('Invalid API key'))
-    // => invalid key: false 1 Exit code 1 true
+    console.log('invalid key:', r6.ok, r6.code, r6.error, r6.stderr.includes('无效的令牌'))
+    // => invalid key: false 401 HTTP 401 true
 
     //多供應商自動遞補: providers順序即優先序, 組內keys以游標輪替
-    //此例第1把金鑰無效 → 自動換組內下一把成功; 若整組用盡會遞補下一組(claude), 再失敗遞補codex
+    //此例第1把金鑰無效 → 自動換組內下一把成功; 若整組用盡會遞補下一組, 依序往下
+    //
+    //【id命名】id為游標鍵與日誌標籤, 須區分到「模型」而非只到「廠商」——
+    //  取'claude'則日後無法同時掛sonnet與opus, 且日誌看不出實際用了哪個模型;
+    //  同一模型經不同路徑(REST／CLI／不同閘道)取得時額度池與故障域各自獨立,
+    //  屬不同供應商, 故id須帶上路徑前綴加以區分
     let r7 = await wdi.dispatchAiFallback(prompt, {
         providers: [
+            //REST版排前面: 免CLI、快3~5倍, 純文字任務優先走此路
             {
-                id: 'deepseek',
-                kind: 'opencode',
-                model: 'opencode/deepseek-v4-flash-free',
-                provider: 'opencode',
-                keys: ['sk-invalid-key-demo', opencodeKeys[0]], //第1把無效, 示範組內輪替
-                timeoutMs: 180000,
+                id: 'api:agnes-2.0-flash',
+                kind: 'api-openai-compat',
+                baseURL: 'https://apihub.agnes-ai.com/v1',
+                model: 'agnes-2.0-flash',
+                keys: ['sk-invalid-key-demo', agnesKeys[0]], //第1把無效, 示範組內輪替
             },
+            //同一個agnes模型之CLI版: 有工具能力但較慢, 額度池亦不同, 屬另一個供應商
             {
-                id: 'agnes',
+                id: 'oc:agnes-ai/agnes-2.0-flash',
                 kind: 'opencode',
                 model: 'agnes-ai/agnes-2.0-flash',
                 provider: 'agnes-ai',
@@ -168,21 +175,21 @@ let test = async () => {
                 config: configAgnes, //第三方provider須另給定義
                 timeoutMs: 180000,
             },
-            { id: 'claude', kind: 'claude', model: 'sonnet' },
-            { id: 'codex', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
-            { id: 'antigravity', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
+            { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },
+            { id: 'codex:gpt-5.6-luna', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
+            { id: 'agy:gemini-3.6-flash-low', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
         ],
         budgetMs: 600000,
         onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
     })
     console.log('fallback:', r7.ok, r7.providerId, r7.keyIndex, r7.stdout.trim())
     console.log('tried:', r7.tried.map((x) => `${x.keyId}:${x.outcome}`).join(', '))
-    // =>   event: try deepseek#0
-    // =>   event: next-key deepseek#0 Exit code 1
-    // =>   event: try deepseek#1
-    // =>   event: ok deepseek#1
-    // => fallback: true deepseek 1 完成
-    // => tried: deepseek#0:next-key, deepseek#1:ok
+    // =>   event: try api:agnes-2.0-flash#0
+    // =>   event: next-key api:agnes-2.0-flash#0 HTTP 401
+    // =>   event: try api:agnes-2.0-flash#1
+    // =>   event: ok api:agnes-2.0-flash#1
+    // => fallback: true api:agnes-2.0-flash 1 完成
+    // => tried: api:agnes-2.0-flash#0:next-key, api:agnes-2.0-flash#1:ok
 
 }
 await test()
@@ -267,7 +274,7 @@ await test()
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `providers` | Array | 必填 | 供應商條目陣列，**順序即優先序**。條目除`id`、`keys`外即該次調用之opt，原樣透傳對應轉接器（`kind`、`model`、`exe`、`provider`、`config`、`sandbox`、`timeoutMs`等皆放條目內） |
-| `providers[].id` | String | 條目索引 | 群組識別，游標以此為鍵，多金鑰條目應給予穩定`id` |
+| `providers[].id` | String | 條目索引 | 群組識別，游標以此為鍵、亦為日誌標籤；本套件不解讀其內容，命名規則見下方 |
 | `providers[].keys` | Array | `[]` | 同一服務之多把API key，逐次注入輪替（`kind`為`opencode`時須同時給`provider`）；省略代表沿用CLI登入狀態 |
 | `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs` |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
@@ -275,6 +282,18 @@ await test()
 | `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`；回調拋出例外不影響主流程 |
 
 頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
+
+**條目 `id` 之命名規則**（呼叫端負責設計，本套件只當作不透明字串使用）：
+
+`id` 在套件內只有兩個用途——游標的物件鍵（`state.cursors[id]`）與日誌標籤（`providerId`、`keyId` = `` `${id}#${keyIndex}` ``）。不查表、不比對、無格式要求，故「什麼算同一個供應商」由呼叫端定義。
+
+| 規則 | 說明 |
+| --- | --- |
+| **區分到「模型」而非只到「廠商」** | ❌ `id: 'claude'` — 日後無法同時掛 sonnet 與 opus，日誌也看不出用了哪個模型<br>✅ `id: 'claude:sonnet'`、`id: 'claude:opus'` |
+| **同一模型經不同路徑時須帶路徑** | 同一個 laguna 可經 Poolside 官方 REST、OpenRouter、opencode CLI 三條路，額度池與故障域各自獨立，屬三個供應商：<br>`'poolside:laguna-s-2.1'`、`'or:poolside/laguna-s-2.1:free'`、`'oc:poolside/poolside/laguna-s-2.1'` |
+| **務必給、務必唯一** | 未給時回退為**陣列索引字串**——索引是位置不是身分，日後於鏈中插入條目會令後續條目繼承他人的游標進度（輪替張冠李戴）。兩個條目同 `id` 則共用同一游標且日誌無法區分。 |
+
+**同一組金鑰用於多個條目時**（例如某模型的 CLI 版與 REST 版共用同一批金鑰），各條目游標**獨立**：兩者各自從游標起點輪替，同一把金鑰可能被連續使用而另一把閒置。要共享輪替進度就給**相同** `id`（代價：日誌無法區分兩者）；要能區分就分開命名（代價：額度不均攤）。此取捨由呼叫端依實際需求決定。
 
 **失敗分流規則**：
 | 失敗 | 判定 | 處置 |
@@ -331,13 +350,13 @@ await test()
 ```alias
 {
     // ...ok, stdout, stderr, code, error, durationMs, attempts, pid...
-    providerId: 'deepseek',    //實際使用之群組
-    keyIndex: 1,               //實際使用之金鑰索引, 無keys時為null
-    kind: 'opencode',
-    model: 'opencode/deepseek-v4-flash-free',
+    providerId: 'api:agnes-2.0-flash',  //實際使用之群組(即條目id)
+    keyIndex: 1,                        //實際使用之金鑰索引, 無keys時為null
+    kind: 'api-openai-compat',
+    model: 'agnes-2.0-flash',
     tried: [                   //完整嘗試歷程, 成功時亦回傳
-        { providerId: 'deepseek', keyIndex: 0, keyId: 'deepseek#0', outcome: 'next-key', error: 'Exit code 1', durationMs: 3049 },
-        { providerId: 'deepseek', keyIndex: 1, keyId: 'deepseek#1', outcome: 'ok', durationMs: 11742 },
+        { providerId: 'api:agnes-2.0-flash', keyIndex: 0, keyId: 'api:agnes-2.0-flash#0', outcome: 'next-key', error: 'HTTP 401', durationMs: 105 },
+        { providerId: 'api:agnes-2.0-flash', keyIndex: 1, keyId: 'api:agnes-2.0-flash#1', outcome: 'ok', durationMs: 1161 },
     ],
 }
 ```
@@ -348,21 +367,21 @@ await test()
 ```alias
 let wkf = wdi.dispatchAiWkf({
     providers: {
-        'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: [...] },
-        'sonnet': { kind: 'claude', model: 'sonnet' },
-        'luna': { kind: 'codex', model: 'gpt-5.6-luna' },
+        'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: [...] },
+        'claude:sonnet': { kind: 'claude', model: 'sonnet' },
+        'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
     },
     defaults: { timeoutMs: 300000 },
 })
 
 //單一名額: 主模型＋自帶遞補鏈
-let r1 = await wkf.callAi('...prompt...', { spec: { use: 'deepseek', fallback: ['sonnet'] }, check: (j) => !!j.essence })
+let r1 = await wkf.callAi('...prompt...', { spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] }, check: (j) => !!j.essence })
 
 //Fanout: 並行多開執行 → 單點整合收斂(候選未達minCandidates時以首位候選為成果不硬整合)
-let r2 = await wkf.runFanout({ task, agents: [{ use: 'deepseek', fallback: ['sonnet'] }, { use: 'sonnet' }], integrate: { use: 'luna' }, check })
+let r2 = await wkf.runFanout({ task, agents: [{ use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] }, { use: 'claude:sonnet' }], integrate: { use: 'codex:gpt-5.6-luna' }, check })
 
 //RolePipeline: 多角色串行鏈, 各階段可自帶AI/遞補/檢核, prompt收ctx={input,prev,results,index}
-let r3 = await wkf.runRolePipeline({ input, stages: [{ id: 'draft', use: 'sonnet', prompt: (ctx) => `...` }, { id: 'audit', use: 'luna', prompt: (ctx) => `...${JSON.stringify(ctx.prev)}` }] })
+let r3 = await wkf.runRolePipeline({ input, stages: [{ id: 'draft', use: 'claude:sonnet', prompt: (ctx) => `...` }, { id: 'audit', use: 'codex:gpt-5.6-luna', prompt: (ctx) => `...${JSON.stringify(ctx.prev)}` }] })
 
 //FanoutPipeline: Fanout成果接RolePipeline(品質天花板組合)
 let r4 = await wkf.runFanoutPipeline({ task, agents, integrate, stages, check })

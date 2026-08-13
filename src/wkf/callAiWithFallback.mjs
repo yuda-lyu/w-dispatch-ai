@@ -99,20 +99,21 @@ function buildChain(providers, spec) {
  *
  * import callAiWithFallback from './src/wkf/callAiWithFallback.mjs'
  *
+ * //鍵名須區分到模型並帶上路徑, 詳見dispatchAiFallback.mjs檔頭之id設計規則
  * let providers = {
- *     'deepseek': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
- *     'sonnet': { kind: 'claude', model: 'sonnet' },
+ *     'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+ *     'claude:sonnet': { kind: 'claude', model: 'sonnet' },
  * }
  *
  * let test = async () => {
  *
  *     let r = await callAiWithFallback('只回覆JSON: {"a":1}', {
  *         providers,
- *         spec: { use: 'deepseek', fallback: ['sonnet'] },
+ *         spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
  *         check: (j) => j.a === 1,
  *     })
  *     console.log(r.ok, r.json, r.providerId)
- *     // => true { a: 1 } 'deepseek'
+ *     // => true { a: 1 } 'zen:deepseek-v4-flash-free'
  *
  * }
  * await test()

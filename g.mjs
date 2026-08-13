@@ -91,29 +91,36 @@ let test = async () => {
     console.log('invalid prompt:', r5.ok, r5.error)
     // => invalid prompt: false prompt must be a non-empty string
 
-    //CLI執行失敗時, 由ok、code、error與stderr判斷原因
-    let r6 = await wdi.dispatchOpencode(prompt, {
-        model: 'opencode/deepseek-v4-flash-free',
-        provider: 'opencode',
+    //執行失敗時, 由ok、code、error與stderr判斷原因
+    //REST路徑之錯誤依HTTP狀態碼分流(401金鑰無效、429限流、5xx服務端), 判別比CLI之stderr字串可靠
+    let r6 = await wdi.dispatchApiOpenaiCompat(prompt, {
+        baseURL: 'https://apihub.agnes-ai.com/v1',
+        model: 'agnes-2.0-flash',
         key: 'sk-invalid-key',
     })
-    console.log('invalid key:', r6.ok, r6.code, r6.error, r6.stderr.includes('Invalid API key'))
-    // => invalid key: false 1 Exit code 1 true
+    console.log('invalid key:', r6.ok, r6.code, r6.error, r6.stderr.includes('无效的令牌'))
+    // => invalid key: false 401 HTTP 401 true
 
     //多供應商自動遞補: providers順序即優先序, 組內keys以游標輪替
-    //此例第1把金鑰無效 → 自動換組內下一把成功; 若整組用盡會遞補下一組(claude), 再失敗遞補codex
+    //此例第1把金鑰無效 → 自動換組內下一把成功; 若整組用盡會遞補下一組, 依序往下
+    //
+    //【id命名】id為游標鍵與日誌標籤, 須區分到「模型」而非只到「廠商」——
+    //  取'claude'則日後無法同時掛sonnet與opus, 且日誌看不出實際用了哪個模型;
+    //  同一模型經不同路徑(REST／CLI／不同閘道)取得時額度池與故障域各自獨立,
+    //  屬不同供應商, 故id須帶上路徑前綴加以區分
     let r7 = await wdi.dispatchAiFallback(prompt, {
         providers: [
+            //REST版排前面: 免CLI、快3~5倍, 純文字任務優先走此路
             {
-                id: 'deepseek',
-                kind: 'opencode',
-                model: 'opencode/deepseek-v4-flash-free',
-                provider: 'opencode',
-                keys: ['sk-invalid-key-demo', opencodeKeys[0]], //第1把無效, 示範組內輪替
-                timeoutMs: 180000,
+                id: 'api:agnes-2.0-flash',
+                kind: 'api-openai-compat',
+                baseURL: 'https://apihub.agnes-ai.com/v1',
+                model: 'agnes-2.0-flash',
+                keys: ['sk-invalid-key-demo', agnesKeys[0]], //第1把無效, 示範組內輪替
             },
+            //同一個agnes模型之CLI版: 有工具能力但較慢, 額度池亦不同, 屬另一個供應商
             {
-                id: 'agnes',
+                id: 'oc:agnes-ai/agnes-2.0-flash',
                 kind: 'opencode',
                 model: 'agnes-ai/agnes-2.0-flash',
                 provider: 'agnes-ai',
@@ -121,21 +128,21 @@ let test = async () => {
                 config: configAgnes, //第三方provider須另給定義
                 timeoutMs: 180000,
             },
-            { id: 'claude', kind: 'claude', model: 'sonnet' },
-            { id: 'codex', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
-            { id: 'antigravity', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
+            { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },
+            { id: 'codex:gpt-5.6-luna', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
+            { id: 'agy:gemini-3.6-flash-low', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
         ],
         budgetMs: 600000,
         onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
     })
     console.log('fallback:', r7.ok, r7.providerId, r7.keyIndex, r7.stdout.trim())
     console.log('tried:', r7.tried.map((x) => `${x.keyId}:${x.outcome}`).join(', '))
-    // =>   event: try deepseek#0
-    // =>   event: next-key deepseek#0 Exit code 1
-    // =>   event: try deepseek#1
-    // =>   event: ok deepseek#1
-    // => fallback: true deepseek 1 完成
-    // => tried: deepseek#0:next-key, deepseek#1:ok
+    // =>   event: try api:agnes-2.0-flash#0
+    // =>   event: next-key api:agnes-2.0-flash#0 HTTP 401
+    // =>   event: try api:agnes-2.0-flash#1
+    // =>   event: ok api:agnes-2.0-flash#1
+    // => fallback: true api:agnes-2.0-flash 1 完成
+    // => tried: api:agnes-2.0-flash#0:next-key, api:agnes-2.0-flash#1:ok
 
 }
 await test()
