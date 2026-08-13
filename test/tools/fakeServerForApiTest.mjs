@@ -15,6 +15,7 @@ import http from 'http'
 //   flaky-429      — 同一Authorization首次429, 之後200(重試路徑用)
 //   no-choices     — 200但無choices(畸形回應路徑用)
 //   not-json       — 200但本體非JSON(畸形回應路徑用)
+//   tool-calls     — 200但finish_reason為tool_calls(工具不支援路徑用)
 //   其他           — 404
 // 【金鑰規則】Authorization含'sk-bad'一律401(優先於model路由), 模擬無效金鑰。
 
@@ -93,6 +94,19 @@ async function fakeServerForApiTest() {
                 else {
                     ok(JSON.stringify({ attempt: flakyCount[auth] }))
                 }
+            }
+            else if (model === 'tool-calls') {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({
+                    choices: [{
+                        finish_reason: 'tool_calls',
+                        message: {
+                            role: 'assistant',
+                            content: '\n\n', //Agnes實測形態: 非null而是空白, 不攔截會靜默成功
+                            tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"台北"}' } }],
+                        },
+                    }],
+                }))
             }
             else if (model === 'no-choices') {
                 res.writeHead(200, { 'Content-Type': 'application/json' })

@@ -234,6 +234,20 @@ await test()
 
 注意：agy之prompt走`--print`旗標而非stdin（agy介面如此），故prompt長度上限30000字元，超過回傳錯誤結果物件（不reject）。
 
+#### Choosing CLI or API (判準):
+選 `kind` 的唯一判準是**這一步需不需要「工具」**：
+
+| 這次呼叫要做的事 | 選用 | 理由 |
+| --- | --- | --- |
+| 讀本機檔案、grep、執行指令、抓網頁、寫檔 | **CLI類**：`opencode`／`claude`／`codex`／`antigravity` | CLI本身是agentic harness，自帶完整工具迴圈，呼叫端什麼都不必做 |
+| 摘要、分析、改寫、翻譯、產出JSON（素材皆已在prompt內） | **API類**：`api-openai-compat` | 免安裝免登入，且實測較快（Agnes：API 1~2.5s vs CLI 4~6s） |
+
+**API類不支援工具，且不會自建工具迴圈**——實測（2026-08-11）閘道端零內建工具：Zen與Agnes對 `tools:[{type:'web_search'}]` 皆回400並要求 `function.parameters`，即只接受「呼叫端自行定義且自行執行」的function工具。協定層雖支援function calling（Zen之 `nemotron-3-ultra-free` 與Agnes皆實測回 `finish_reason:'tool_calls'`），但工具的定義、執行、錯誤處理與安全邊界全須自行實作維護，等同重造CLI已提供的harness。故模型回 `tool_calls` 時本套件一律以 `TOOL_CALLS_UNSUPPORTED` 回報失敗，不假裝成功。
+
+另注意 `tool_calls` 有**會話束縛**（`tool_call_id` 須於同一條messages串內回填），無法暫停後跨行程外傳給上層agent代跑；工作流各名額（如 `runFanout` 的agents）也只是同行程的async函數呼叫而非獨立agent，故「讓外殼agent提供工具給工作流內的模型使用」在本架構下不成立——**需要工具就選CLI類kind**。
+
+**混用才是常態**：同一條 `dispatchAiFallback` 鏈可逐條目混搭kind，工作流各階段亦然——產生候選與整合收斂等純文字階段走API，需要翻閱專案檔案的階段換CLI。
+
 #### Options only for dispatchApiOpenaiCompat:
 | key | type | default | description |
 | --- | --- | --- | --- |

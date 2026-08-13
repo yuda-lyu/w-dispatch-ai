@@ -178,6 +178,37 @@ describe('dispatchApiOpenaiCompat', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('模型回tool_calls時明確回報不支援而非靜默成功', async function() {
+        let t = await dispatchApiOpenaiCompat('台北天氣如何', {
+            baseURL: svr.url,
+            key: 'sk-good-1',
+            model: 'tool-calls',
+            body: { tools: [{ type: 'function', function: { name: 'get_weather', parameters: {} } }] },
+        })
+        let r = [
+            t.ok,
+            t.code,
+            t.stdout,
+            t.error.indexOf('TOOL_CALLS_UNSUPPORTED') === 0,
+            t.error.includes('cli kind'),
+            t.stderr.includes('get_weather'), //原始回應保留供除錯
+        ]
+        let rr = [false, 200, '', true, true, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('tool_calls為與金鑰無關之失敗, 於fallback鏈中不逐把空耗而遞補下一組', async function() {
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'g-tool', kind: 'api-openai-compat', baseURL: svr.url, model: 'tool-calls', keys: ['sk-t0', 'sk-t1'] },
+                { id: 'g-text', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-x0'] },
+            ],
+        })
+        let r = [t.ok, t.providerId, t.tried.map((x) => [x.keyId, x.outcome])]
+        let rr = [true, 'g-text', [['g-tool#0', 'next-key'], ['g-tool#1', 'next-key'], ['g-text#0', 'ok']]]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('可經dispatchAi以kind api-openai-compat分派', async function() {
         let t = await dispatchAi('api-openai-compat', 'abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo' })
         let o = JSON.parse(t.stdout)
