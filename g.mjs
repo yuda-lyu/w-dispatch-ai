@@ -112,7 +112,7 @@ let test = async () => {
         providers: [
             //REST版排前面: 免CLI、快3~5倍, 純文字任務優先走此路
             {
-                id: 'api:agnes-2.0-flash',
+                id: 'agnes:agnes-2.0-flash',
                 kind: 'api-openai-compat',
                 baseURL: 'https://apihub.agnes-ai.com/v1',
                 model: 'agnes-2.0-flash',
@@ -137,12 +137,12 @@ let test = async () => {
     })
     console.log('fallback:', r7.ok, r7.providerId, r7.keyIndex, r7.stdout.trim())
     console.log('tried:', r7.tried.map((x) => `${x.keyId}:${x.outcome}`).join(', '))
-    // =>   event: try api:agnes-2.0-flash#0
-    // =>   event: next-key api:agnes-2.0-flash#0 HTTP 401
-    // =>   event: try api:agnes-2.0-flash#1
-    // =>   event: ok api:agnes-2.0-flash#1
-    // => fallback: true api:agnes-2.0-flash 1 完成
-    // => tried: api:agnes-2.0-flash#0:next-key, api:agnes-2.0-flash#1:ok
+    // =>   event: try agnes:agnes-2.0-flash#0
+    // =>   event: next-key agnes:agnes-2.0-flash#0 HTTP 401
+    // =>   event: try agnes:agnes-2.0-flash#1
+    // =>   event: ok agnes:agnes-2.0-flash#1
+    // => fallback: true agnes:agnes-2.0-flash 1 完成
+    // => tried: agnes:agnes-2.0-flash#0:next-key, agnes:agnes-2.0-flash#1:ok
 
 }
 await test()

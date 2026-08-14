@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
     
 </nav>
 
@@ -140,7 +140,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line33">line 33</a>
+        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line35">line 35</a>
     </li></ul></dd>
     
 
@@ -191,7 +191,7 @@
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>詳見dispatchAi、dispatchAiFallback、dispatchAiWkf、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat範例</code></pre>
+    <pre class="prettyprint"><code>詳見dispatchAi、dispatchAiFallback、dispatchAiWkf、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、resolveProviders範例</code></pre>
 
 
 
@@ -275,6 +275,81 @@ console.log(Object.keys(adapters))
 
 
         
+            
+<h4 class="name" id="dfTimeoutMs"><span class="type-signature"></span>dfTimeoutMs<span class="type-signature"></span></h4>
+
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>全套件統一之預設逾時毫秒</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="dfTimeoutMs.mjs.html">dfTimeoutMs.mjs</a>, <a href="dfTimeoutMs.mjs.html#line23">line 23</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+<div class="description usertext">
+    <p>全套件統一之預設逾時毫秒</p>
+</div>
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import dfTimeoutMs from './src/dfTimeoutMs.mjs'
+
+console.log(dfTimeoutMs)
+// => 300000</code></pre>
+
+
+
+        
     
 
     
@@ -301,7 +376,7 @@ console.log(Object.keys(adapters))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line52">line 52</a>
+        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line62">line 62</a>
     </li></ul></dd>
     
 
@@ -492,7 +567,7 @@ console.log(buildChain(providers, { use: 'a', fallback: ['b', 'c'] }))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line70">line 70</a>
+        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line71">line 71</a>
     </li></ul></dd>
     
 
@@ -661,7 +736,7 @@ parse＋check接進遞補層之validate——非法回覆視為該家失敗而�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line125">line 125</a>
+        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line135">line 135</a>
     </li></ul></dd>
     
 
@@ -1130,7 +1205,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入單次嘗試逾時毫秒正整數，預設300000</p></td>
+            <td class="description last"><p>輸入單次嘗試逾時毫秒正整數，全套件統一預設300000</p></td>
         </tr>
 
     
@@ -1406,7 +1481,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line136">line 136</a>
+        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line137">line 137</a>
     </li></ul></dd>
     
 
@@ -2163,7 +2238,7 @@ providers陣列順序即優先序，排前面的先用；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line186">line 186</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line189">line 189</a>
     </li></ul></dd>
     
 
@@ -2679,7 +2754,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入事件回調函數(ev)=&gt;{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'，回調拋出例外不影響主流程，預設null</p></td>
+            <td class="description last"><p>輸入事件回調函數(ev)=&gt;{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'；失敗事件(next-key/skip-group)另帶stdout(被拒回覆)與stderr(錯誤輸出)供診斷，兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null</p></td>
         </tr>
 
     
@@ -2714,12 +2789,12 @@ await test()
             
                 <td class="default">
                 
-                    <code>120000</code>
+                    <code>300000</code>
                 
                 </td>
             
 
-            <td class="description last"><p>輸入各attempt共用之逾時毫秒正整數，條目可覆寫，預設120000</p></td>
+            <td class="description last"><p>輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000</p></td>
         </tr>
 
     
@@ -2833,7 +2908,7 @@ await test()
 
         
 <div class="param-desc">
-    <p>回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳)，本函數不會reject</p>
+    <p>回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含stdout與stderr供診斷被拒原因)，本函數不會reject</p>
 </div>
 
 
@@ -2880,7 +2955,7 @@ defaults為共用呼叫設定，各工作流之callOpt與名額規格可逐項�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiWkf.mjs.html">dispatchAiWkf.mjs</a>, <a href="dispatchAiWkf.mjs.html#line97">line 97</a>
+        <a href="dispatchAiWkf.mjs.html">dispatchAiWkf.mjs</a>, <a href="dispatchAiWkf.mjs.html#line106">line 106</a>
     </li></ul></dd>
     
 
@@ -3201,7 +3276,7 @@ agy自身之--print-timeout未給時由timeoutMs推導並預留30秒緩衝，令
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAntigravity.mjs.html">dispatchAntigravity.mjs</a>, <a href="dispatchAntigravity.mjs.html#line105">line 105</a>
+        <a href="dispatchAntigravity.mjs.html">dispatchAntigravity.mjs</a>, <a href="dispatchAntigravity.mjs.html#line106">line 106</a>
     </li></ul></dd>
     
 
@@ -3632,12 +3707,12 @@ await test()
             
                 <td class="default">
                 
-                    <code>[]</code>
+                    <code>自動納入cwd</code>
                 
                 </td>
             
 
-            <td class="description last"><p>輸入加入workspace之目錄字串陣列，逐項展開為<code>--add-dir</code>，預設[]</p></td>
+            <td class="description last"><p>輸入加入workspace之目錄字串陣列，逐項展開為<code>--add-dir</code>。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端</p></td>
         </tr>
 
     
@@ -3717,7 +3792,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，agy為agent型CLI故預設較長之300000，預設300000</p></td>
+            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)</p></td>
         </tr>
 
     
@@ -3757,7 +3832,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入子進程工作目錄字串，預設process.cwd()</p></td>
+            <td class="description last"><p>輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)</p></td>
         </tr>
 
     
@@ -3922,7 +3997,7 @@ prompt走HTTP body，無命令列長度限制；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line326">line 326</a>
+        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line327">line 327</a>
     </li></ul></dd>
     
 
@@ -4394,12 +4469,12 @@ await test()
             
                 <td class="default">
                 
-                    <code>120000</code>
+                    <code>300000</code>
                 
                 </td>
             
 
-            <td class="description last"><p>輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，預設120000</p></td>
+            <td class="description last"><p>輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，全套件統一預設300000</p></td>
         </tr>
 
     
@@ -4604,7 +4679,7 @@ prompt一律走stdin而非位置參數，因摘要內文可達數萬字，當命
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchClaude.mjs.html">dispatchClaude.mjs</a>, <a href="dispatchClaude.mjs.html#line74">line 74</a>
+        <a href="dispatchClaude.mjs.html">dispatchClaude.mjs</a>, <a href="dispatchClaude.mjs.html#line77">line 77</a>
     </li></ul></dd>
     
 
@@ -4657,7 +4732,7 @@ import dispatchClaude from './src/dispatchClaude.mjs'
 
 let test = async () => {
 
-    let r = await dispatchClaude('請只回覆兩個字：完成', { model: 'sonnet', timeoutMs: 120000 })
+    let r = await dispatchClaude('請只回覆兩個字：完成', { model: 'sonnet' })
     console.log(r.ok, r.stdout.trim())
     // => true '完成'
 
@@ -4990,12 +5065,12 @@ await test()
             
                 <td class="default">
                 
-                    <code>120000</code>
+                    <code>300000</code>
                 
                 </td>
             
 
-            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，預設120000</p></td>
+            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000</p></td>
         </tr>
 
     
@@ -5198,7 +5273,7 @@ prompt一律走stdin而非位置參數，因摘要內文可達數萬字，當命
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchCodex.mjs.html">dispatchCodex.mjs</a>, <a href="dispatchCodex.mjs.html#line74">line 74</a>
+        <a href="dispatchCodex.mjs.html">dispatchCodex.mjs</a>, <a href="dispatchCodex.mjs.html#line77">line 77</a>
     </li></ul></dd>
     
 
@@ -5584,12 +5659,12 @@ await test()
             
                 <td class="default">
                 
-                    <code>120000</code>
+                    <code>300000</code>
                 
                 </td>
             
 
-            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，預設120000</p></td>
+            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000</p></td>
         </tr>
 
     
@@ -5794,7 +5869,7 @@ prompt一律走stdin而非位置參數，因摘要內文可達數萬字，當命
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchOpencode.mjs.html">dispatchOpencode.mjs</a>, <a href="dispatchOpencode.mjs.html#line115">line 115</a>
+        <a href="dispatchOpencode.mjs.html">dispatchOpencode.mjs</a>, <a href="dispatchOpencode.mjs.html#line118">line 118</a>
     </li></ul></dd>
     
 
@@ -6366,12 +6441,12 @@ await test()
             
                 <td class="default">
                 
-                    <code>120000</code>
+                    <code>300000</code>
                 
                 </td>
             
 
-            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，預設120000</p></td>
+            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000</p></td>
         </tr>
 
     
@@ -7115,7 +7190,7 @@ console.log(getErrorResult(null).error)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line82">line 82</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line85">line 85</a>
     </li></ul></dd>
     
 
@@ -7242,6 +7317,357 @@ console.log(getErrorResult(null).error)
     <dd>
         
 <span class="param-type">Boolean</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="resolveProviders"><span class="type-signature"></span>resolveProviders<span class="signature">(providers, opt<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>展開providers定義條目：envVar → keys，並可依id自選子集</p>
+<p>特點：
+條目之envVar依env來源(預設process.env)展開為keys陣列(變數值以逗號分隔多把)，envVar欄位自輸出移除；
+缺對應環境變數(或值為空)之條目停用並列入skipped，不中斷不throw；
+無envVar之條目(訂閱登入態CLI)原樣通過；條目已自帶有效keys者以keys為準；
+opt.pick可依id自選子集並以pick順序回傳(順序即遞補優先序)；
+輸入陣列與條目皆不被改動(輸出為淺拷貝)</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="resolveProviders.mjs.html">resolveProviders.mjs</a>, <a href="resolveProviders.mjs.html#line56">line 56</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import resolveProviders from './src/resolveProviders.mjs'
+import providersAll from './src/providers.mjs'
+
+process.loadEnvFile('./.env') //金鑰放.env, 變數值以逗號分隔多把
+
+//全取: envVar展開為keys, 缺環境變數者列入skipped
+let { providers, table, skipped } = resolveProviders(providersAll)
+console.log(providers.length, skipped)
+// => 10 []
+
+//自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallback
+let r2 = resolveProviders(providersAll, { pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] })
+console.log(r2.providers.map((p) => p.id))
+// => [ 'agnes:agnes-2.5-flash', 'claude:sonnet' ]
+
+//table可直接餵dispatchAiWkf之providers定義表
+//let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>providers</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入providers條目物件陣列(如providers.mjs之預設匯出)</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>opt</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>{}</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入設定物件，預設{}</p>
+                <h6>Properties</h6>
+                
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>env</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>process.env</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>pick</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+            </td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳物件，內含providers(可直接餵dispatchAiFallback之條目陣列)、table(id對條目之物件，可直接餵dispatchAiWkf)、skipped(缺環境變數而停用之{id,envVar}陣列)、missing(pick查無之id字串陣列)</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Object</span>
 
 
 
@@ -8804,7 +9230,7 @@ await test()
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Aug 13 2026 21:57:54 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Aug 14 2026 12:01:07 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

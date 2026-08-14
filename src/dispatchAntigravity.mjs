@@ -8,6 +8,7 @@ import cint from 'wsemi/src/cint.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
 // dispatchAntigravity.mjs — 以Google Antigravity CLI(agy)呼叫AI模型
@@ -37,7 +38,7 @@ import getErrorResult from './getErrorResult.mjs'
 
 //預設值
 let DEFAULT_EXE = 'agy'
-let DEFAULT_TIMEOUT_MS = 300000 //agent型CLI, 對齊agy自身print-timeout預設5m0s, 不沿用套件通用120000
+let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)
 let MAX_PROMPT_LENGTH = 30000 //命令列上限32767扣除exe路徑與旗標後之保守值
 let PRINT_TIMEOUT_BUFFER_S = 30
 let MIN_PRINT_TIMEOUT_S = 30
@@ -68,10 +69,10 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
  * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'570s')，預設''代表由timeoutMs推導(扣30秒緩衝，下限30秒)
- * @param {Array} [opt.addDirs=[]] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`，預設[]
+ * @param {Array} [opt.addDirs=自動納入cwd] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`之前，預設[]
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，agy為agent型CLI故預設較長之300000，預設300000
- * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)
+ * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
@@ -132,7 +133,7 @@ async function dispatchAntigravity(prompt, opt = {}) {
         skipPermissions = true
     }
 
-    //timeoutMs, 先行取值以供printTimeout推導, agy專屬預設300000
+    //timeoutMs, 先行取值以供printTimeout推導, 無效回退全套件統一預設300000
     let timeoutMs = get(opt, 'timeoutMs', null)
     if (!ispint(timeoutMs)) {
         timeoutMs = DEFAULT_TIMEOUT_MS
@@ -148,13 +149,23 @@ async function dispatchAntigravity(prompt, opt = {}) {
     }
 
     //addDirs, 逐項展開為--add-dir(agy該旗標可重複)
+    //未給時自動納入有效cwd(明給的或預設process.cwd()): agy以自身scratch目錄為工作區,
+    //不採子進程之cwd, 僅--add-dir能擴其檔案可視範圍——僅給cwd時弱模型直接回「找不到檔案」、
+    //強模型得自行摸索(實測116s vs 帶--add-dir僅6s), 且兩者皆ok:true屬靜默失敗,
+    //極易被誤判為模型能力不足(2026-08-13以隨機token實測確認)。
+    //明示addDirs(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端, 不自動加入
     let addDirs = get(opt, 'addDirs', null)
+    if (!isarr(addDirs)) {
+        let cwdEff = get(opt, 'cwd', null)
+        if (!isestr(cwdEff)) {
+            cwdEff = process.cwd()
+        }
+        addDirs = [cwdEff]
+    }
     let addDirArgs = []
-    if (isarr(addDirs)) {
-        for (let d of addDirs) {
-            if (isestr(d)) {
-                addDirArgs.push('--add-dir', d)
-            }
+    for (let d of addDirs) {
+        if (isestr(d)) {
+            addDirArgs.push('--add-dir', d)
         }
     }
 

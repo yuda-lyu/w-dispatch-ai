@@ -70,7 +70,7 @@ describe('dispatchAi', function() {
             [true, ['run', '--agent', 'build', '-m', 'mdl']],
             [true, ['-p', '--dangerously-skip-permissions', '--model', 'mdl']],
             [true, ['exec', '--sandbox', 'workspace-write', '--skip-git-repo-check', '-m', 'mdl']],
-            [true, ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'mdl', '--print', 'abc']],
+            [true, ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'mdl', '--add-dir', process.cwd(), '--print', 'abc']],
         ]
         assert.strict.deepEqual(r, rr)
     })

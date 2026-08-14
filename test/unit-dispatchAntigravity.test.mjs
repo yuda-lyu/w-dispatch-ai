@@ -62,7 +62,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe })
         let o = JSON.parse(t.stdout)
         let r = [t.ok, o.args]
-        let rr = [true, ['--dangerously-skip-permissions', '--print-timeout', '270s', '--print', 'abc']]
+        let rr = [true, ['--dangerously-skip-permissions', '--print-timeout', '270s', '--add-dir', process.cwd(), '--print', 'abc']]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -78,7 +78,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, model: 'gemini-3.6-flash-low' })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'gemini-3.6-flash-low', '--print', 'abc']
+        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'gemini-3.6-flash-low', '--add-dir', process.cwd(), '--print', 'abc']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -86,7 +86,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, model: 'gemini-3.1-pro', effort: 'low' })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'gemini-3.1-pro', '--effort', 'low', '--print', 'abc']
+        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'gemini-3.1-pro', '--effort', 'low', '--add-dir', process.cwd(), '--print', 'abc']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -94,7 +94,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, skipPermissions: false })
         let o = JSON.parse(t.stdout)
         let r = [t.ok, o.args]
-        let rr = [true, ['--print-timeout', '270s', '--print', 'abc']]
+        let rr = [true, ['--print-timeout', '270s', '--add-dir', process.cwd(), '--print', 'abc']]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -123,6 +123,26 @@ describe('dispatchAntigravity', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('未給addDirs時自動納入有效cwd(明給的cwd優先)', async function() {
+        let t1 = await dispatchAntigravity('abc', { exe: fake.exe }) //cwd未給 → process.cwd()
+        let t2 = await dispatchAntigravity('abc', { exe: fake.exe, cwd: fake.fd }) //cwd明給
+        let o1 = JSON.parse(t1.stdout)
+        let o2 = JSON.parse(t2.stdout)
+        let i1 = o1.args.indexOf('--add-dir')
+        let i2 = o2.args.indexOf('--add-dir')
+        let r = [o1.args[i1 + 1], o2.args[i2 + 1]]
+        let rr = [process.cwd(), fake.fd]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('明示addDirs為空陣列時不自動加入(代表不揭露任何目錄)', async function() {
+        let t = await dispatchAntigravity('abc', { exe: fake.exe, addDirs: [] })
+        let o = JSON.parse(t.stdout)
+        let r = [t.ok, o.args.includes('--add-dir')]
+        let rr = [true, false]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('addDirs逐項展開為--add-dir並濾除非有效字串', async function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, addDirs: ['c:/a', null, 'c:/b', 123] })
         let o = JSON.parse(t.stdout)
@@ -135,7 +155,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, extraArgs: ['--output-format', 'json'] })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--output-format', 'json', '--print', 'abc']
+        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--add-dir', process.cwd(), '--output-format', 'json', '--print', 'abc']
         assert.strict.deepEqual(r, rr)
     })
 

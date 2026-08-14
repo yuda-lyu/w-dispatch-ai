@@ -8,6 +8,8 @@ import dispatchClaude from './dispatchClaude.mjs'
 import dispatchCodex from './dispatchCodex.mjs'
 import dispatchAntigravity from './dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
+import providers from './providers.mjs'
+import resolveProviders from './resolveProviders.mjs'
 
 
 // WDispatchAi.mjs — AI供應商分派層
@@ -24,10 +26,10 @@ let KINDS = keys(adapters)
 /**
  * AI供應商分派
  *
- * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，以及dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat之async函數
+ * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat之async函數，以及providers(預設providers定義檔)與resolveProviders(envVar展開器)
  * @example
  *
- * 詳見dispatchAi、dispatchAiFallback、dispatchAiWkf、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat範例
+ * 詳見dispatchAi、dispatchAiFallback、dispatchAiWkf、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、resolveProviders範例
  *
  */
 let WDispatchAi = {
@@ -40,6 +42,8 @@ let WDispatchAi = {
     dispatchCodex,
     dispatchAntigravity,
     dispatchApiOpenaiCompat,
+    providers,
+    resolveProviders,
 }
 
 

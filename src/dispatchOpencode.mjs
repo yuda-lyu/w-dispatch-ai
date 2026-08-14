@@ -1,10 +1,13 @@
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
+import ispint from 'wsemi/src/ispint.mjs'
+import cint from 'wsemi/src/cint.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
 // dispatchOpencode.mjs — 以opencode CLI呼叫AI模型
@@ -60,7 +63,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'agent', 'config', 'extraArgs
  * @param {String} [opt.agent='build'] 輸入opencode代理名稱字串，預設'build'
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
  * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined
- * @param {Number} [opt.timeoutMs=120000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，預設120000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
@@ -173,6 +176,15 @@ async function dispatchOpencode(prompt, opt = {}) {
         }
     }
 
+    //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
+    let timeoutMs = get(opt, 'timeoutMs', null)
+    if (!ispint(timeoutMs)) {
+        timeoutMs = dfTimeoutMs
+    }
+    else {
+        timeoutMs = cint(timeoutMs)
+    }
+
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
 
@@ -181,6 +193,7 @@ async function dispatchOpencode(prompt, opt = {}) {
         ...optCli,
         input: prompt,
         env,
+        timeoutMs,
     })
 }
 

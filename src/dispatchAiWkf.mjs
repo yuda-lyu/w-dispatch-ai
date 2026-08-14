@@ -24,6 +24,15 @@ import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
 //   額度池與故障域各自獨立而屬不同供應商, 鍵名須帶上路徑加以區分。
 //   命名規則與取捨詳見dispatchAiFallback.mjs檔頭之「條目id之設計規則」。
 //
+// 【timeout速覽】(完整說明見README之「Timeout 總覽」)
+//   單次AI嘗試: timeoutMs, 全套件統一預設300000(5分鐘, 單一來源dfTimeoutMs.mjs),
+//     直接呼叫轉接器與工作流內皆同一數字;
+//   單一名額(遞補鏈): budgetMs, 預設null不限; minAttemptMs開工門檻預設20000(無budget時不作用);
+//   工作流總時長: 無獨立參數(刻意)——由結構推導: Fanout≈最慢名額+整合(並行),
+//     RolePipeline≈Σ各階段(序列); 要上限就對每名額設budgetMs。
+//   最壞情況公式: 名額≤K×timeoutMs(K=鏈組數, 逾時每組只燒一次即跳組)。
+//   調整四層(細者覆蓋粗者): defaults(此處) → 各工作流callOpt → 階段/名額規格 → provider條目。
+//
 // 【定義providers時如何選kind: CLI或API】判準是「該階段需不需要工具」:
 //   需要讀本機檔案、grep、執行指令、抓網頁 → CLI類kind(opencode/claude/codex/antigravity);
 //   純文字生成(素材皆已在prompt內) → API類kind(api-openai-compat), 免安裝免登入且較快。

@@ -1,10 +1,13 @@
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
+import ispint from 'wsemi/src/ispint.mjs'
+import cint from 'wsemi/src/cint.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
 // dispatchClaude.mjs — 以Claude Code CLI呼叫Claude模型
@@ -44,7 +47,7 @@ let OWN_KEYS = ['exe', 'model', 'skipPermissions', 'extraArgs', 'input']
  * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'sonnet'、'opus'，預設''代表不帶`--model`旗標
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
- * @param {Number} [opt.timeoutMs=120000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，預設120000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
@@ -56,7 +59,7 @@ let OWN_KEYS = ['exe', 'model', 'skipPermissions', 'extraArgs', 'input']
  *
  * let test = async () => {
  *
- *     let r = await dispatchClaude('請只回覆兩個字：完成', { model: 'sonnet', timeoutMs: 120000 })
+ *     let r = await dispatchClaude('請只回覆兩個字：完成', { model: 'sonnet' })
  *     console.log(r.ok, r.stdout.trim())
  *     // => true '完成'
  *
@@ -104,6 +107,15 @@ async function dispatchClaude(prompt, opt = {}) {
         extraArgs,
     )
 
+    //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
+    let timeoutMs = get(opt, 'timeoutMs', null)
+    if (!ispint(timeoutMs)) {
+        timeoutMs = dfTimeoutMs
+    }
+    else {
+        timeoutMs = cint(timeoutMs)
+    }
+
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
 
@@ -111,6 +123,7 @@ async function dispatchClaude(prompt, opt = {}) {
     return execCli(exe, args, {
         ...optCli,
         input: prompt,
+        timeoutMs,
     })
 }
 

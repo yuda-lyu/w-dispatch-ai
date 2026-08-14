@@ -10,6 +10,8 @@ import dispatchClaude from '../src/dispatchClaude.mjs'
 import dispatchCodex from '../src/dispatchCodex.mjs'
 import dispatchAntigravity from '../src/dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from '../src/dispatchApiOpenaiCompat.mjs'
+import providers from '../src/providers.mjs'
+import resolveProviders from '../src/resolveProviders.mjs'
 
 
 describe('WDispatchAi', function() {
@@ -26,6 +28,8 @@ describe('WDispatchAi', function() {
             'dispatchCodex',
             'dispatchAntigravity',
             'dispatchApiOpenaiCompat',
+            'providers',
+            'resolveProviders',
         ]
         assert.strict.deepEqual(r, rr)
     })
@@ -36,9 +40,9 @@ describe('WDispatchAi', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('除KINDS外各鍵值皆為函數', function() {
+    it('各鍵值型別正確(KINDS與providers為物件, 其餘為函數)', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
+        let rr = ['object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -52,8 +56,10 @@ describe('WDispatchAi', function() {
             wi.dispatchCodex === dispatchCodex,
             wi.dispatchAntigravity === dispatchAntigravity,
             wi.dispatchApiOpenaiCompat === dispatchApiOpenaiCompat,
+            wi.providers === providers,
+            wi.resolveProviders === resolveProviders,
         ]
-        let rr = [true, true, true, true, true, true, true, true]
+        let rr = [true, true, true, true, true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 

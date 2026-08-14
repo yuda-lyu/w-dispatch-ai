@@ -40,6 +40,8 @@ Note:
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
 | `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
+| `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
+| `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id |
 | `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']` |
 
 #### Example:
@@ -159,7 +161,7 @@ let test = async () => {
         providers: [
             //REST版排前面: 免CLI、快3~5倍, 純文字任務優先走此路
             {
-                id: 'api:agnes-2.0-flash',
+                id: 'agnes:agnes-2.0-flash',
                 kind: 'api-openai-compat',
                 baseURL: 'https://apihub.agnes-ai.com/v1',
                 model: 'agnes-2.0-flash',
@@ -184,12 +186,12 @@ let test = async () => {
     })
     console.log('fallback:', r7.ok, r7.providerId, r7.keyIndex, r7.stdout.trim())
     console.log('tried:', r7.tried.map((x) => `${x.keyId}:${x.outcome}`).join(', '))
-    // =>   event: try api:agnes-2.0-flash#0
-    // =>   event: next-key api:agnes-2.0-flash#0 HTTP 401
-    // =>   event: try api:agnes-2.0-flash#1
-    // =>   event: ok api:agnes-2.0-flash#1
-    // => fallback: true api:agnes-2.0-flash 1 完成
-    // => tried: api:agnes-2.0-flash#0:next-key, api:agnes-2.0-flash#1:ok
+    // =>   event: try agnes:agnes-2.0-flash#0
+    // =>   event: next-key agnes:agnes-2.0-flash#0 HTTP 401
+    // =>   event: try agnes:agnes-2.0-flash#1
+    // =>   event: ok agnes:agnes-2.0-flash#1
+    // => fallback: true agnes:agnes-2.0-flash 1 完成
+    // => tried: agnes:agnes-2.0-flash#0:next-key, agnes:agnes-2.0-flash#1:ok
 
 }
 await test()
@@ -204,7 +206,7 @@ await test()
 | `exe` | String | 各CLI名稱 | 執行檔名稱或絕對路徑，給予名稱時由系統`PATH`解析 |
 | `model` | String | `''` | 模型ID，未給予則不帶模型旗標，由CLI自行決定 |
 | `extraArgs` | Array | `[]` | 額外命令列旗標字串陣列，接於固定旗標之後 |
-| `timeoutMs` | Integer | `120000` | 逾時毫秒，逾時將強制關閉子進程及其子孫程序 |
+| `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時將強制關閉子進程及其子孫程序；**全套件統一預設**(所有轉接器與各層一致，單一來源`dfTimeoutMs.mjs`)，由opt傳入即可覆寫 |
 | `cwd` | String | `process.cwd()` | 子進程工作目錄 |
 | `validate` | String\|Function | `undefined` | `stdout`驗證規則，可用`'nonempty'`、`'json'`、`'min:100'`，多規則以逗號串接，亦可給予`(stdout)=>Boolean` |
 | `maxRetries` | Integer | `0` | 失敗後最大重試次數，遇`ENOENT`或exit code 2視為不可重試而立即中止 |
@@ -236,8 +238,8 @@ await test()
 | `effort` | String | `''` | `'low'`、`'medium'`、`'high'`，需agy>=1.1.11；建議搭配不帶檔位之基礎slug（如`gemini-3.1-pro`），與帶檔位slug併用且檔位不一致時agy回conflicts錯誤 |
 | `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標 |
 | `printTimeout` | String | 由`timeoutMs`推導 | agy自身等待上限（如`'10m'`、`'570s'`），預設`timeoutMs`扣30秒緩衝（下限30秒），令CLI先於外層逾時而回報自身錯誤訊息 |
-| `addDirs` | Array | `[]` | 加入workspace之目錄字串陣列，逐項展開為`--add-dir` |
-| `timeoutMs` | Integer | `300000` | agy為agent型CLI，預設較其他轉接器長 |
+| `addDirs` | Array | 自動納入cwd | 加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而**不採子進程cwd**，故未給時自動納入有效cwd令檔案可視範圍與其他CLI一致；明示給陣列(含`[]`代表不揭露任何目錄)則完全尊重呼叫端 |
+| `timeoutMs` | Integer | `300000` | 全套件統一預設(恰對齊agy自身print-timeout之5m0s) |
 
 注意：agy之prompt走`--print`旗標而非stdin（agy介面如此），故prompt長度上限30000字元，超過回傳錯誤結果物件（不reject）。
 
@@ -264,7 +266,7 @@ await test()
 | `system` | String | `''` | system提示詞，置於messages首位 |
 | `body` | Object | `{}` | 額外請求本體（`temperature`、`max_tokens`、`response_format`等），同名鍵覆寫預設 |
 | `headers` | Object | `{}` | 額外請求標頭 |
-| `timeoutMs` | Integer | `120000` | 逾時毫秒，逾時中止請求（含回應串流讀取） |
+| `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時中止請求（含回應串流讀取）；全套件統一預設 |
 | `maxRetries` | Integer | `0` | 失敗重試次數；**4xx(429除外)為客戶端錯誤不重試**，429/5xx/網路錯誤/逾時線性退避重試 |
 | `retryDelayMs` | Integer | `5000` | 重試間隔，實際為`retryDelayMs`×次數且上限15000ms |
 
@@ -279,7 +281,7 @@ await test()
 | `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs` |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
 | `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state僅含`cursors`（逐群組游標）；假定單行程序列調用 |
-| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`；回調拋出例外不影響主流程 |
+| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`；失敗事件另帶`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外不影響主流程 |
 
 頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
 
@@ -350,19 +352,19 @@ await test()
 ```alias
 {
     // ...ok, stdout, stderr, code, error, durationMs, attempts, pid...
-    providerId: 'api:agnes-2.0-flash',  //實際使用之群組(即條目id)
+    providerId: 'agnes:agnes-2.0-flash',  //實際使用之群組(即條目id)
     keyIndex: 1,                        //實際使用之金鑰索引, 無keys時為null
     kind: 'api-openai-compat',
     model: 'agnes-2.0-flash',
-    tried: [                   //完整嘗試歷程, 成功時亦回傳
-        { providerId: 'api:agnes-2.0-flash', keyIndex: 0, keyId: 'api:agnes-2.0-flash#0', outcome: 'next-key', error: 'HTTP 401', durationMs: 105 },
-        { providerId: 'api:agnes-2.0-flash', keyIndex: 1, keyId: 'api:agnes-2.0-flash#1', outcome: 'ok', durationMs: 1161 },
+    tried: [                   //完整嘗試歷程, 成功時亦回傳; 失敗項另含stdout(被拒回覆)與stderr(錯誤輸出, 皆已截斷)供診斷
+        { providerId: 'agnes:agnes-2.0-flash', keyIndex: 0, keyId: 'agnes:agnes-2.0-flash#0', outcome: 'next-key', error: 'HTTP 401', durationMs: 105 },
+        { providerId: 'agnes:agnes-2.0-flash', keyIndex: 1, keyId: 'agnes:agnes-2.0-flash#1', outcome: 'ok', durationMs: 1161 },
     ],
 }
 ```
 
 #### dispatchAiWkf (workflow factory):
-注入一次provider定義表(名稱 → `dispatchAiFallback`條目)與共用預設，之後以名稱宣告工作流；名稱查無定義即回報錯誤(fail fast)。回覆經寬鬆JSON解析(`extractJsonLoose`)＋自訂`check`驗證，非法回覆視為該家失敗而自動遞補；預設於prompt前掛「禁止建檔」約束(`promptPrefix: ''`可關閉)。
+注入一次provider定義表(名稱 → `dispatchAiFallback`條目)與共用預設，之後以名稱宣告工作流；名稱查無定義即回報錯誤(fail fast)。回覆經寬鬆JSON解析(`extractJsonLoose`)＋自訂`check`驗證，非法回覆視為該家失敗而自動遞補；預設於prompt前掛「禁止建檔」約束(`promptPrefix: ''`可關閉)；措辭豁免唯讀查閱——codex以shell讀檔，一律禁指令會令其無法讀取專案檔案且靜默回拒答(2026-08-13實測)。
 
 ```alias
 let wkf = wdi.dispatchAiWkf({
@@ -388,6 +390,81 @@ let r4 = await wkf.runFanoutPipeline({ task, agents, integrate, stages, check })
 ```
 
 各工作流皆部分接受：個別名額/階段失敗不炸整輪，已完成成果完整回傳(`candidates`／`results`＋`failedStage`)，可只重跑失敗段。
+
+#### Timeout 總覽（各層預設、行為與調整方式）:
+
+**一句話**：全套件單一預設 **`300000`（5分鐘，單一來源 [src/dfTimeoutMs.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/dfTimeoutMs.mjs)）**——不論直接呼叫轉接器、或經 `dispatchAiFallback`／工作流，「單次AI嘗試」的逾時都是它；工作流本身**沒有**獨立的總時限參數（總時長＝結構×單次，見下方公式）。
+
+**階梯結構**（由細至粗，數值須嚴格遞增）：
+
+```alias
+agy --print-timeout（自動＝timeoutMs−30s）
+  < timeoutMs（單次嘗試，統一預設300000）
+    < budgetMs（單一名額之遞補鏈總預算，預設null不限）
+      < 工作流總時長（無獨立參數，由結構推導）
+```
+
+**各參數一覽**：
+
+| 參數 | 作用範圍 | 預設 | 逾時後果／備註 |
+| --- | --- | --- | --- |
+| `timeoutMs` | **單次AI嘗試**，所有kind一致（直接呼叫與工作流內皆同一數字） | `300000` | CLI強殺子進程樹／API中止請求；`error`以`TIMEOUT`開頭 → fallback視為**與金鑰無關**，整組跳過（不逐把空耗） |
+| `printTimeout` | 僅antigravity，agy自身等待上限 | 自動＝timeoutMs−30s | 令CLI先於外層逾時，錯誤訊息來自agy自身；一般無須手動設 |
+| `budgetMs` | `dispatchAiFallback`整輪遞補（＝工作流的一個名額／階段） | `null`不限 | 有值時剩餘預算會壓進每次嘗試的timeoutMs；用盡回`budget exhausted` |
+| `minAttemptMs` | 搭配budgetMs的開工門檻 | `20000` | 剩餘預算低於此值即不再開工；**無budgetMs時不作用** |
+| 工作流總時長 | `runFanout`／`runRolePipeline`／`runFanoutPipeline` | 無（刻意） | 由結構推導，要上限就設各名額的`budgetMs` |
+
+**工作流總時長公式**（每次嘗試≤timeoutMs；K＝遞補鏈組數、M＝階段數）：
+
+| 工作流 | 正常情況 | 最壞情況（多家連環卡死） |
+| --- | --- | --- |
+| `callAi`單一名額 | 首家耗時 | K×timeoutMs（逾時型失敗每組只燒一次即跳組；額度型失敗為秒級） |
+| `runFanout` | 最慢名額＋整合名額（agents**並行**） | ≈2×K×timeoutMs |
+| `runRolePipeline` | Σ各階段（**序列**） | ≈M×K×timeoutMs |
+| `runFanoutPipeline` | 上兩者相加 | ≈(2+M)×K×timeoutMs |
+
+量級感受：內建providers 9條全上陣時，一個名額最壞9×300s＝45min；3階段RolePipeline最壞約2.25小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
+
+**外部調整四層**（細者覆蓋粗者，全部免改套件程式）：
+1. **全域**：`dispatchAiWkf({ defaults: { timeoutMs, budgetMs, minAttemptMs } })`
+2. **單工作流**：`runFanout({ callOpt: { timeoutMs... } })`
+3. **單階段／名額**：stage／agent 規格上直接給 `timeoutMs`／`budgetMs`
+4. **單條目**：provider 條目給 `timeoutMs`（如已知會卡死之供應商給小蓋子，卡死成本從名額預算縮為該蓋子）
+
+**三種常用設定**：
+
+```alias
+//1. 簡單任務(秒級~分鐘級): 什麼都不用設, 全走統一預設300000
+
+//2. 要給工作流總上限: 設每名額budgetMs(序列工作流總上限≈Σ各階段budget; fanout≈名額+整合)
+let wkf = wdi.dispatchAiWkf({ providers: table, defaults: {
+    budgetMs: 900000,    //每名額至多15min → 3階段RolePipeline總上限≈45min
+    minAttemptMs: 60000, //剩餘不足1min就不再開工
+} })
+
+//3. 複雜任務(單一AI工作約15min, fallback須能走到最末):
+let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
+    timeoutMs: 1200000,    //20min＝15min工作＋33%餘裕(太緊會殺掉合法執行)
+    minAttemptMs: 1200000, //剩餘不足完整視窗即不開工——開了也不可能完成, 純浪費
+    budgetMs: 4800000,     //鏈長K×timeoutMs(K=4→80min): 逾時每組只燒一次即跳組, 故保證走得到最末; 無外部時限可null
+} })
+```
+
+#### providers.mjs(內建供應商定義檔):
+[src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 收錄實測可用之條目(CLI版與REST版)，金鑰以 `envVar` 間接引用(機密只放 `.env`)，經 `resolveProviders` 展開後即可直接使用或以 `pick` 自選：
+
+```alias
+import wdi from 'w-dispatch-ai'
+process.loadEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把
+
+//全取: envVar → keys, 缺環境變數之條目自動停用並列入skipped
+let { providers, table, skipped } = wdi.resolveProviders(wdi.providers)
+
+//自選: pick順序即遞補優先序; providers餵dispatchAiFallback, table餵dispatchAiWkf
+let picked = wdi.resolveProviders(wdi.providers, { pick: ['agnes:agnes-2.0-flash', 'claude:sonnet'] })
+let r = await wdi.dispatchAiFallback(prompt, { providers: picked.providers, timeoutMs: 1200000 })
+let wkf = wdi.dispatchAiWkf({ providers: picked.table, defaults: { timeoutMs: 1200000 } })
+```
 
 #### Known design notes:
 - `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。

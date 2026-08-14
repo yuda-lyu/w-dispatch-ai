@@ -1,9 +1,12 @@
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
+import ispint from 'wsemi/src/ispint.mjs'
+import cint from 'wsemi/src/cint.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
 // dispatchCodex.mjs — 以OpenAI Codex CLI呼叫GPT模型
@@ -44,7 +47,7 @@ let OWN_KEYS = ['exe', 'model', 'sandbox', 'extraArgs', 'input']
  * @param {String} [opt.model=''] 輸入模型ID字串，例如'gpt-5.6-luna'，預設''代表不帶`-m`旗標
  * @param {String} [opt.sandbox='workspace-write'] 輸入沙箱模式字串，例如'read-only'、'workspace-write'、'danger-full-access'，預設'workspace-write'
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，例如['--config', 'model_reasoning_effort="max"']，將接於固定旗標之後，預設[]
- * @param {Number} [opt.timeoutMs=120000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，預設120000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
@@ -105,6 +108,15 @@ async function dispatchCodex(prompt, opt = {}) {
         extraArgs,
     )
 
+    //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
+    let timeoutMs = get(opt, 'timeoutMs', null)
+    if (!ispint(timeoutMs)) {
+        timeoutMs = dfTimeoutMs
+    }
+    else {
+        timeoutMs = cint(timeoutMs)
+    }
+
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
 
@@ -112,6 +124,7 @@ async function dispatchCodex(prompt, opt = {}) {
     return execCli(exe, args, {
         ...optCli,
         input: prompt,
+        timeoutMs,
     })
 }
 

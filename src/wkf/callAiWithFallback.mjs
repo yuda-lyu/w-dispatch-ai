@@ -4,6 +4,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import dispatchAiFallback from '../dispatchAiFallback.mjs'
+import dfTimeoutMs from '../dfTimeoutMs.mjs'
 import extractJsonLoose from './extractJsonLoose.mjs'
 
 
@@ -23,13 +24,22 @@ import extractJsonLoose from './extractJsonLoose.mjs'
 // 【防寫檔前綴】agentic CLI對cwd隔離免疫(會自行解析專案根目錄寫檔),
 //   故預設在prompt前掛「禁止建檔」約束(實測有效); 不需要時傳promptPrefix:''關閉。
 //   殷鑑: 2026-08-10執行任務歷史.md遭AI覆寫、評比腳本繞過前綴又產生根目錄孤兒檔。
+//
+//   措辭須豁免「唯讀查閱」(2026-08-13 A/B實測): 各CLI取得檔案內容的途徑不同——
+//   opencode與claude有獨立的read/grep工具, 不受「禁止執行指令」約束;
+//   但codex讀檔即是執行shell指令, 舊措辭「禁止執行任何指令」對它等同「禁止讀檔」,
+//   凡需讀專案的任務會得到一句「請貼上檔案內容」而非成果, 且該拒答是合法字串,
+//   會通過驗證被遞補層當成「成功」, 整條fallback鏈就此停住——兜底地位被靜默廢掉。
+//   實測: 舊措辭下codex回「無法讀取該檔案」, 改為下列措辭後正常讀檔作答(11.1s),
+//   防副作用(建檔/改檔/刪檔/改動系統狀態)之本旨不變。
 
 
-//預設防寫檔前綴
+//預設防寫檔前綴(禁副作用, 但豁免唯讀查閱——codex以shell讀檔, 一律禁指令等同禁讀檔)
 let NO_SIDE_EFFECT = [
     '【執行約束】你只需把結果輸出在回覆內容中。',
-    '禁止建立、修改或刪除任何檔案，禁止執行任何指令——呼叫端只讀取你的回覆文字，',
-    '任何寫入磁碟的動作都不會被採用，只會製造無人讀取的垃圾檔。',
+    '禁止建立、修改或刪除任何檔案，也不要執行任何會改動磁碟或系統狀態的指令——',
+    '呼叫端只讀取你的回覆文字，任何寫入磁碟的動作都不會被採用，只會製造無人讀取的垃圾檔。',
+    '唯讀查閱（讀取檔案、搜尋內容、列出目錄）不在此限，需要時請照常使用。',
     '', '',
 ].join('\n')
 
@@ -87,7 +97,7 @@ function buildChain(providers, spec) {
  * @param {Function} [opt.parse=extractJsonLoose] 輸入回覆解析函數(stdout)=>Object|null，預設寬鬆JSON抽取
  * @param {Boolean} [opt.rawText=false] 輸入是否以純文字模式運作布林值，true代表不解析JSON(json欄位為修剪後文字、check收文字)，預設false
  * @param {String} [opt.promptPrefix=防寫檔約束] 輸入prompt前綴字串，預設為防寫檔約束，傳''關閉
- * @param {Number} [opt.timeoutMs=300000] 輸入單次嘗試逾時毫秒正整數，預設300000
+ * @param {Number} [opt.timeoutMs=300000] 輸入單次嘗試逾時毫秒正整數，全套件統一預設300000
  * @param {Number} [opt.budgetMs=null] 輸入整條遞補鏈之時間預算毫秒正整數，預設null代表不限
  * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試)
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
@@ -178,7 +188,7 @@ async function callAiWithFallback(prompt, opt = {}) {
     let r = await dispatchAiFallback(promptPrefix + prompt, {
         providers: chain,
         validate,
-        timeoutMs: get(opt, 'timeoutMs', null) || 300000,
+        timeoutMs: get(opt, 'timeoutMs', null) || dfTimeoutMs, //全套件統一預設300000
         budgetMs: get(opt, 'budgetMs', null) || undefined,
         maxRetries: get(opt, 'maxRetries', null) || 0,
         cwd: get(opt, 'cwd', null) || process.cwd(),

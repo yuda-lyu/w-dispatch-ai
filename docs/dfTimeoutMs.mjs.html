@@ -3,7 +3,7 @@
 <head>
     
     <meta charset="utf-8">
-    <title>dispatchAi.mjs - Documentation</title>
+    <title>dfTimeoutMs.mjs - Documentation</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -35,7 +35,7 @@
 
 <div id="main">
     
-    <h1 class="page-title">dispatchAi.mjs</h1>
+    <h1 class="page-title">dfTimeoutMs.mjs</h1>
     
 
     
@@ -45,67 +45,32 @@
     
     <section>
         <article>
-            <pre class="prettyprint source linenums"><code>import keys from 'lodash-es/keys.js'
-import includes from 'lodash-es/includes.js'
-import isestr from 'wsemi/src/isestr.mjs'
-import adapters from './adapters.mjs'
-import getErrorResult from './getErrorResult.mjs'
+            <pre class="prettyprint source linenums"><code>// dfTimeoutMs.mjs — 全套件統一之預設逾時毫秒(單一來源)
+//
+// 【為何統一】各轉接器與各層若各有預設(曾為CLI 120s/agy 300s/api 120s),
+//   呼叫方難以理解為何不一致; 統一後呼叫方只需記一個數字, 要改就由opt傳入覆寫。
+//
+// 【為何取300000(5分鐘)】對齊agy自身print-timeout之預設5m0s;
+//   agy為agent型CLI, 實測合法執行可達116秒, 統一成120秒會誤殺;
+//   快速任務有需要可自行下調, 複雜任務(如單一AI工作15分鐘)依README之Timeout規劃上調。
 
 
 /**
- * 依供應商種類(kind)分派至對應之CLI轉接器
+ * 全套件統一之預設逾時毫秒
  *
- * 三種供應商的差異(2026-08-08於本機實測確認)：
- * opencode支援逐次注入金鑰(OPENCODE_AUTH_CONTENT)，故可多把金鑰輪替；
- * claude與codex則沿用CLI既有登入狀態，無逐次金鑰概念。
- * 故「輪替」的單位是「供應商條目」而非單純的金鑰：一個條目即一組(kind, model, 可選的key／provider)，
- * 輪到誰就用誰的CLI與模型
- *
- * @param {String} kind 輸入供應商種類字串，可選'opencode'、'claude'、'codex'
- * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
- * @param {Object} [opt={}] 輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex，預設{}
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @returns {Number} 回傳預設逾時毫秒整數300000(5分鐘)
  * @example
- * //need claude, codex or opencode cli in system PATH
  *
- * import dispatchAi from './src/dispatchAi.mjs'
+ * import dfTimeoutMs from './src/dfTimeoutMs.mjs'
  *
- * let test = async () => {
- *
- *     let r = await dispatchAi('claude', '請只回覆兩個字：完成', { model: 'sonnet' })
- *     console.log(r.ok, r.stdout.trim())
- *     // => true '完成'
- *
- *     let re = await dispatchAi('gemini', 'abc')
- *     console.log(re.ok, re.error)
- *     // => false 'unknown ai kind: "gemini" (available: opencode, claude, codex)'
- *
- * }
- * await test()
- *     .catch((err) => {
- *         console.log(err)
- *     })
+ * console.log(dfTimeoutMs)
+ * // => 300000
  *
  */
-async function dispatchAi(kind, prompt, opt = {}) {
-
-    //ks
-    let ks = keys(adapters)
-
-    //check kind, 須為對照表既有鍵名, 不可用物件取值判斷, 否則'constructor'等原型鍵會誤判為有效
-    if (!isestr(kind) || !includes(ks, kind)) {
-        return getErrorResult(`unknown ai kind: "${kind}" (available: ${ks.join(', ')})`)
-    }
-
-    //fn
-    let fn = adapters[kind]
-
-    //dispatch, prompt與opt之檢核由各轉接器自行負責
-    return fn(prompt, opt)
-}
+let dfTimeoutMs = 300000
 
 
-export default dispatchAi
+export default dfTimeoutMs
 </code></pre>
         </article>
     </section>

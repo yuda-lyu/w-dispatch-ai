@@ -316,6 +316,31 @@ describe('dispatchAiFallback', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('失敗事件與tried帶被拒回覆(stdout)與錯誤輸出(stderr)供診斷', async function() {
+        let evs = []
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                //驗證失敗(skip-group): 被拒的回覆內容應可於事件與tried取得
+                { id: 'g-diag-v', kind: 'claude', exe: fake.exe, validate: 'min:100000' },
+                //exit 1(next-key): stderr之錯誤訊息應可於事件與tried取得
+                { id: 'g-diag-e', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-exit=1', '--fake-stderr=Invalid API key.'] },
+                { id: 'g-diag-ok', kind: 'claude', exe: fake.exe },
+            ],
+            onEvent: (ev) => evs.push(ev),
+        })
+        let evV = evs.find((x) => x.type === 'skip-group')
+        let evE = evs.find((x) => x.type === 'next-key')
+        let r = [
+            t.ok,
+            evV.stdout.includes('"stdin"'), //被拒回覆即假CLI之echo JSON
+            t.tried[0].stdout.includes('"stdin"'),
+            evE.stderr,
+            t.tried[1].stderr,
+        ]
+        let rr = [true, true, true, 'Invalid API key.', 'Invalid API key.']
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('onEvent依序回報事件, 回調拋出例外不影響主流程', async function() {
         let evs = []
         let t = await dispatchAiFallback('abc', {

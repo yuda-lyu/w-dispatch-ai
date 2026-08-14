@@ -11,6 +11,7 @@ import strleft from 'wsemi/src/strleft.mjs'
 import strdelleft from 'wsemi/src/strdelleft.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
 // dispatchApiOpenaiCompat.mjs — 以fetch直呼OpenAI相容API(chat/completions)
@@ -50,7 +51,7 @@ import getErrorResult from './getErrorResult.mjs'
 
 
 //預設值
-let DEFAULT_TIMEOUT_MS = 120000
+let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
 let DEFAULT_RETRY_DELAY_MS = 5000
 let MAX_RETRY_DELAY_MS = 15000
 
@@ -282,7 +283,7 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
  * @param {String} [opt.system=''] 輸入system提示詞字串，將以system角色置於messages首位，預設''代表不帶
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如temperature、max_tokens、response_format)，將併入預設body(同名鍵以此為準)，預設{}。注意本轉接器不支援工具，帶入tools而模型回tool_calls時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，預設{}
- * @param {Number} [opt.timeoutMs=120000] 輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，預設120000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
