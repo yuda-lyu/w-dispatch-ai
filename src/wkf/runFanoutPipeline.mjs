@@ -29,7 +29,7 @@ import runRolePipeline from './runRolePipeline.mjs'
  * @param {Array} opt.agents 輸入前段名額規格陣列(同runFanout)
  * @param {Object} opt.integrate 輸入前段整合名額規格物件(同runFanout)
  * @param {Array} opt.stages 輸入後段階段規格陣列(同runRolePipeline)，各階段以ctx.input取得前段成果
- * @param {Function} [opt.check=null] 輸入前段共用檢核函數，後段各階段自帶check，預設null
+ * @param {Function} [opt.check=null] 輸入前段共用檢核函數(前段名額規格與integrate可各自帶check覆寫，同runFanout)，後段各階段自帶check，預設null
  * @param {String} [opt.schema=''] 輸入輸出格式示意字串(供前段預設整合模板)，預設''
  * @param {Number} [opt.minCandidates=2] 輸入前段整合門檻正整數，預設2
  * @param {Object} [opt.callOpt={}] 輸入透傳兩段之共用呼叫設定，預設{}

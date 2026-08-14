@@ -316,6 +316,101 @@ describe('dispatchAiFallback', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('cooldownMs啟用時, 逾時觸發冷卻且次輪該條目降至鏈尾(只降序不移除)', async function() {
+        let stored = { cursors: {}, cooling: {} }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let pHang = { id: 'cd-hang', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-sleep=9000'], timeoutMs: 500 }
+        let pOk = { id: 'cd-ok', kind: 'claude', exe: fake.exe }
+        //第1輪: hang在鏈首 → 逾時跳組並觸發冷卻 → ok遞補
+        let r1 = await dispatchAiFallback('abc', { providers: [pHang, pOk], store, cooldownMs: 300000 })
+        //第2輪: hang冷卻中 → 降至鏈尾, ok先上且成功, hang完全未被嘗試
+        let r2 = await dispatchAiFallback('abc', { providers: [pHang, pOk], store, cooldownMs: 300000 })
+        let r = [
+            r1.providerId,
+            r1.tried.map((x) => x.providerId),
+            typeof stored.cooling['cd-hang'],
+            r2.providerId,
+            r2.tried.map((x) => x.providerId), //只有cd-ok, 未浪費一次逾時
+        ]
+        let rr = ['cd-ok', ['cd-hang', 'cd-ok'], 'number', 'cd-ok', ['cd-ok']]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('冷卻中的條目於前面全敗時仍會被嘗試, 且成功即解除冷卻', async function() {
+        let stored = { cursors: {}, cooling: { 'cd2-a': Date.now() } } //預置: a冷卻中
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let r1 = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'cd2-a', kind: 'claude', exe: fake.exe }, //冷卻中 → 降至鏈尾
+                { id: 'cd2-b', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-exit=1'] }, //鏈首但必敗
+            ],
+            store,
+            cooldownMs: 300000,
+        })
+        let r = [
+            r1.ok,
+            r1.providerId, //b先上失敗 → 降序後的a仍被嘗試且成功
+            r1.tried.map((x) => x.providerId),
+            stored.cooling['cd2-a'], //成功即解除
+        ]
+        let rr = [true, 'cd2-a', ['cd2-b', 'cd2-a'], undefined]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('冷卻過期後恢復原順序並清除過期紀錄', async function() {
+        let stored = { cursors: {}, cooling: { 'cd3-a': Date.now() - 1000 } } //1秒前觸發
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let r1 = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'cd3-a', kind: 'claude', exe: fake.exe },
+                { id: 'cd3-b', kind: 'claude', exe: fake.exe },
+            ],
+            store,
+            cooldownMs: 500, //視窗0.5秒, 已過期
+        })
+        let r = [r1.providerId, stored.cooling['cd3-a']]
+        let rr = ['cd3-a', undefined] //恢復鏈首, 過期紀錄被清除
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('cooldownMs未啟用(預設)時不重排也不寫入cooling', async function() {
+        let stored = { cursors: {}, cooling: { 'cd4-a': Date.now() } }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let r1 = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'cd4-a', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-sleep=9000'], timeoutMs: 500 },
+                { id: 'cd4-b', kind: 'claude', exe: fake.exe },
+            ],
+            store,
+        })
+        let r = [
+            r1.tried.map((x) => x.providerId), //cooling有預置紀錄仍不重排(未啟用)
+            typeof stored.cooling['cd4-a'] === 'number' && stored.cooling['cd4-b'] === undefined, //逾時亦不新增紀錄
+        ]
+        let rr = [['cd4-a', 'cd4-b'], true]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('失敗事件與tried帶被拒回覆(stdout)與錯誤輸出(stderr)供診斷', async function() {
         let evs = []
         let t = await dispatchAiFallback('abc', {

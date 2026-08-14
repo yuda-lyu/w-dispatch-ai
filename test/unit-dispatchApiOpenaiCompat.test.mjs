@@ -245,6 +245,34 @@ describe('dispatchApiOpenaiCompat', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('HTTP 429觸發冷卻: 次輪該條目降至鏈尾', async function() {
+        let stored = { cursors: {}, cooling: {} }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        //flaky-429對同一金鑰首次回429; maxRetries預設0故第1輪即失敗並觸發冷卻
+        let p429 = { id: 'cd-api-429', kind: 'api-openai-compat', baseURL: svr.url, model: 'flaky-429', keys: ['sk-good-cd429'] }
+        let pEcho = { id: 'cd-api-echo', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-good-cd-e'] }
+        let r1 = await dispatchAiFallback('abc', { providers: [p429, pEcho], store, cooldownMs: 300000 })
+        let r2 = await dispatchAiFallback('abc', { providers: [p429, pEcho], store, cooldownMs: 300000 })
+        let r = [
+            r1.providerId,
+            r1.tried.map((x) => [x.providerId, x.error || null]),
+            typeof stored.cooling['cd-api-429'],
+            r2.tried.map((x) => x.providerId), //429者已降尾, echo先上即成功
+        ]
+        let rr = [
+            'cd-api-echo',
+            [['cd-api-429', 'HTTP 429'], ['cd-api-echo', null]],
+            'number',
+            ['cd-api-echo'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('可作為工作流provider, 回覆JSON經解析與檢核', async function() {
         let wkf = dispatchAiWkf({
             providers: {

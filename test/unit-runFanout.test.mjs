@@ -156,6 +156,52 @@ describe('runFanout', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('integrate可帶獨立check(終稿判準), 未給則沿用頂層check', async function() {
+        //頂層check放行所有echo物件; integrate.check要求stdin含候選標記(僅整合者符合)
+        let t1 = await runFanout({
+            providers,
+            task: 'abc',
+            agents: [{ use: 'p-a' }, { use: 'p-b' }],
+            integrate: { use: 'p-int', check: (j) => j.stdin.includes('【候選 1】') },
+            check: (j) => Array.isArray(j.args),
+            callOpt,
+        })
+        //integrate.check不通過時整合失敗, 但候選不受影響(判準不再互相牽制)
+        let t2 = await runFanout({
+            providers,
+            task: 'abc',
+            agents: [{ use: 'p-a' }, { use: 'p-b' }],
+            integrate: { use: 'p-int', check: () => false },
+            check: (j) => Array.isArray(j.args),
+            callOpt,
+        })
+        let r = [
+            [t1.ok, t1.integrated],
+            [t2.ok, t2.integrated, t2.candidates.length, t2.error.indexOf('integrate failed:') === 0],
+        ]
+        let rr = [
+            [true, true],
+            [false, false, 2, true],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('名額規格可帶獨立check覆寫頂層(曾為被靜默覆蓋之死鍵)', async function() {
+        let t = await runFanout({
+            providers,
+            task: 'abc',
+            agents: [
+                { use: 'p-a', check: () => false }, //此名額專屬判準: 必不過
+                { use: 'p-b' }, //沿用頂層(未給即預設放行)
+            ],
+            integrate: { use: 'p-int' },
+            callOpt,
+        })
+        let r = [t.ok, t.integrated, t.agents[0].ok, t.agents[1].ok, t.candidates.length]
+        let rr = [true, false, false, true, 1] //單稿放行(integrated:false)
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('defaultIntegratePrompt嵌入候選數與schema', function() {
         let s = defaultIntegratePrompt([{ a: 1 }, { b: 2 }], { schema: '{"x":"..."}' })
         let r = [s.includes('2 個獨立執行'), s.includes('{"x":"..."}'), s.includes('【候選 2】')]
