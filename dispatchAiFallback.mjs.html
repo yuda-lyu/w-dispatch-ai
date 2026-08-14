@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
     
 </nav>
 
@@ -55,6 +55,7 @@ import ispint from 'wsemi/src/ispint.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import dispatchAi from './dispatchAi.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
 // dispatchAiFallback.mjs — 多供應商自動遞補層
@@ -86,10 +87,12 @@ import getErrorResult from './getErrorResult.mjs'
 //      ✗ id:'claude' —— 日後要同時掛sonnet與opus就無法並存, 且日誌看不出用了哪個模型
 //      ✓ id:'claude:sonnet' / id:'claude:opus'
 //
-//   ② 同一模型經不同路徑取得時, id須帶上路徑
+//   ② 同一模型經不同路徑取得時, id須帶上路徑, 且前綴用「具體路徑名」不用泛稱
 //      同一個laguna可經Poolside官方REST、OpenRouter、opencode CLI三條路,
 //      三者額度池與故障域各自獨立, 屬三個供應商:
 //      ✓ 'poolside:laguna-s-2.1' / 'or:poolside/laguna-s-2.1:free' / 'oc:poolside/poolside/laguna-s-2.1'
+//      ✗ 'api:laguna-s-2.1' —— 泛稱api:在同模型有多個REST閘道時會撞名, 且日誌看不出走哪個閘道
+//      慣用前綴: CLI類＝oc:/agy:/claude:/codex:(即kind或CLI名); REST類＝閘道名(zen:/agnes:/poolside:/or:/nv:)
 //
 //   ③ id務必給且務必唯一
 //      未給時本套件回退為「陣列索引字串」——索引是位置不是身分, 日後於鏈中插入條目
@@ -113,7 +116,7 @@ let ENTRY_KEYS = ['id', 'keys']
 
 //預設值
 let DEFAULT_MIN_ATTEMPT_MS = 20000
-let DEFAULT_TIMEOUT_MS = 120000
+let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
 
 
 //memoryState, 未注入store時之行程內預設狀態(跨呼叫有效, 重啟歸零)
@@ -184,11 +187,11 @@ function isKeyIndependentFail(r) {
  * @param {Number} [opt.budgetMs=null] 輸入整輪遞補之時間上限毫秒正整數，剩餘預算會壓進每次呼叫之timeoutMs，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入單次嘗試之最低剩餘預算毫秒正整數，剩餘低於此值即停止嘗試回報budget exhausted，預設20000
  * @param {Object} [opt.store=null] 輸入狀態持久化物件{get:()=>state,set:(state)=>{}}，state內含cursors(逐群組游標)，省略代表用行程內記憶體(跨呼叫有效，重啟歸零)。假定單行程序列調用，並行請自行加鎖
- * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'，回調拋出例外不影響主流程，預設null
- * @param {Number} [opt.timeoutMs=120000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，預設120000
+ * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'；失敗事件(next-key/skip-group)另帶stdout(被拒回覆)與stderr(錯誤輸出)供診斷，兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null
+ * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則，條目可覆寫，預設undefined
  * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含stdout與stderr供診斷被拒原因)，本函數不會reject
  * @example
  * //need opencode, claude, codex cli in system PATH
  *
@@ -389,18 +392,20 @@ async function dispatchAiFallback(prompt, opt = {}) {
             //失敗分流
             lastResult = r
             lastMeta = { providerId: id, keyIndex, kind, model }
+            //失敗事件與tried一併帶被拒回覆(stdout)與錯誤輸出(stderr), 供呼叫端診斷失敗原因
+            //(如驗證失敗時模型究竟回了什麼); 兩者於失敗路徑已由轉接器截斷(≤500/1000字元), 不會過大
             if (isKeyIndependentFail(r)) {
 
                 //與金鑰無關, 整組跳過
-                emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, durationMs: r.durationMs })
+                emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, stdout: r.stdout, stderr: r.stderr })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs })
                 skipGroup = true
             }
             else {
 
                 //其餘(含額度上限/金鑰無效/未分類), 換組內下一把, 不記憶不停用
-                emit({ type: 'next-key', providerId: id, keyIndex, keyId, error: r.error })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, durationMs: r.durationMs })
+                emit({ type: 'next-key', providerId: id, keyIndex, keyId, error: r.error, stdout: r.stdout, stderr: r.stderr })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs })
             }
 
         }
@@ -427,7 +432,7 @@ export default dispatchAiFallback
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Aug 13 2026 21:57:54 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Aug 14 2026 12:01:07 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

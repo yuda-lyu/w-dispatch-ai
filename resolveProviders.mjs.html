@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>resolveProviders.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">resolveProviders.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import omit from 'lodash-es/omit.js'
+import isarr from 'wsemi/src/isarr.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isearr from 'wsemi/src/isearr.mjs'
+
+
+// resolveProviders.mjs — 把providers定義檔展開為可直接使用的條目
+//
+// 【為何需要】providers.mjs之條目以envVar間接引用金鑰(機密不落設定檔, 只寫變數名),
+//   而dispatchAiFallback只認keys陣列——本函數負責envVar → keys之展開,
+//   缺對應環境變數者停用該條目並列入skipped回報(不中斷、不throw),
+//   訂閱登入態條目(claude/codex等無envVar)原樣通過。
+//
+// 【自選】opt.pick給id陣列即可只取用部分條目, 且依pick之順序回傳
+//   (順序即dispatchAiFallback之優先序); 查無之id列入missing回報。
+
+
+/**
+ * 展開providers定義條目：envVar → keys，並可依id自選子集
+ *
+ * 特點：
+ * 條目之envVar依env來源(預設process.env)展開為keys陣列(變數值以逗號分隔多把)，envVar欄位自輸出移除；
+ * 缺對應環境變數(或值為空)之條目停用並列入skipped，不中斷不throw；
+ * 無envVar之條目(訂閱登入態CLI)原樣通過；條目已自帶有效keys者以keys為準；
+ * opt.pick可依id自選子集並以pick順序回傳(順序即遞補優先序)；
+ * 輸入陣列與條目皆不被改動(輸出為淺拷貝)
+ *
+ * @param {Array} providers 輸入providers條目物件陣列(如providers.mjs之預設匯出)
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env
+ * @param {Array} [opt.pick=null] 輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)
+ * @returns {Object} 回傳物件，內含providers(可直接餵dispatchAiFallback之條目陣列)、table(id對條目之物件，可直接餵dispatchAiWkf)、skipped(缺環境變數而停用之{id,envVar}陣列)、missing(pick查無之id字串陣列)
+ * @example
+ *
+ * import resolveProviders from './src/resolveProviders.mjs'
+ * import providersAll from './src/providers.mjs'
+ *
+ * process.loadEnvFile('./.env') //金鑰放.env, 變數值以逗號分隔多把
+ *
+ * //全取: envVar展開為keys, 缺環境變數者列入skipped
+ * let { providers, table, skipped } = resolveProviders(providersAll)
+ * console.log(providers.length, skipped)
+ * // => 10 []
+ *
+ * //自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallback
+ * let r2 = resolveProviders(providersAll, { pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] })
+ * console.log(r2.providers.map((p) => p.id))
+ * // => [ 'agnes:agnes-2.5-flash', 'claude:sonnet' ]
+ *
+ * //table可直接餵dispatchAiWkf之providers定義表
+ * //let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })
+ *
+ */
+function resolveProviders(providers, opt = {}) {
+
+    //env, 無效回退process.env(瀏覽器環境無process則空物件)
+    let env = get(opt, 'env', null)
+    if (!isobj(env)) {
+        env = (typeof process !== 'undefined' &amp;&amp; process &amp;&amp; isobj(process.env)) ? process.env : {}
+    }
+
+    //providersRaw
+    let providersRaw = isarr(providers) ? providers.filter(isobj) : []
+
+    //pick, 依id自選並依pick順序回傳
+    let pick = get(opt, 'pick', null)
+    let missing = []
+    let selected = providersRaw
+    if (isearr(pick)) {
+        selected = []
+        for (let id of pick) {
+            let entry = providersRaw.find((p) => get(p, 'id', null) === id)
+            if (entry) {
+                selected.push(entry)
+            }
+            else {
+                missing.push(String(id))
+            }
+        }
+    }
+
+    //展開envVar → keys
+    let out = []
+    let skipped = []
+    for (let entry of selected) {
+        let envVar = get(entry, 'envVar', null)
+
+        //無envVar(訂閱登入態CLI)或已自帶有效keys, 原樣通過(僅移除envVar欄位)
+        if (!isestr(envVar) || isearr(get(entry, 'keys', null))) {
+            out.push(omit(entry, ['envVar']))
+            continue
+        }
+
+        //envVar → keys, 變數值以逗號分隔多把
+        let keys = String(get(env, envVar, '') || '').split(',').map((k) => k.trim()).filter(Boolean)
+        if (keys.length === 0) {
+
+            //缺環境變數: 停用該條目並回報, 不中斷(設計providers原則§四.4)
+            skipped.push({ id: get(entry, 'id', ''), envVar })
+            continue
+        }
+        out.push({ ...omit(entry, ['envVar']), keys })
+    }
+
+    //table, id → 條目, 可直接作dispatchAiWkf之providers定義表
+    let table = {}
+    for (let entry of out) {
+        table[entry.id] = entry
+    }
+
+    return { providers: out, table, skipped, missing }
+}
+
+
+export default resolveProviders
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Aug 14 2026 12:01:07 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
