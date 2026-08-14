@@ -1,4 +1,5 @@
 import get from 'lodash-es/get.js'
+import omit from 'lodash-es/omit.js'
 import isearr from 'wsemi/src/isearr.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
@@ -32,6 +33,13 @@ import extractJsonLoose from './extractJsonLoose.mjs'
 //   會通過驗證被遞補層當成「成功」, 整條fallback鏈就此停住——兜底地位被靜默廢掉。
 //   實測: 舊措辭下codex回「無法讀取該檔案」, 改為下列措辭後正常讀檔作答(11.1s),
 //   防副作用(建檔/改檔/刪檔/改動系統狀態)之本旨不變。
+
+
+//本層自用之設定鍵, 其餘鍵(timeoutMs/budgetMs/minAttemptMs/maxRetries/cwd/store/onEvent/
+//retryDelayMs/maxBuffer等)一律原樣轉傳dispatchAiFallback——與各轉接器「剔除自用鍵後
+//原樣轉傳」同一約定; 曾因白名單式轉送漏掉minAttemptMs, 令README教學之工作流層
+//budget保護靜默失效(2026-08-14使用端實測回報), 故改採omit式轉傳杜絕同類漏鍵
+let OWN_KEYS = ['providers', 'spec', 'check', 'parse', 'rawText', 'promptPrefix']
 
 
 //預設防寫檔前綴(禁副作用, 但豁免唯讀查閱——codex以shell讀檔, 一律禁指令等同禁讀檔)
@@ -99,10 +107,11 @@ function buildChain(providers, spec) {
  * @param {String} [opt.promptPrefix=防寫檔約束] 輸入prompt前綴字串，預設為防寫檔約束，傳''關閉
  * @param {Number} [opt.timeoutMs=300000] 輸入單次嘗試逾時毫秒正整數，全套件統一預設300000
  * @param {Number} [opt.budgetMs=null] 輸入整條遞補鏈之時間預算毫秒正整數，預設null代表不限
+ * @param {Number} [opt.minAttemptMs=20000] 輸入搭配budgetMs之開工門檻毫秒正整數，剩餘預算低於此值即不再開工，預設20000
  * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試)
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
  * @param {Object} [opt.store=null] 輸入游標持久化物件{get,set}，預設null代表用行程內記憶體
- * @param {Function} [opt.onEvent=null] 輸入遞補層事件回調函數，預設null
+ * @param {Function} [opt.onEvent=null] 輸入遞補層事件回調函數，預設null。除上列外之其餘鍵(retryDelayMs、maxBuffer、onStdout等)亦一律原樣轉傳dispatchAiFallback
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、error(錯誤訊息字串)，本函數不會reject
  * @example
  * //need cli in system PATH
@@ -185,15 +194,12 @@ async function callAiWithFallback(prompt, opt = {}) {
         return check ? check(j) === true : true
     }
 
+    //剔除本層自用鍵後原樣轉傳(含minAttemptMs/retryDelayMs/maxBuffer等), providers與validate由本層給定
     let r = await dispatchAiFallback(promptPrefix + prompt, {
+        ...omit(opt, OWN_KEYS),
         providers: chain,
         validate,
         timeoutMs: get(opt, 'timeoutMs', null) || dfTimeoutMs, //全套件統一預設300000
-        budgetMs: get(opt, 'budgetMs', null) || undefined,
-        maxRetries: get(opt, 'maxRetries', null) || 0,
-        cwd: get(opt, 'cwd', null) || process.cwd(),
-        store: get(opt, 'store', null) || undefined,
-        onEvent: get(opt, 'onEvent', null) || undefined,
     })
 
     //result, 已過validate故此處parse必然成功(同一解析器), 重解析僅為取出物件

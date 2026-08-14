@@ -135,6 +135,21 @@ describe('callAiWithFallback', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('minAttemptMs等fallback層設定可經工作流層原樣轉傳(曾因白名單漏鍵而失效)', async function() {
+        //budgetMs=60000(高於預設門檻20000)+minAttemptMs=600000(遠大於budget):
+        //minAttemptMs有被轉送才會立即budget exhausted; 漏鍵時會照樣執行並成功
+        let t = await callAiWithFallback('abc', {
+            providers,
+            spec: { use: 'p-claude' },
+            promptPrefix: '',
+            budgetMs: 60000,
+            minAttemptMs: 600000,
+        })
+        let r = [t.ok, t.error, t.tried.map((x) => x.outcome)]
+        let rr = [false, 'budget exhausted', ['budget-out']]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('多金鑰條目經由keys輪替且keyId帶索引', async function() {
         let t = await callAiWithFallback('abc', { providers, spec: { use: 'p-oc' }, promptPrefix: '' })
         let auth = JSON.parse(t.json.env.OPENCODE_AUTH_CONTENT)

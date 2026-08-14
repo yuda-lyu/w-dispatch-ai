@@ -86,6 +86,14 @@ describe('dispatchAiWkf', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('defaults之minAttemptMs經callAi生效(README第一層教學之回歸測試)', async function() {
+        let wkf = dispatchAiWkf({ providers, defaults: { promptPrefix: '', budgetMs: 60000, minAttemptMs: 600000 } })
+        let t = await wkf.callAi('abc', { spec: { use: 'p-a' } })
+        let r = [t.ok, t.error]
+        let rr = [false, 'budget exhausted']
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('runFanout綁定providers與defaults(defaults併入callOpt)', async function() {
         let wkf = dispatchAiWkf({ providers, defaults: { promptPrefix: '' } })
         let t = await wkf.runFanout({
