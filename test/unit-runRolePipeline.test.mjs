@@ -160,4 +160,16 @@ describe('runRolePipeline', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('meta為保留鍵: 階段規格掛meta(如draft/audit分類)不影響呼叫行為', async function() {
+        let t = await runRolePipeline({
+            providers,
+            stages: [{ id: 's1', use: 'p-a', prompt: () => 'abc', meta: { stage: 'draft' } }],
+            callOpt,
+        })
+        //假CLI收到之args與未掛meta時完全一致(meta未被轉傳成未知旗標)
+        let r = [t.ok, t.result.args, t.result.stdin]
+        let rr = [true, ['-p', '--dangerously-skip-permissions', '--model', 'sonnet'], 'abc']
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

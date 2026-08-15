@@ -1,6 +1,13 @@
-import get from 'lodash-es/get.js'
+import omit from 'lodash-es/omit.js'
 import runFanout from './runFanout.mjs'
 import runRolePipeline from './runRolePipeline.mjs'
+
+
+//兩段各自剔除「對方專屬鍵」後原樣轉傳(providers與callOpt等共用鍵兩段皆收):
+//曾因白名單式逐鍵轉送漏掉minAttemptMs令下層設定靜默失效(2026-08-14使用端實測回報),
+//故一律採omit式, 任一段日後新增頂層選項時本檔無須跟改
+let B_ONLY_KEYS = ['stages', 'input'] //後段專屬(input由前段成果給定, 不收外部傳入)
+let A_ONLY_KEYS = ['task', 'agents', 'integrate', 'check', 'schema', 'minCandidates'] //前段專屬
 
 
 // runFanoutPipeline.mjs — FanoutPipeline工作流(Fanout+RolePipeline): 多開收斂成果接串行角色鏈
@@ -69,27 +76,16 @@ import runRolePipeline from './runRolePipeline.mjs'
 async function runFanoutPipeline(opt = {}) {
     let t0 = Date.now()
 
-    //前段: Fanout(多開 → 整合)
-    let rA = await runFanout({
-        providers: get(opt, 'providers', null),
-        task: get(opt, 'task', ''),
-        agents: get(opt, 'agents', null),
-        integrate: get(opt, 'integrate', null),
-        check: get(opt, 'check', null),
-        schema: get(opt, 'schema', ''),
-        minCandidates: get(opt, 'minCandidates', null),
-        callOpt: get(opt, 'callOpt', {}),
-    })
+    //前段: Fanout(多開 → 整合), 剔除後段專屬鍵後原樣轉傳
+    let rA = await runFanout(omit(opt, B_ONLY_KEYS))
     if (!rA.ok) {
         return { ok: false, result: null, A: rA, B: null, totalMs: Date.now() - t0, error: `A failed: ${rA.error}` }
     }
 
-    //後段: RolePipeline, input即前段成果
+    //後段: RolePipeline, 剔除前段專屬鍵後原樣轉傳, input即前段成果
     let rB = await runRolePipeline({
-        providers: get(opt, 'providers', null),
+        ...omit(opt, A_ONLY_KEYS),
         input: rA.result,
-        stages: get(opt, 'stages', null),
-        callOpt: get(opt, 'callOpt', {}),
     })
 
     return {

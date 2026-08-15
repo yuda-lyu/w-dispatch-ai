@@ -158,4 +158,28 @@ describe('callAiWithFallback', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('shouldStop可經工作流層原樣轉傳, 中止時回報ABORTED', async function() {
+        //中止後每個後續呼叫進門即回ABORTED, 整條工作流自然快速收束(檢查點只在遞補層一處)
+        let t = await callAiWithFallback('abc', { providers, spec: { use: 'p-claude' }, promptPrefix: '', shouldStop: () => true })
+        let r = [t.ok, t.error, t.tried.map((x) => x.outcome)]
+        let rr = [false, 'ABORTED', ['aborted']]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('usage欄位: CLI路徑無可靠來源故為null; meta為保留鍵不影響行為', async function() {
+        let t = await callAiWithFallback('abc', { providers, spec: { use: 'p-claude' }, promptPrefix: '', meta: { tag: 'draft' } })
+        let r = [t.ok, t.usage, t.json.stdin]
+        let rr = [true, null, 'abc']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('errorType經工作流層透出: 失敗帶類別, 成功無此欄', async function() {
+        let t1 = await callAiWithFallback('abc', { providers, spec: { use: 'p-dead' }, promptPrefix: '' })
+        let t2 = await callAiWithFallback('abc', { providers, spec: { use: 'p-typo' }, promptPrefix: '' })
+        let t3 = await callAiWithFallback('abc', { providers, spec: { use: 'p-claude' }, promptPrefix: '' })
+        let r = [[t1.ok, t1.errorType], [t2.ok, t2.errorType], [t3.ok, t3.errorType]]
+        let rr = [[false, 'exec'], [false, 'params'], [true, undefined]]
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

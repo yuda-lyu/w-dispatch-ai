@@ -24,7 +24,8 @@ import callAiWithFallback from './callAiWithFallback.mjs'
 
 
 //各階段規格自用之鍵, 其餘鍵覆寫該階段之呼叫設定
-let STAGE_KEYS = ['id', 'use', 'fallback', 'prompt', 'check']
+//meta為保留鍵: 呼叫端於階段規格掛自有資訊(如draft/audit分類)用, 保證永不轉傳下層
+let STAGE_KEYS = ['id', 'use', 'fallback', 'prompt', 'check', 'meta']
 
 
 /**
@@ -39,7 +40,7 @@ let STAGE_KEYS = ['id', 'use', 'fallback', 'prompt', 'check']
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Object} opt.providers 輸入provider定義表物件(名稱 → 條目)
  * @param {*} [opt.input=null] 輸入工作流輸入(原始任務字串或前一工作流之成果物件)，提供給各階段ctx.input，預設null
- * @param {Array} opt.stages 輸入階段規格陣列，各元素{ id, use, fallback, prompt:(ctx)=>String, check?, rawText?, maxRetries?, timeoutMs? }等
+ * @param {Array} opt.stages 輸入階段規格陣列，各元素{ id, use, fallback, prompt:(ctx)=>String, check?, rawText?, maxRetries?, timeoutMs? }等；meta為保留鍵，呼叫端自有資訊(分類、標籤)掛此鍵保證永不轉傳下層
  * @param {Object} [opt.callOpt={}] 輸入透傳callAiWithFallback之共用設定，預設{}
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(布林值)、result(最末階段成果)、stages(id對階段完整呼叫結果之物件)、results(id對階段成果之物件)、order(階段id順序陣列)、failedStage(失敗階段id，無失敗為null)、totalMs(總耗時毫秒)、error(錯誤訊息字串)，本函數不會reject
  * @example

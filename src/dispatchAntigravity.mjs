@@ -3,11 +3,11 @@ import omit from 'lodash-es/omit.js'
 import isarr from 'wsemi/src/isarr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import { attachErrorType } from './getErrorType.mjs'
+import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
@@ -134,13 +134,7 @@ async function dispatchAntigravity(prompt, opt = {}) {
     }
 
     //timeoutMs, 先行取值以供printTimeout推導, 無效回退全套件統一預設300000
-    let timeoutMs = get(opt, 'timeoutMs', null)
-    if (!ispint(timeoutMs)) {
-        timeoutMs = DEFAULT_TIMEOUT_MS
-    }
-    else {
-        timeoutMs = cint(timeoutMs)
-    }
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //printTimeout, 未給時由timeoutMs推導並預留緩衝, 令agy先於外層逾時而回報自身錯誤訊息
     let printTimeout = get(opt, 'printTimeout', null)
@@ -187,15 +181,17 @@ async function dispatchAntigravity(prompt, opt = {}) {
     let optCli = omit(opt, OWN_KEYS)
 
     //execCli, 不帶input(agy由--print取得prompt); try/catch兜底轉義膨脹等
-    //前置檢查漏網之spawn同步拋出(如ENAMETOOLONG), 維持不reject契約
+    //前置檢查漏網之spawn同步拋出(如ENAMETOOLONG), 維持不reject契約;
+    //失敗結果補上機器可讀之errorType(僅機械可判者, 見getErrorType.mjs)
     try {
-        return await execCli(exe, args, {
+        let r = await execCli(exe, args, {
             ...optCli,
             timeoutMs,
         })
+        return attachErrorType(r)
     }
     catch (err) {
-        return getErrorResult(`${err.code || 'UNKNOWN'}: ${err.message}`)
+        return getErrorResult(`${err.code || 'UNKNOWN'}: ${err.message}`, 'spawn')
     }
 }
 

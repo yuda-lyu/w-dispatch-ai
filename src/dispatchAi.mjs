@@ -6,18 +6,19 @@ import getErrorResult from './getErrorResult.mjs'
 
 
 /**
- * 依供應商種類(kind)分派至對應之CLI轉接器
+ * 依供應商種類(kind)分派至對應之轉接器
  *
- * 三種供應商的差異(2026-08-08於本機實測確認)：
- * opencode支援逐次注入金鑰(OPENCODE_AUTH_CONTENT)，故可多把金鑰輪替；
- * claude與codex則沿用CLI既有登入狀態，無逐次金鑰概念。
+ * kind清單以adapters.mjs對照表為唯一來源(目前為'opencode'、'claude'、'codex'、'antigravity'、
+ * 'api-openai-compat'，CLI或API之選型判準見adapters.mjs檔頭)。
+ * 各家金鑰模式不同(2026-08-08起於本機實測確認)：opencode與api-openai-compat支援逐次注入金鑰，
+ * 故可多把金鑰輪替；claude/codex/antigravity沿用CLI既有登入狀態，無逐次金鑰概念。
  * 故「輪替」的單位是「供應商條目」而非單純的金鑰：一個條目即一組(kind, model, 可選的key／provider)，
- * 輪到誰就用誰的CLI與模型
+ * 輪到誰就用誰的轉接器與模型
  *
- * @param {String} kind 輸入供應商種類字串，可選'opencode'、'claude'、'codex'
- * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
- * @param {Object} [opt={}] 輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex，預設{}
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @param {String} kind 輸入供應商種類字串，須為adapters.mjs對照表之鍵名，目前可選'opencode'、'claude'、'codex'、'antigravity'、'api-openai-compat'
+ * @param {String} prompt 輸入提示詞字串
+ * @param {Object} [opt={}] 輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat，預設{}
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
  * @example
  * //need claude, codex or opencode cli in system PATH
  *
@@ -30,8 +31,8 @@ import getErrorResult from './getErrorResult.mjs'
  *     // => true '完成'
  *
  *     let re = await dispatchAi('gemini', 'abc')
- *     console.log(re.ok, re.error)
- *     // => false 'unknown ai kind: "gemini" (available: opencode, claude, codex)'
+ *     console.log(re.ok, re.error.indexOf('unknown ai kind: "gemini"') === 0)
+ *     // => false true
  *
  * }
  * await test()

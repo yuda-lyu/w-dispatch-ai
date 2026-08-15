@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
     
 </nav>
 
@@ -53,18 +53,19 @@ import getErrorResult from './getErrorResult.mjs'
 
 
 /**
- * 依供應商種類(kind)分派至對應之CLI轉接器
+ * 依供應商種類(kind)分派至對應之轉接器
  *
- * 三種供應商的差異(2026-08-08於本機實測確認)：
- * opencode支援逐次注入金鑰(OPENCODE_AUTH_CONTENT)，故可多把金鑰輪替；
- * claude與codex則沿用CLI既有登入狀態，無逐次金鑰概念。
+ * kind清單以adapters.mjs對照表為唯一來源(目前為'opencode'、'claude'、'codex'、'antigravity'、
+ * 'api-openai-compat'，CLI或API之選型判準見adapters.mjs檔頭)。
+ * 各家金鑰模式不同(2026-08-08起於本機實測確認)：opencode與api-openai-compat支援逐次注入金鑰，
+ * 故可多把金鑰輪替；claude/codex/antigravity沿用CLI既有登入狀態，無逐次金鑰概念。
  * 故「輪替」的單位是「供應商條目」而非單純的金鑰：一個條目即一組(kind, model, 可選的key／provider)，
- * 輪到誰就用誰的CLI與模型
+ * 輪到誰就用誰的轉接器與模型
  *
- * @param {String} kind 輸入供應商種類字串，可選'opencode'、'claude'、'codex'
- * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
- * @param {Object} [opt={}] 輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex，預設{}
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @param {String} kind 輸入供應商種類字串，須為adapters.mjs對照表之鍵名，目前可選'opencode'、'claude'、'codex'、'antigravity'、'api-openai-compat'
+ * @param {String} prompt 輸入提示詞字串
+ * @param {Object} [opt={}] 輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat，預設{}
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
  * @example
  * //need claude, codex or opencode cli in system PATH
  *
@@ -77,8 +78,8 @@ import getErrorResult from './getErrorResult.mjs'
  *     // => true '完成'
  *
  *     let re = await dispatchAi('gemini', 'abc')
- *     console.log(re.ok, re.error)
- *     // => false 'unknown ai kind: "gemini" (available: opencode, claude, codex)'
+ *     console.log(re.ok, re.error.indexOf('unknown ai kind: "gemini"') === 0)
+ *     // => false true
  *
  * }
  * await test()
@@ -120,7 +121,7 @@ export default dispatchAi
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Aug 14 2026 15:11:06 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Aug 15 2026 08:45:29 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

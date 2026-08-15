@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
     
 </nav>
 
@@ -55,6 +55,7 @@ import ispint from 'wsemi/src/ispint.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import dispatchAi from './dispatchAi.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
@@ -79,9 +80,23 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   (使用端實測: 一次107秒的多階段請求中72秒耗在重複踩同一組429, 啟用冷卻後降至15秒)。
 //   設計與「金鑰停用清單」(已否決)的關鍵差異: 以「條目」為單位、短視窗、且「只降序不移除」
 //   ——冷卻中的條目移到鏈尾而非移除, 前面全敗時照樣會被嘗試, 故不存在把已恢復服務冰住的問題;
-//   任一次成功立即解除。觸發限於限流(HTTP 429, 僅api-openai-compat可靠偵測; CLI類之限流
-//   埋在stderr文字中不納入)與逾時(TIMEOUT開頭, 各kind皆可)兩類——其餘失敗已有換金鑰換家
-//   機制處理, 納入反而誤傷。狀態存於state.cooling, 與cursors同走store持久化。
+//   任一次成功立即解除。內建觸發限於限流(HTTP 429, 僅api-openai-compat可靠偵測; CLI類之
+//   限流埋在stderr文字中, 各家字樣不同且隨版本漂移, 本套件不維護簽章表)與逾時(TIMEOUT開頭,
+//   各kind皆可)兩類——其餘失敗已有換金鑰換家機制處理, 納入反而誤傷。
+//   CLI類限流之偵測採依賴注入: 呼叫端於實測中觀察到穩定字樣時, 以coolDetect(r)=>Boolean
+//   自行判定(收到完整失敗結果含stderr), 命中即視同冷卻觸發——簽章表由觀察到字樣的呼叫端
+//   維護, 漏判僅退回現狀(每階段重探一次), 誤判也只是降尾非移除, 兩邊代價都有上限。
+//   狀態存於state.cooling, 與cursors同走store持久化。
+//
+// 【中止(shouldStop)】呼叫端(如server於客戶端斷線後)可注入shouldStop()=>Boolean,
+//   於「每次嘗試之間」檢查, true即停止遞補回報ABORTED——把「斷線後仍空耗整條鏈」
+//   縮成「至多再耗當前這一家」。檢查點只此一處: 工作流各層經omit轉傳自動獲得,
+//   中止後每個後續呼叫進門即回ABORTED, 整條工作流自然快速收束, 不需逐層實作。
+//   不中止進行中之嘗試(不殺子進程/不斷開請求), 此為已知設計取捨(避免侵入execCli層)。
+//
+// 【meta保留鍵】「剔除自用鍵後原樣轉傳」令條目即調校點, 但呼叫端放進條目/opt的任何
+//   自有欄位都會被靜默轉傳——保留meta一鍵保證永不轉傳, 呼叫端要掛分類/標籤/註記
+//   一律放meta, 與轉傳機制永久絕緣(工作流各層之規格物件同此約定)。
 //
 // 【時間預算】budgetMs限制整輪遞補的總時長, 剩餘預算會壓進每次呼叫的timeoutMs,
 //   防止多家連續卡逾時而撞破外部排程的執行上限。
@@ -116,11 +131,12 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
 //fallback層自用之設定鍵, 其餘鍵作為各attempt之共用預設原樣轉傳
-let FALLBACK_KEYS = ['providers', 'budgetMs', 'minAttemptMs', 'cooldownMs', 'store', 'onEvent']
+//meta為保留鍵: 呼叫端掛自有資訊(分類/標籤/註記)用, 保證永不轉傳(見檔頭【meta保留鍵】)
+let FALLBACK_KEYS = ['providers', 'budgetMs', 'minAttemptMs', 'cooldownMs', 'shouldStop', 'coolDetect', 'store', 'onEvent', 'meta']
 
 
 //providers條目自用之設定鍵, 其餘鍵(含kind)即該條目之opt原樣轉傳對應轉接器
-let ENTRY_KEYS = ['id', 'keys']
+let ENTRY_KEYS = ['id', 'keys', 'meta']
 
 
 //預設值
@@ -130,6 +146,79 @@ let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
 
 //memoryState, 未注入store時之行程內預設狀態(跨呼叫有效, 重啟歸零)
 let memoryState = { cursors: {} }
+
+
+/**
+ * 初始化游標與冷卻狀態(store有效即載入持久化狀態, 否則用行程內記憶體)
+ *
+ * @param {Object} store 輸入狀態持久化物件{get,set}，無效代表用行程內記憶體
+ * @returns {Object} 回傳物件，內含state(狀態物件，保證有cursors與cooling)與saveState(寫回函數，store無效或寫入失敗皆靜默)
+ */
+function initState(store) {
+    let useStore = isobj(store) &amp;&amp; isfun(store.get) &amp;&amp; isfun(store.set)
+    let state = null
+    if (useStore) {
+        try {
+            state = store.get()
+        }
+        catch {}
+    }
+    if (!isobj(state)) {
+        state = useStore ? { cursors: {} } : memoryState
+    }
+    if (!isobj(state.cursors)) {
+        state.cursors = {}
+    }
+    if (!isobj(state.cooling)) {
+        state.cooling = {}
+    }
+    let saveState = () => {
+        if (useStore) {
+            try {
+                store.set(state)
+            }
+            catch {}
+        }
+    }
+    return { state, saveState }
+}
+
+
+/**
+ * 依冷卻狀態重排providers：冷卻中的條目「只降序不移除」——移到鏈尾, 前面全敗時仍會被嘗試,
+ * 故不存在把已恢復服務冰住的問題(此為與「金鑰停用清單」的關鍵差異, 後者已被否決)。
+ * 僅追蹤有明給id之條目(索引式id會因重排而錯位); 過期紀錄順手清除並寫回
+ *
+ * @param {Array} providers 輸入供應商條目陣列
+ * @param {Object} state 輸入狀態物件(取其cooling)
+ * @param {Number} cooldownMs 輸入冷卻視窗毫秒正整數
+ * @param {Function} saveState 輸入狀態寫回函數
+ * @returns {Array} 回傳重排後之條目陣列(active在前, 冷卻中殿後, 各自保持原相對順序)
+ */
+function reorderByCooling(providers, state, cooldownMs, saveState) {
+    let now = Date.now()
+    let act = []
+    let cool = []
+    let dirty = false
+    for (let p of providers) {
+        let pid = get(p, 'id', null)
+        let ts = isestr(pid) ? get(state.cooling, pid, null) : null
+        if (ispint(ts) &amp;&amp; (now - ts) &lt; cooldownMs) {
+            cool.push(p)
+        }
+        else {
+            if (isestr(pid) &amp;&amp; state.cooling[pid] !== undefined) {
+                delete state.cooling[pid] //冷卻已過期, 清除
+                dirty = true
+            }
+            act.push(p)
+        }
+    }
+    if (dirty) {
+        saveState()
+    }
+    return [...act, ...cool]
+}
 
 
 /**
@@ -193,15 +282,19 @@ function isKeyIndependentFail(r) {
  * @param {Array} opt.providers 輸入供應商條目物件陣列，順序即優先序。各條目除下列鍵外，其餘鍵(kind、model、exe、provider、config、sandbox、timeoutMs等)即該條目之opt原樣透傳對應轉接器
  * @param {String} [opt.providers[].id=條目索引字串] 輸入群組識別字串，游標以此為鍵、亦為日誌標籤，本套件不解讀其內容。須區分到「模型」而非只到「廠商」(如'claude:sonnet'而非'claude')，同一模型經不同路徑取得時須帶上路徑(如'poolside:laguna-s-2.1'與'or:poolside/laguna-s-2.1:free')，且務必唯一。省略時回退為陣列索引字串——索引是位置不是身分，日後插入條目會令後續條目繼承他人游標進度，故正式設定一律明給。詳見本檔檔頭之id設計規則
  * @param {Array} [opt.providers[].keys=[]] 輸入同一服務之多把API key字串陣列，逐次注入輪替(kind為opencode時須同時於條目給予provider)，省略代表沿用CLI既有登入狀態之單一虛擬金鑰
+ * @param {*} [opt.providers[].meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳對應轉接器——條目其餘鍵一律原樣轉傳，自有欄位放此鍵可與轉傳機制永久絕緣，預設undefined
  * @param {Number} [opt.budgetMs=null] 輸入整輪遞補之時間上限毫秒正整數，剩餘預算會壓進每次呼叫之timeoutMs，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入單次嘗試之最低剩餘預算毫秒正整數，剩餘低於此值即停止嘗試回報budget exhausted，預設20000
  * @param {Object} [opt.store=null] 輸入狀態持久化物件{get:()=>state,set:(state)=>{}}，state內含cursors(逐群組游標)與cooling(供應商冷卻時間戳，僅cooldownMs>0時使用)，省略代表用行程內記憶體(跨呼叫有效，重啟歸零)。假定單行程序列調用，並行請自行加鎖
- * @param {Number} [opt.cooldownMs=0] 輸入供應商冷卻視窗毫秒非負整數，>0啟用：條目(限有明給id者)遭遇限流(HTTP 429，僅api類可偵測)或逾時(TIMEOUT開頭)後，於冷卻視窗內之後續呼叫中被移至鏈尾——只降序不移除，前面全敗時仍會被嘗試，任一次成功立即解除；注意啟用時「providers順序即優先序」會被暫時重排，此即本機制之目的；預設0代表不啟用
- * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'；失敗事件(next-key/skip-group)另帶stdout(被拒回覆)與stderr(錯誤輸出)供診斷，兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null
+ * @param {Number} [opt.cooldownMs=0] 輸入供應商冷卻視窗毫秒非負整數，>0啟用：條目(限有明給id者)遭遇限流(HTTP 429，僅api類可偵測；CLI類可經coolDetect注入判定)或逾時(TIMEOUT開頭)後，於冷卻視窗內之後續呼叫中被移至鏈尾——只降序不移除，前面全敗時仍會被嘗試，任一次成功立即解除；注意啟用時「providers順序即優先序」會被暫時重排，此即本機制之目的；預設0代表不啟用
+ * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429/TIMEOUT觸發不受影響)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=>/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs>0時有效，回調拋出例外視同false，預設null
+ * @param {Function} [opt.shouldStop=null] 輸入中止判定函數()=>Boolean，於每次嘗試之間檢查，回傳true即停止遞補回報ABORTED(不中止進行中之嘗試)——供呼叫端於成果已無人接收時(如客戶端斷線)止損；經工作流層原樣轉傳，中止後各後續呼叫進門即回ABORTED令整條工作流快速收束；回調拋出例外視同false，預設null
+ * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊，保留鍵保證永不轉傳各轉接器，預設undefined
+ * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則，條目可覆寫，預設undefined
  * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含stdout與stderr供診斷被拒原因)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；本函數不會reject
  * @example
  * //need opencode, claude, codex cli in system PATH
  *
@@ -258,87 +351,44 @@ async function dispatchAiFallback(prompt, opt = {}) {
     }
 
     //budgetMs, 無效視為不限
-    let budgetMs = get(opt, 'budgetMs', null)
-    if (!ispint(budgetMs)) {
-        budgetMs = null
-    }
-    else {
-        budgetMs = cint(budgetMs)
-    }
+    let budgetMs = castPintOr(get(opt, 'budgetMs', null), null)
     let deadline = (budgetMs === null) ? null : Date.now() + budgetMs
 
     //minAttemptMs, 無效回退預設20000
-    let minAttemptMs = get(opt, 'minAttemptMs', null)
-    if (!ispint(minAttemptMs)) {
-        minAttemptMs = DEFAULT_MIN_ATTEMPT_MS
-    }
-    else {
-        minAttemptMs = cint(minAttemptMs)
-    }
+    let minAttemptMs = castPintOr(get(opt, 'minAttemptMs', null), DEFAULT_MIN_ATTEMPT_MS)
 
-    //store, 須同時具get與set函數才視為有效, 否則用行程內記憶體
-    let store = get(opt, 'store', null)
-    let useStore = isobj(store) &amp;&amp; isfun(store.get) &amp;&amp; isfun(store.set)
-    let state = null
-    if (useStore) {
-        try {
-            state = store.get()
-        }
-        catch {}
-    }
-    if (!isobj(state)) {
-        state = useStore ? { cursors: {} } : memoryState
-    }
-    if (!isobj(state.cursors)) {
-        state.cursors = {}
-    }
-    if (!isobj(state.cooling)) {
-        state.cooling = {}
-    }
-    let saveState = () => {
-        if (useStore) {
-            try {
-                store.set(state)
-            }
-            catch {}
-        }
-    }
+    //state與saveState, store須同時具get與set函數才視為有效, 否則用行程內記憶體
+    let { state, saveState } = initState(get(opt, 'store', null))
 
     //cooldownMs, 無效視為0＝不啟用(現行行為零改變)
-    let cooldownMs = get(opt, 'cooldownMs', null)
-    if (!ispint(cooldownMs)) {
-        cooldownMs = 0
-    }
-    else {
-        cooldownMs = cint(cooldownMs)
+    let cooldownMs = castPintOr(get(opt, 'cooldownMs', null), 0)
+
+    //coolDetect, 冷卻觸發之注入判定(CLI類限流簽章由呼叫端維護, 見檔頭), 僅cooldownMs>0時有意義
+    let coolDetect = get(opt, 'coolDetect', null)
+    if (!isfun(coolDetect)) {
+        coolDetect = null
     }
 
-    //供應商冷卻: 冷卻中的條目「只降序不移除」——移到鏈尾, 前面全敗時仍會被嘗試,
-    //故不存在把已恢復服務冰住的問題(此為與「金鑰停用清單」的關鍵差異, 後者已被否決)。
-    //僅追蹤有明給id之條目(索引式id會因重排而錯位); 過期項順手清除
+    //shouldStop, 中止判定, 於每次嘗試之間檢查; 回調拋出例外視同false(不中止), 不得中斷主流程
+    let shouldStop = get(opt, 'shouldStop', null)
+    if (!isfun(shouldStop)) {
+        shouldStop = null
+    }
+    let stopRequested = () => {
+        if (shouldStop === null) {
+            return false
+        }
+        try {
+            return shouldStop() === true
+        }
+        catch {
+            return false
+        }
+    }
+
+    //供應商冷卻: 冷卻中的條目降至鏈尾(細節見reorderByCooling)
     if (cooldownMs > 0) {
-        let now = Date.now()
-        let act = []
-        let cool = []
-        let dirty = false
-        for (let p of providers) {
-            let pid = get(p, 'id', null)
-            let ts = isestr(pid) ? get(state.cooling, pid, null) : null
-            if (ispint(ts) &amp;&amp; (now - ts) &lt; cooldownMs) {
-                cool.push(p)
-            }
-            else {
-                if (isestr(pid) &amp;&amp; state.cooling[pid] !== undefined) {
-                    delete state.cooling[pid] //冷卻已過期, 清除
-                    dirty = true
-                }
-                act.push(p)
-            }
-        }
-        providers = [...act, ...cool]
-        if (dirty) {
-            saveState()
-        }
+        providers = reorderByCooling(providers, state, cooldownMs, saveState)
     }
 
     //onEvent, 回調拋出例外不得中斷主流程
@@ -394,6 +444,13 @@ async function dispatchAiFallback(prompt, opt = {}) {
         let skipGroup = false
         for (let a = 0; a &lt; nAttempts &amp;&amp; !skipGroup; a++) {
 
+            //中止檢查(嘗試邊界): 成果已無人接收時止損, 不中止進行中之嘗試(見檔頭【中止】)
+            if (stopRequested()) {
+                emit({ type: 'aborted', providerId: id, keyIndex: null, keyId: id })
+                tried.push({ providerId: id, keyIndex: null, keyId: id, outcome: 'aborted' })
+                return { ...getErrorResult('ABORTED', 'aborted'), tried }
+            }
+
             //keyIndex, 無keys時為null
             let keyIndex = (nk > 0) ? (cursor + a) % nk : null
             let keyId = (keyIndex === null) ? id : `${id}#${keyIndex}`
@@ -405,13 +462,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
             }
 
             //有效timeout, 有預算時以剩餘預算封頂
-            let effTimeout = get(attemptOpt, 'timeoutMs', null)
-            if (!ispint(effTimeout)) {
-                effTimeout = DEFAULT_TIMEOUT_MS
-            }
-            else {
-                effTimeout = cint(effTimeout)
-            }
+            let effTimeout = castPintOr(get(attemptOpt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
             if (deadline !== null) {
                 let remaining = deadline - Date.now()
 
@@ -419,7 +470,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
                 if (remaining &lt; minAttemptMs) {
                     emit({ type: 'budget-out', providerId: id, keyIndex, keyId, remainingMs: remaining })
                     tried.push({ providerId: id, keyIndex, keyId, outcome: 'budget-out' })
-                    return { ...getErrorResult('budget exhausted'), tried }
+                    return { ...getErrorResult('budget exhausted', 'budget'), tried }
                 }
                 effTimeout = Math.min(effTimeout, remaining)
             }
@@ -440,20 +491,28 @@ async function dispatchAiFallback(prompt, opt = {}) {
                     saveState()
                 }
                 emit({ type: 'ok', providerId: id, keyIndex, keyId, durationMs: r.durationMs })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'ok', durationMs: r.durationMs })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'ok', durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}) })
                 return { ...r, providerId: id, keyIndex, kind, model, tried }
             }
 
             //失敗分流
             lastResult = r
             lastMeta = { providerId: id, keyIndex, kind, model }
-            //冷卻觸發: 限流(HTTP 429, 僅api類可偵測)與逾時(TIMEOUT開頭, CLI與api皆可)兩類——
-            //其餘失敗(金鑰無效/服務端錯誤)已有換金鑰換家機制處理, 納入冷卻反而誤傷
+            //冷卻觸發: 內建為限流(HTTP 429, 僅api類可偵測)與逾時(TIMEOUT開頭, CLI與api皆可)——
+            //其餘失敗(金鑰無效/服務端錯誤)已有換金鑰換家機制處理, 納入冷卻反而誤傷;
+            //CLI類限流簽章經coolDetect注入判定(呼叫端維護, 見檔頭), 拋出例外視同false
             if (cooldownMs > 0 &amp;&amp; idExplicit) {
                 let isCoolTrigger = (r.code === 429) || (isestr(r.error) &amp;&amp; r.error.indexOf('TIMEOUT') === 0)
+                if (!isCoolTrigger &amp;&amp; coolDetect !== null) {
+                    try {
+                        isCoolTrigger = coolDetect(r) === true
+                    }
+                    catch {}
+                }
                 if (isCoolTrigger) {
                     state.cooling[id] = Date.now()
                     saveState()
+                    emit({ type: 'cooled', providerId: id, keyIndex, keyId, error: r.error, cooldownMs })
                 }
             }
 
@@ -462,22 +521,22 @@ async function dispatchAiFallback(prompt, opt = {}) {
             if (isKeyIndependentFail(r)) {
 
                 //與金鑰無關, 整組跳過
-                emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, stdout: r.stdout, stderr: r.stderr })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs })
+                emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}) })
                 skipGroup = true
             }
             else {
 
                 //其餘(含額度上限/金鑰無效/未分類), 換組內下一把, 不記憶不停用
-                emit({ type: 'next-key', providerId: id, keyIndex, keyId, error: r.error, stdout: r.stdout, stderr: r.stderr })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs })
+                emit({ type: 'next-key', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}) })
             }
 
         }
     }
 
-    //全數失敗, 回傳最後一筆失敗結果與完整歷程
-    let r = lastResult || getErrorResult('all providers failed')
+    //全數失敗, 回傳最後一筆失敗結果(含其errorType)與完整歷程
+    let r = lastResult || getErrorResult('all providers failed', 'exec')
     return { ...r, ...(lastMeta || {}), tried }
 }
 
@@ -497,7 +556,7 @@ export default dispatchAiFallback
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Aug 14 2026 15:11:06 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Aug 15 2026 08:45:29 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

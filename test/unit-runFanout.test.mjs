@@ -202,6 +202,20 @@ describe('runFanout', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('meta為保留鍵: 名額與integrate規格掛meta不影響呼叫行為', async function() {
+        let t = await runFanout({
+            providers,
+            task: 'abc',
+            agents: [{ use: 'p-a', meta: { stage: 'draft' } }],
+            integrate: { use: 'p-int', meta: { stage: 'final' } },
+            callOpt,
+        })
+        //單稿放行, 假CLI收到之args與未掛meta時完全一致(meta未被轉傳成未知旗標)
+        let r = [t.ok, t.integrated, t.result.args]
+        let rr = [true, false, ['-p', '--dangerously-skip-permissions', '--model', 'sonnet']]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('defaultIntegratePrompt嵌入候選數與schema', function() {
         let s = defaultIntegratePrompt([{ a: 1 }, { b: 2 }], { schema: '{"x":"..."}' })
         let r = [s.includes('2 個獨立執行'), s.includes('{"x":"..."}'), s.includes('【候選 2】')]

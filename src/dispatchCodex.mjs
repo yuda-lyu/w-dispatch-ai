@@ -1,11 +1,11 @@
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import { attachErrorType } from './getErrorType.mjs'
+import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
@@ -109,23 +109,18 @@ async function dispatchCodex(prompt, opt = {}) {
     )
 
     //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
-    let timeoutMs = get(opt, 'timeoutMs', null)
-    if (!ispint(timeoutMs)) {
-        timeoutMs = dfTimeoutMs
-    }
-    else {
-        timeoutMs = cint(timeoutMs)
-    }
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs)
 
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
 
-    //execCli, prompt一律走stdin
-    return execCli(exe, args, {
+    //execCli, prompt一律走stdin; 失敗結果補上機器可讀之errorType(僅機械可判者, 見getErrorType.mjs)
+    let r = await execCli(exe, args, {
         ...optCli,
         input: prompt,
         timeoutMs,
     })
+    return attachErrorType(r)
 }
 
 

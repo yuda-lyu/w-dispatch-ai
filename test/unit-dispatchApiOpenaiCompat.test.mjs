@@ -289,4 +289,43 @@ describe('dispatchApiOpenaiCompat', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('usage原樣透傳: 成功帶回應之token用量, 網路層與HTTP錯誤為null', async function() {
+        let t1 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo' })
+        let t2 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'err-500' })
+        let r = [t1.ok, t1.usage, t2.ok, t2.usage]
+        let rr = [true, { prompt_tokens: 3, completion_tokens: 7, total_tokens: 10 }, false, null]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('usage經遞補層與工作流層流出於結果與tried, CLI路徑無此欄', async function() {
+        let tf = await dispatchAiFallback('abc', {
+            providers: [{ id: 'us-api', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-good-us'] }],
+        })
+        let wkf = dispatchAiWkf({
+            providers: {
+                'us-w-api': { kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-good-us2'] },
+            },
+            defaults: { promptPrefix: '' },
+        })
+        let tw = await wkf.callAi('abc', { spec: { use: 'us-w-api' } })
+        let r = [
+            tf.usage.total_tokens,
+            tf.tried[0].usage.total_tokens, //tried歷程各項一併帶上, 供加總實際耗用
+            tw.usage.total_tokens,
+        ]
+        let rr = [10, 10, 10]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('errorType機器可讀分類: http/tool-unsupported/validation/timeout, 成功無此欄', async function() {
+        let t1 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'err-500' })
+        let t2 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'tool-calls' })
+        let t3 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo', validate: 'min:100000' })
+        let t4 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'slow', timeoutMs: 500 })
+        let t5 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo' })
+        let r = [t1.errorType, t2.errorType, t3.errorType, t4.errorType, t5.errorType]
+        let rr = ['http', 'tool-unsupported', 'validation', 'timeout', undefined]
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

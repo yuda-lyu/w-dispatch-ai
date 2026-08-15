@@ -539,4 +539,141 @@ describe('dispatchAiFallback', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('shouldStop於嘗試邊界檢查, true即停止遞補回報ABORTED', async function() {
+        //首次嘗試邊界放行(n=0), 第二次嘗試邊界(st-a已敗轉st-b前)即中止——
+        //「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」
+        let n = 0
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'st-a', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-exit=1'] },
+                { id: 'st-b', kind: 'claude', exe: fake.exe },
+            ],
+            shouldStop: () => n++ >= 1,
+        })
+        let r = [t.ok, t.error, t.tried.map((x) => [x.providerId, x.outcome])]
+        let rr = [false, 'ABORTED', [['st-a', 'next-key'], ['st-b', 'aborted']]]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('shouldStop一開始即true時完全不嘗試; 回調拋出例外視同false不中止', async function() {
+        let t1 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'st2-a', kind: 'claude', exe: fake.exe }],
+            shouldStop: () => true,
+        })
+        let t2 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'st2-a', kind: 'claude', exe: fake.exe }],
+            shouldStop: () => {
+                throw new Error('callback error should not break the loop')
+            },
+        })
+        let r = [[t1.ok, t1.error, t1.tried.map((x) => x.outcome)], [t2.ok, t2.error]]
+        let rr = [[false, 'ABORTED', ['aborted']], [true, '']]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('coolDetect注入CLI限流簽章判定, 命中即觸發冷卻次輪降尾', async function() {
+        let stored = { cursors: {}, cooling: {} }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        //CLI限流埋在stderr(如Zen之FreeUsageLimitError), 內建429/TIMEOUT觸發不到,
+        //簽章由呼叫端以coolDetect注入判定
+        let pLimited = { id: 'cdx-a', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-exit=1', '--fake-stderr=FreeUsageLimitError: quota exceeded'] }
+        let pOk = { id: 'cdx-b', kind: 'claude', exe: fake.exe }
+        let coolDetect = (r) => /FreeUsageLimitError/i.test(r.stderr || '')
+        let r1 = await dispatchAiFallback('abc', { providers: [pLimited, pOk], store, cooldownMs: 300000, coolDetect })
+        let r2 = await dispatchAiFallback('abc', { providers: [pLimited, pOk], store, cooldownMs: 300000, coolDetect })
+        let r = [
+            r1.providerId,
+            typeof stored.cooling['cdx-a'],
+            r2.providerId,
+            r2.tried.map((x) => x.providerId), //次輪cdx-a降尾, 完全未被嘗試
+        ]
+        let rr = ['cdx-b', 'number', 'cdx-b', ['cdx-b']]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('coolDetect拋出例外視同false不觸發冷卻; meta為保留鍵不影響呼叫行為', async function() {
+        let stored = { cursors: {}, cooling: {} }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let t1 = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'cde-a', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-exit=1'] },
+                { id: 'cde-b', kind: 'claude', exe: fake.exe },
+            ],
+            store,
+            cooldownMs: 300000,
+            coolDetect: () => {
+                throw new Error('callback error should not break the loop')
+            },
+        })
+        //條目與opt掛meta(保留鍵)不轉傳: 假CLI收到之args與stdin與未掛時完全一致
+        let t2 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'mt-a', kind: 'claude', exe: fake.exe, model: 'sonnet', meta: { tag: 'draft' } }],
+            meta: { batch: 1 },
+        })
+        let o = JSON.parse(t2.stdout)
+        let r = [t1.ok, stored.cooling['cde-a'], t2.ok, o.args, o.stdin]
+        let rr = [true, undefined, true, ['-p', '--dangerously-skip-permissions', '--model', 'sonnet'], 'abc']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('cooled事件於冷卻觸發時發出, tried與失敗事件帶機器可讀errorType', async function() {
+        let evs = []
+        let stored = { cursors: {}, cooling: {} }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'ev-hang', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-sleep=9000'], timeoutMs: 500 }, //逾時 → 冷卻觸發
+                { id: 'ev-ok', kind: 'claude', exe: fake.exe },
+            ],
+            store,
+            cooldownMs: 300000,
+            onEvent: (ev) => evs.push(ev),
+        })
+        let evCooled = evs.find((x) => x.type === 'cooled')
+        let evSkip = evs.find((x) => x.type === 'skip-group')
+        let r = [
+            t.ok,
+            evCooled.providerId,
+            evCooled.cooldownMs,
+            evCooled.error.indexOf('TIMEOUT') === 0,
+            evSkip.errorType, //失敗事件帶機器可讀分類
+            t.tried[0].errorType, //tried歷程各項一併帶上
+        ]
+        let rr = [true, 'ev-hang', 300000, true, 'timeout', 'timeout']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('最終失敗結果帶errorType: 一般執行失敗exec, 中止aborted, 預算用盡budget', async function() {
+        let t1 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'et-a', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-exit=1'] }],
+        })
+        let t2 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'et-b', kind: 'claude', exe: fake.exe }],
+            shouldStop: () => true,
+        })
+        let t3 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'et-c', kind: 'claude', exe: fake.exe }],
+            budgetMs: 60000,
+            minAttemptMs: 600000,
+        })
+        let r = [[t1.ok, t1.errorType], [t2.ok, t2.errorType], [t3.ok, t3.errorType]]
+        let rr = [[false, 'exec'], [false, 'aborted'], [false, 'budget']]
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

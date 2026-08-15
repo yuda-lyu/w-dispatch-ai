@@ -272,17 +272,41 @@ await test()
 
 結果結構對齊execCli：`stdout`為回覆內容、`code`為HTTP狀態碼（網路錯誤/逾時為`null`）、逾時`error`以`TIMEOUT`開頭、驗證失敗為`OUTPUT_VALIDATION_FAILED`——故可直接作為`dispatchAiFallback`條目（`kind: 'api-openai-compat'`，`keys`多金鑰輪替同樣適用）與工作流provider。
 
+另追加`usage`欄位：原始回應之token用量物件**原樣透傳**（無則`null`；驗證失敗等已耗token之失敗亦帶出），經`dispatchAiFallback`（最終結果與`tried`歷程各項）與工作流層（`callAi`結果之`usage`欄）一路流出。CLI類轉接器無可靠來源故**無此欄**——對外提供OpenAI相容API的呼叫端可據此把「真實用量（REST路徑）」與「只能估算（CLI路徑）」分開處理。
+
+**`errorType`機器可讀錯誤類別**（全部轉接器與`dispatchAiFallback`／`callAi`之失敗結果皆帶，成功結果無此欄；`error`字串保留不動，兩者並存）：
+
+| errorType | 意義 | 出現於 |
+| --- | --- | --- |
+| `params` | 參數/設定檢核失敗（進入執行前即被擋） | 全部 |
+| `timeout` | 逾時（execCli強殺或API abort） | 全部 |
+| `spawn` | 子進程無法啟動（ENOENT／ENAMETOOLONG） | CLI類 |
+| `validation` | stdout未過`validate` | 全部 |
+| `exec` | CLI非零離開碼之一般執行失敗（未能再機械細分） | CLI類 |
+| `http` | HTTP非2xx（`code`為狀態碼） | api類 |
+| `fetch` | 網路層錯誤（DNS／連線拒絕） | api類 |
+| `tool-unsupported` | 模型回tool_calls而api類不支援工具 | api類 |
+| `invalid-response` | 回應缺`choices[0].message.content` | api類 |
+| `aborted` | `shouldStop`中止 | fallback層 |
+| `budget` | 時間預算用盡 | fallback層 |
+
+僅涵蓋**機械可判**者：CLI類之其餘失敗（額度上限／金鑰無效／服務端錯誤，各家字樣不同且隨版本漂移）一律歸`exec`，套件不維護簽章表（與否決金鑰停用清單同一理由）——需細分時以`coolDetect`式注入自判，或依`tried`內之`error`與`stderr`自行決策。
+
 #### Options for dispatchAiFallback:
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `providers` | Array | 必填 | 供應商條目陣列，**順序即優先序**。條目除`id`、`keys`外即該次調用之opt，原樣透傳對應轉接器（`kind`、`model`、`exe`、`provider`、`config`、`sandbox`、`timeoutMs`等皆放條目內） |
 | `providers[].id` | String | 條目索引 | 群組識別，游標以此為鍵、亦為日誌標籤；本套件不解讀其內容，命名規則見下方 |
 | `providers[].keys` | Array | `[]` | 同一服務之多把API key，逐次注入輪替（`kind`為`opencode`時須同時給`provider`）；省略代表沿用CLI登入狀態 |
+| `providers[].meta` | any | 無 | **保留鍵，保證永不轉傳**轉接器。條目其餘鍵一律原樣轉傳——呼叫端要在條目上掛自有資訊（分類、標籤、註記）一律放`meta`，與轉傳機制永久絕緣（頂層opt與工作流各層規格物件同此約定） |
 | `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs` |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
 | `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用）；假定單行程序列調用 |
 | `cooldownMs` | Integer | `0`不啟用 | 供應商冷卻視窗：條目（限有明給id者）遭遇**限流(HTTP 429，僅api類可偵測)或逾時(TIMEOUT)**後，於視窗內之後續呼叫中被**移至鏈尾（只降序不移除）**——前面全敗時仍會被嘗試、任一次成功立即解除，故不存在把已恢復服務冰住的問題。多階段工作流可大幅省去逐階段重踩已失效供應商的成本（使用端實測107s→15s）。注意啟用時providers順序會被暫時重排，此即機制目的 |
-| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`；失敗事件另帶`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外不影響主流程 |
+| `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流埋在stderr且各家字樣不同、隨版本漂移，**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調拋出例外視同`false` |
+| `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調拋出例外視同`false` |
+| `meta` | any | 無 | 保留鍵，同`providers[].meta`，永不轉傳 |
+| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外不影響主流程 |
 
 頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
 
@@ -472,6 +496,8 @@ let wkf = wdi.dispatchAiWkf({ providers: picked.table, defaults: { timeoutMs: 12
 - `package.json`**刻意不設**`exports`欄位：wsemi與w-*系列皆為自有套件，呼叫端以按需深層引入(`w-dispatch-ai/src/xxx.mjs`)為既定路線；增設exports會封死此路徑，勿加。
 - `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。
 - `dispatchAiFallback`為單向單輪：全數群組試畢即回傳最後一筆失敗結果與`tried`歷程，不回頭重試已敗的組。跨次執行僅記憶游標，不設金鑰停用清單（理由見上方失敗分流說明）；需跨次跳過特定金鑰時，由呼叫端依`tried`／`onEvent`內之`error`與`stderr`自行決策。
+- `shouldStop`**只在嘗試邊界檢查，不中止進行中之嘗試**（不殺子進程、不斷開HTTP請求）：進行中嘗試之強制中止需侵入execCli層與各轉接器，屬已知設計取捨——最小版已把斷線後的損失從「整條鏈」縮成「至多再耗當前這一家」；如有實測場景證明不足再議完整版。
+- CLI類限流簽章**不進套件**：各家stderr字樣不同且隨CLI版本漂移，套件維護簽章表等同養一個自己驗證不了的分類器（與否決金鑰停用清單同一理由）。偵測經`coolDetect`依賴注入，由觀察到字樣的呼叫端維護。
 - `dispatchOpencode`之`key`與`provider`須同時給予才會注入金鑰；只給其一（或範例中`.env`缺鍵導致`key`為`undefined`）時不會報錯，而是靜默沿用CLI既有登入狀態。
 - 範例中之`process.loadEnvFile`需Node.js >= 20.12，僅範例使用，套件本身無此限制。
 - `config`以`OPENCODE_CONFIG_CONTENT`注入後，與使用者既有`opencode.jsonc`為覆蓋或合併關係未經實測確認；建議`config`內含該次調用所需之完整provider定義，不依賴與既有設定檔之合併行為。

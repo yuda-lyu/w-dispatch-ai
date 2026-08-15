@@ -69,7 +69,10 @@ async function fakeServerForApiTest() {
             let model = body.model || ''
             let ok = (content) => {
                 res.writeHead(200, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] }))
+                res.end(JSON.stringify({
+                    choices: [{ message: { role: 'assistant', content } }],
+                    usage: { prompt_tokens: 3, completion_tokens: 7, total_tokens: 10 }, //供斷言usage原樣透傳
+                }))
             }
 
             if (model === 'echo') {

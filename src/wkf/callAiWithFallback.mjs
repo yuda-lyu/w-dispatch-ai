@@ -38,8 +38,9 @@ import extractJsonLoose from './extractJsonLoose.mjs'
 //本層自用之設定鍵, 其餘鍵(timeoutMs/budgetMs/minAttemptMs/maxRetries/cwd/store/onEvent/
 //retryDelayMs/maxBuffer等)一律原樣轉傳dispatchAiFallback——與各轉接器「剔除自用鍵後
 //原樣轉傳」同一約定; 曾因白名單式轉送漏掉minAttemptMs, 令README教學之工作流層
-//budget保護靜默失效(2026-08-14使用端實測回報), 故改採omit式轉傳杜絕同類漏鍵
-let OWN_KEYS = ['providers', 'spec', 'check', 'parse', 'rawText', 'promptPrefix']
+//budget保護靜默失效(2026-08-14使用端實測回報), 故改採omit式轉傳杜絕同類漏鍵;
+//meta為保留鍵: 呼叫端自有資訊掛此鍵保證永不轉傳(全套件同約定, 見dispatchAiFallback檔頭)
+let OWN_KEYS = ['providers', 'spec', 'check', 'parse', 'rawText', 'promptPrefix', 'meta']
 
 
 //預設防寫檔前綴(禁副作用, 但豁免唯讀查閱——codex以shell讀檔, 一律禁指令等同禁讀檔)
@@ -111,8 +112,9 @@ function buildChain(providers, spec) {
  * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試)
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
  * @param {Object} [opt.store=null] 輸入游標持久化物件{get,set}，預設null代表用行程內記憶體
- * @param {Function} [opt.onEvent=null] 輸入遞補層事件回調函數，預設null。除上列外之其餘鍵(retryDelayMs、maxBuffer、onStdout等)亦一律原樣轉傳dispatchAiFallback
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、error(錯誤訊息字串)，本函數不會reject
+ * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳下層，預設undefined
+ * @param {Function} [opt.onEvent=null] 輸入遞補層事件回調函數，預設null。除上列外之其餘鍵(retryDelayMs、maxBuffer、shouldStop、coolDetect、cooldownMs等)亦一律原樣轉傳dispatchAiFallback
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、usage(api類之token用量原樣透傳，CLI類為null)、error(錯誤訊息字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)，本函數不會reject
  * @example
  * //need cli in system PATH
  *
@@ -145,22 +147,22 @@ async function callAiWithFallback(prompt, opt = {}) {
     let t0 = Date.now()
 
     if (!isestr(prompt)) {
-        return { ok: false, json: null, error: 'prompt must be a non-empty string', ms: 0, tried: [] }
+        return { ok: false, json: null, error: 'prompt must be a non-empty string', errorType: 'params', ms: 0, tried: [] }
     }
 
     let providers = get(opt, 'providers', null)
     let spec = get(opt, 'spec', null)
     if (!isobj(providers) || !isobj(spec)) {
-        return { ok: false, json: null, error: `no valid provider for spec: ${JSON.stringify(spec)}`, ms: 0, tried: [] }
+        return { ok: false, json: null, error: `no valid provider for spec: ${JSON.stringify(spec)}`, errorType: 'params', ms: 0, tried: [] }
     }
 
     //buildChain, 名稱查無定義即回報(fail fast), 不讓打錯字的fallback靜默消失
     let { chain, missing } = buildChain(providers, spec)
     if (missing.length > 0) {
-        return { ok: false, json: null, error: `unknown provider name(s): ${missing.join(', ')}`, ms: 0, tried: [] }
+        return { ok: false, json: null, error: `unknown provider name(s): ${missing.join(', ')}`, errorType: 'params', ms: 0, tried: [] }
     }
     if (chain.length === 0) {
-        return { ok: false, json: null, error: `no valid provider for spec: ${JSON.stringify(spec)}`, ms: 0, tried: [] }
+        return { ok: false, json: null, error: `no valid provider for spec: ${JSON.stringify(spec)}`, errorType: 'params', ms: 0, tried: [] }
     }
 
     let rawText = get(opt, 'rawText', false) === true
@@ -217,7 +219,9 @@ async function callAiWithFallback(prompt, opt = {}) {
         keyId: (keyIndex === null) ? providerId : `${providerId}#${keyIndex}`,
         ms: Date.now() - t0,
         tried: get(r, 'tried', []),
+        usage: get(r, 'usage', null), //api類轉接器之token用量原樣透傳, CLI類為null(無可靠來源)
         error: r.ok ? '' : get(r, 'error', 'unknown error'),
+        ...(r.ok ? {} : { errorType: get(r, 'errorType', 'exec') }), //機器可讀錯誤類別, 僅失敗時
     }
 }
 

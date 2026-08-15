@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
     
 </nav>
 
@@ -97,8 +97,8 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Object} opt.providers 輸入provider定義表物件(名稱 → 條目)，透傳callAiWithFallback
  * @param {String} opt.task 輸入前段各名額共用之任務提示詞字串
- * @param {Array} opt.agents 輸入前段名額規格陣列，各元素{ use, fallback, check?, maxRetries?, timeoutMs? }等(check可覆寫頂層檢核；除use/fallback/check外之鍵覆寫該名額呼叫設定)
- * @param {Object} opt.integrate 輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=>String自訂整合提示詞(省略用預設模板)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check
+ * @param {Array} opt.agents 輸入前段名額規格陣列，各元素{ use, fallback, check?, maxRetries?, timeoutMs? }等(check可覆寫頂層檢核；除use/fallback/check/meta外之鍵覆寫該名額呼叫設定；meta為保留鍵，呼叫端自有資訊掛此鍵保證永不轉傳下層)
+ * @param {Object} opt.integrate 輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=>String自訂整合提示詞(省略用預設模板)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check；meta為保留鍵同agents
  * @param {Function} [opt.check=null] 輸入檢核函數(json)=>Boolean，作為候選與終稿之共用預設，名額規格與integrate可各自帶check覆寫，預設null
  * @param {String} [opt.schema=''] 輸入輸出格式示意字串，供預設整合模板嵌入，預設''
  * @param {Number} [opt.minCandidates=2] 輸入進入整合所需之最少成功候選數正整數，未達門檻以首位候選為成果，預設2
@@ -162,9 +162,9 @@ async function runFanout(opt = {}) {
 
     //前段: 並行多開, 個別失敗不炸整輪
     //各名額可自帶check覆寫頂層(候選與終稿判準本可不同); 自spec抽出而非留在overrides,
-    //否則會被後方明給之check靜默覆蓋(曾為死鍵)
+    //否則會被後方明給之check靜默覆蓋(曾為死鍵); meta為保留鍵一併抽出, 保證永不轉傳
     let rsAgents = await Promise.all(agents.map((spec) => {
-        let { use, fallback, check: checkAgent, ...overrides } = spec
+        let { use, fallback, check: checkAgent, meta, ...overrides } = spec
         return callAiWithFallback(task, { ...callOpt, ...overrides, providers, spec: { use, fallback }, check: isfun(checkAgent) ? checkAgent : check })
     }))
     let candidates = rsAgents.filter((r) => r.ok).map((r) => r.json)
@@ -183,8 +183,8 @@ async function runFanout(opt = {}) {
     if (!integrate || !isestr(get(integrate, 'use', ''))) {
         return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: 'integrate spec (with use) is required' }
     }
-    //整合可帶獨立check(終稿判準常較候選嚴, 如須含固定小標題), 未給則沿用頂層check
-    let { use, fallback, prompt: intPromptFn, check: checkInt, ...intOverrides } = integrate
+    //整合可帶獨立check(終稿判準常較候選嚴, 如須含固定小標題), 未給則沿用頂層check; meta為保留鍵一併抽出
+    let { use, fallback, prompt: intPromptFn, check: checkInt, meta, ...intOverrides } = integrate
     let intPrompt = isfun(intPromptFn) ? intPromptFn(candidates) : defaultIntegratePrompt(candidates, opt)
     let rInt = await callAiWithFallback(intPrompt, { ...callOpt, ...intOverrides, providers, spec: { use, fallback }, check: isfun(checkInt) ? checkInt : check })
 
@@ -217,7 +217,7 @@ export { defaultIntegratePrompt }
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Aug 14 2026 15:11:06 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Aug 15 2026 08:45:29 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

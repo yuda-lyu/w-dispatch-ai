@@ -3,10 +3,10 @@ import isobj from 'wsemi/src/isobj.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import delay from 'wsemi/src/delay.mjs'
+import castPintOr from './castPintOr.mjs'
 import strleft from 'wsemi/src/strleft.mjs'
 import strdelleft from 'wsemi/src/strdelleft.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
@@ -44,7 +44,11 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 // 【重試語意對齊execCli】4xx(429除外)為客戶端錯誤不可重試而立即中止;
 //   429/5xx/網路錯誤/逾時依maxRetries線性退避重試(間隔retryDelayMs*次數, 上限15000ms)。
 //
-// 【結果結構對齊execCli】{ ok, stdout, stderr, code, error, durationMs, attempts },
+// 【結果結構對齊execCli】{ ok, stdout, stderr, code, error, durationMs, attempts, usage },
+//   usage為原始回應之token用量原樣透傳(無則null; 驗證失敗等已耗token之失敗亦帶出),
+//   CLI類轉接器無可靠來源故無此欄——呼叫端可據此把「真實用量」與「只能估算」分開處理。
+//   失敗結果另帶機器可讀之errorType(timeout/fetch/http/tool-unsupported/invalid-response/
+//   validation/params, 一覽見getErrorType.mjs檔頭), error字串保留不動, 兩者並存。
 //   stdout為回覆內容、code為HTTP狀態碼(網路錯誤與逾時為null)、逾時error以TIMEOUT開頭、
 //   驗證失敗error為OUTPUT_VALIDATION_FAILED——故dispatchAiFallback之失敗分流
 //   (TIMEOUT/驗證失敗跳組, 其餘換金鑰)對本轉接器同樣成立, 無須任何修改。
@@ -138,6 +142,19 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
 
     let t0 = Date.now()
 
+    //mkResult, 結果形狀之單一來源(欄位對齊execCli, 追加errorType與usage),
+    //durationMs於呼叫當下計算; 失敗分支各自給errorType, 成功分支不帶(僅失敗結果有此欄)
+    let mkResult = (patch) => ({
+        ok: false,
+        stdout: '',
+        stderr: '',
+        code: null,
+        error: '',
+        durationMs: Date.now() - t0,
+        usage: null,
+        ...patch,
+    })
+
     //AbortController, 逾時中止(含回應本體之串流讀取)
     let controller = new AbortController()
     let timer = setTimeout(() => {
@@ -157,81 +174,65 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
     }
     catch (err) {
         clearTimeout(timer)
-        let durationMs = Date.now() - t0
 
         //逾時, error以TIMEOUT開頭令dispatchAiFallback視為與金鑰無關而跳組
         if (err.name === 'AbortError') {
-            return {
-                ok: false,
-                stdout: '',
-                stderr: '',
-                code: null,
-                error: `TIMEOUT after ${timeoutMs / 1000}s`,
-                durationMs,
-            }
+            return mkResult({ error: `TIMEOUT after ${timeoutMs / 1000}s`, errorType: 'timeout' })
         }
 
         //網路層錯誤(DNS/連線拒絕等)
         let cause = get(err, 'cause.code', '') || err.message
-        return {
-            ok: false,
-            stdout: '',
-            stderr: '',
-            code: null,
-            error: `FETCH_ERROR: ${cause}`,
-            durationMs,
-        }
+        return mkResult({ error: `FETCH_ERROR: ${cause}`, errorType: 'fetch' })
     }
     clearTimeout(timer)
 
-    let durationMs = Date.now() - t0
-
     //HTTP非2xx, 原始回應本體放stderr供除錯與分類
     if (!res.ok) {
-        return {
-            ok: false,
-            stdout: '',
+        return mkResult({
             stderr: strTruncate(txt, 1000, optTruncate),
             code: res.status,
             error: `HTTP ${res.status}`,
-            durationMs,
-        }
+            errorType: 'http',
+        })
     }
 
-    //取出choices[0]
+    //取出choices[0]與usage(token用量, 原樣透傳; 失敗回應亦可能已耗token, 一併帶出)
     let content = null
     let finishReason = ''
     let toolCalls = null
+    let usage = null
     try {
         let j = JSON.parse(txt)
         content = get(j, 'choices.0.message.content', null)
         finishReason = get(j, 'choices.0.finish_reason', '')
         toolCalls = get(j, 'choices.0.message.tool_calls', null)
+        usage = get(j, 'usage', null)
+        if (!isobj(usage)) {
+            usage = null
+        }
     }
     catch {}
 
     //tool_calls, 本轉接器不支援工具迴圈(見檔頭), 明確回報而不假裝成功
     //(Agnes於tool_calls時content為"\n\n"非null, 不攔截會靜默回傳空白內容)
     if (finishReason === 'tool_calls' || (toolCalls !== null && toolCalls !== undefined)) {
-        return {
-            ok: false,
-            stdout: '',
+        return mkResult({
             stderr: strTruncate(txt, 1000, optTruncate),
             code: res.status,
             error: 'TOOL_CALLS_UNSUPPORTED: use a cli kind (opencode/claude/codex/antigravity) when tools are needed',
-            durationMs,
-        }
+            errorType: 'tool-unsupported',
+            usage,
+        })
     }
 
     if (content === null || content === undefined) {
-        return {
-            ok: false,
-            stdout: '',
+        return mkResult({
             stderr: strTruncate(txt, 500, optTruncate),
             code: res.status,
             error: 'INVALID_RESPONSE: missing choices[0].message.content',
-            durationMs,
-        }
+            errorType: 'invalid-response',
+            usage,
+        })
     }
     if (typeof content !== 'string') {
         content = JSON.stringify(content) //少數閘道回array形態
@@ -239,24 +240,21 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
 
     //validator, error與execCli一致令dispatchAiFallback可統一分流
     if (validator && !validator(content)) {
-        return {
-            ok: false,
+        return mkResult({
             stdout: strTruncate(content, 500, optTruncate),
-            stderr: '',
             code: res.status,
             error: 'OUTPUT_VALIDATION_FAILED',
-            durationMs,
-        }
+            errorType: 'validation',
+            usage,
+        })
     }
 
-    return {
+    return mkResult({
         ok: true,
         stdout: content,
-        stderr: '',
         code: res.status,
-        error: '',
-        durationMs,
-    }
+        usage,
+    })
 }
 
 
@@ -287,7 +285,7 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，無則null)，本函數不會reject
  * @example
  * //need network, no cli required
  *
@@ -362,13 +360,7 @@ async function dispatchApiOpenaiCompat(prompt, opt = {}) {
     }
 
     //timeoutMs
-    let timeoutMs = get(opt, 'timeoutMs', null)
-    if (!ispint(timeoutMs)) {
-        timeoutMs = DEFAULT_TIMEOUT_MS
-    }
-    else {
-        timeoutMs = cint(timeoutMs)
-    }
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //maxRetries
     let maxRetries = get(opt, 'maxRetries', null)
@@ -380,13 +372,7 @@ async function dispatchApiOpenaiCompat(prompt, opt = {}) {
     }
 
     //retryDelayMs
-    let retryDelayMs = get(opt, 'retryDelayMs', null)
-    if (!ispint(retryDelayMs)) {
-        retryDelayMs = DEFAULT_RETRY_DELAY_MS
-    }
-    else {
-        retryDelayMs = cint(retryDelayMs)
-    }
+    let retryDelayMs = castPintOr(get(opt, 'retryDelayMs', null), DEFAULT_RETRY_DELAY_MS)
 
     //validator
     let validator = buildValidator(get(opt, 'validate', null))

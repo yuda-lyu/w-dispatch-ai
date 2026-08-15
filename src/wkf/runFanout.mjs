@@ -50,8 +50,8 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Object} opt.providers 輸入provider定義表物件(名稱 → 條目)，透傳callAiWithFallback
  * @param {String} opt.task 輸入前段各名額共用之任務提示詞字串
- * @param {Array} opt.agents 輸入前段名額規格陣列，各元素{ use, fallback, check?, maxRetries?, timeoutMs? }等(check可覆寫頂層檢核；除use/fallback/check外之鍵覆寫該名額呼叫設定)
- * @param {Object} opt.integrate 輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=>String自訂整合提示詞(省略用預設模板)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check
+ * @param {Array} opt.agents 輸入前段名額規格陣列，各元素{ use, fallback, check?, maxRetries?, timeoutMs? }等(check可覆寫頂層檢核；除use/fallback/check/meta外之鍵覆寫該名額呼叫設定；meta為保留鍵，呼叫端自有資訊掛此鍵保證永不轉傳下層)
+ * @param {Object} opt.integrate 輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=>String自訂整合提示詞(省略用預設模板)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check；meta為保留鍵同agents
  * @param {Function} [opt.check=null] 輸入檢核函數(json)=>Boolean，作為候選與終稿之共用預設，名額規格與integrate可各自帶check覆寫，預設null
  * @param {String} [opt.schema=''] 輸入輸出格式示意字串，供預設整合模板嵌入，預設''
  * @param {Number} [opt.minCandidates=2] 輸入進入整合所需之最少成功候選數正整數，未達門檻以首位候選為成果，預設2
@@ -115,9 +115,9 @@ async function runFanout(opt = {}) {
 
     //前段: 並行多開, 個別失敗不炸整輪
     //各名額可自帶check覆寫頂層(候選與終稿判準本可不同); 自spec抽出而非留在overrides,
-    //否則會被後方明給之check靜默覆蓋(曾為死鍵)
+    //否則會被後方明給之check靜默覆蓋(曾為死鍵); meta為保留鍵一併抽出, 保證永不轉傳
     let rsAgents = await Promise.all(agents.map((spec) => {
-        let { use, fallback, check: checkAgent, ...overrides } = spec
+        let { use, fallback, check: checkAgent, meta, ...overrides } = spec
         return callAiWithFallback(task, { ...callOpt, ...overrides, providers, spec: { use, fallback }, check: isfun(checkAgent) ? checkAgent : check })
     }))
     let candidates = rsAgents.filter((r) => r.ok).map((r) => r.json)
@@ -136,8 +136,8 @@ async function runFanout(opt = {}) {
     if (!integrate || !isestr(get(integrate, 'use', ''))) {
         return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: 'integrate spec (with use) is required' }
     }
-    //整合可帶獨立check(終稿判準常較候選嚴, 如須含固定小標題), 未給則沿用頂層check
-    let { use, fallback, prompt: intPromptFn, check: checkInt, ...intOverrides } = integrate
+    //整合可帶獨立check(終稿判準常較候選嚴, 如須含固定小標題), 未給則沿用頂層check; meta為保留鍵一併抽出
+    let { use, fallback, prompt: intPromptFn, check: checkInt, meta, ...intOverrides } = integrate
     let intPrompt = isfun(intPromptFn) ? intPromptFn(candidates) : defaultIntegratePrompt(candidates, opt)
     let rInt = await callAiWithFallback(intPrompt, { ...callOpt, ...intOverrides, providers, spec: { use, fallback }, check: isfun(checkInt) ? checkInt : check })
 

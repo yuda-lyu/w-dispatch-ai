@@ -14,7 +14,8 @@ import resolveProviders from './resolveProviders.mjs'
 
 // WDispatchAi.mjs — AI供應商分派層
 //
-// 本套件封裝「以CLI調用各家AI」的差異，對外提供單一介面。
+// 本套件封裝「以CLI或REST API調用各家AI」的差異，對外提供單一介面
+// (CLI或API之選型判準見adapters.mjs檔頭)。
 // 依專案方針，不引用全域技能(dispatch-claude／dispatch-codex／dispatch-opencode)，
 // 而是把其調用方式移植於各轉接器內，方便自行偵錯、修改與擴充。
 

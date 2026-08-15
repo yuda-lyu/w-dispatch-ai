@@ -12,6 +12,7 @@ describe('getErrorResult', function() {
             stderr: '',
             code: null,
             error: 'something wrong',
+            errorType: 'params',
             durationMs: 0,
             attempts: 0,
         }
@@ -20,7 +21,18 @@ describe('getErrorResult', function() {
 
     it('鍵名與順序固定', function() {
         let r = Object.keys(getErrorResult('abc'))
-        let rr = ['ok', 'stdout', 'stderr', 'code', 'error', 'durationMs', 'attempts']
+        let rr = ['ok', 'stdout', 'stderr', 'code', 'error', 'errorType', 'durationMs', 'attempts']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('errorType可指定, 非有效字串回退params', function() {
+        let r = [
+            getErrorResult('x').errorType,
+            getErrorResult('x', 'aborted').errorType,
+            getErrorResult('x', null).errorType,
+            getErrorResult('x', '').errorType,
+        ]
+        let rr = ['params', 'aborted', 'params', 'params']
         assert.strict.deepEqual(r, rr)
     })
 
