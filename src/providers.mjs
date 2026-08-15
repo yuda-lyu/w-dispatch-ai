@@ -84,6 +84,11 @@ let providers = [
         model: 'gemini-3.7-flash-high',
         kind: 'antigravity',
         addDirs: ['.'],
+        //保留CLI權限閘門(條目自帶防寫, 與其餘三家CLI條目一致): canary實測(2026-08-15)
+        //無此鎖時要求建檔會真的落地(12.5s); false之下寫入被擋且不卡逾時(6.4s正常返回)、
+        //唯讀工具照常(8.0s讀檔答對)。注意被擋時agy回ok:true且stdout為空(靜默拒絕非報錯),
+        //工作流層無害(空回覆過不了validate而自動遞補); 需要寫入能力請於條目覆寫為true
+        skipPermissions: false,
     },
     {
         id: 'claude:sonnet',

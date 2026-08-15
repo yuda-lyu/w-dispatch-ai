@@ -63,4 +63,28 @@ describe('providers', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('CLI條目皆自帶機械防寫(內建清單定位為唯讀調用, 新增CLI條目時必附防寫欄位)', function() {
+        //各kind之防寫機制不同(對照表見README); 曾因agy條目獨漏防寫,
+        //照內建清單原樣使用時canary實測要求建檔會真的落地(2026-08-15使用端回報+本機復測)
+        let hasLock = (p) => {
+            if (p.kind === 'opencode') {
+                let perm = p.config && p.config.permission
+                return !!perm && perm.edit === 'deny' && perm.write === 'deny' && perm.bash === 'deny'
+            }
+            if (p.kind === 'claude') {
+                return Array.isArray(p.extraArgs) && p.extraArgs.includes('--disallowedTools')
+            }
+            if (p.kind === 'codex') {
+                return p.sandbox === 'read-only'
+            }
+            if (p.kind === 'antigravity') {
+                return p.skipPermissions === false //保留agy權限閘門
+            }
+            return true //api類純文字生成天然無寫檔能力
+        }
+        let r = providers.map((p) => [p.id, hasLock(p)])
+        let rr = providers.map((p) => [p.id, true])
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

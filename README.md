@@ -492,6 +492,17 @@ let r = await wdi.dispatchAiFallback(prompt, { providers: picked.providers, time
 let wkf = wdi.dispatchAiWkf({ providers: picked.table, defaults: { timeoutMs: 1200000 } })
 ```
 
+**內建CLI條目之防寫機制對照**（內建清單定位為唯讀調用，各家CLI條目皆自帶機械防寫；需要寫入能力時於條目或呼叫時覆寫該欄位即可。api類為純文字生成天然無寫檔能力，不在此列）：
+
+| kind | 條目防寫欄位 | 機制 | 實測依據 |
+| --- | --- | --- | --- |
+| `opencode` | `config.permission: { edit/write/bash: 'deny' }` | opencode設定層拒絕編輯/寫檔/執行指令 | 2026-08 實測 |
+| `claude` | `extraArgs: ['--disallowedTools', 'Write,Edit,NotebookEdit,Bash']` | CLI停用寫入類工具 | 2026-08 實測 |
+| `codex` | `sandbox: 'read-only'` | Codex沙箱唯讀模式 | 2026-08 實測 |
+| `antigravity` | `skipPermissions: false` | 保留agy權限閘門（不送`--dangerously-skip-permissions`） | 2026-08-15 canary實測：無此鎖時要求建檔**會真的落地**；`false`之下寫入被擋且**不卡逾時**（6.4s正常返回）、唯讀工具照常 |
+
+注意agy被權限閘門擋下寫入時回`ok: true`且**stdout為空**（靜默拒絕非報錯）：工作流層無害（空回覆過不了validate而自動遞補），但直接呼叫`dispatchAntigravity`者須以「空輸出」判別被擋，不能只看`ok`。另提示詞層的`NO_SIDE_EFFECT`前綴是「請求」不是「強制」，機械防寫以上表欄位為準。
+
 #### Known design notes:
 - `package.json`**刻意不設**`exports`欄位：wsemi與w-*系列皆為自有套件，呼叫端以按需深層引入(`w-dispatch-ai/src/xxx.mjs`)為既定路線；增設exports會封死此路徑，勿加。
 - `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。
