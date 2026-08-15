@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
     
 </nav>
 
@@ -140,7 +140,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line35">line 35</a>
+        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line36">line 36</a>
     </li></ul></dd>
     
 
@@ -360,6 +360,175 @@ console.log(dfTimeoutMs)
 
     
 
+    <h4 class="name" id="attachErrorType"><span class="type-signature"></span>attachErrorType<span class="signature">(r)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>失敗結果補上errorType欄位(已帶有效errorType或成功結果則原樣回傳)</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="getErrorType.mjs.html">getErrorType.mjs</a>, <a href="getErrorType.mjs.html#line87">line 87</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import { attachErrorType } from './src/getErrorType.mjs'
+
+console.log(attachErrorType({ ok: false, error: 'TIMEOUT after 10s' }).errorType)
+// => 'timeout'
+
+console.log(attachErrorType({ ok: true, stdout: 'abc' }).errorType)
+// => undefined</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>r</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入結果物件</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳結果物件，失敗且未帶errorType時追加之</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Object</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
     <h4 class="name" id="buildChain"><span class="type-signature"></span>buildChain<span class="signature">(providers, spec)</span><span class="type-signature"> &rarr; {Object}</span></h4>
 
     
@@ -376,7 +545,7 @@ console.log(dfTimeoutMs)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line70">line 70</a>
+        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line71">line 71</a>
     </li></ul></dd>
     
 
@@ -567,7 +736,7 @@ console.log(buildChain(providers, { use: 'a', fallback: ['b', 'c'] }))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line71">line 71</a>
+        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line75">line 75</a>
     </li></ul></dd>
     
 
@@ -736,7 +905,7 @@ parse＋check接進遞補層之validate——非法回覆視為該家失敗而�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line144">line 144</a>
+        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line146">line 146</a>
     </li></ul></dd>
     
 
@@ -1412,6 +1581,44 @@ await test()
 
         <tr>
             
+                <td class="name"><code>meta</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳下層，預設undefined</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
                 <td class="name"><code>onEvent</code></td>
             
 
@@ -1445,7 +1652,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入遞補層事件回調函數，預設null。除上列外之其餘鍵(retryDelayMs、maxBuffer、onStdout等)亦一律原樣轉傳dispatchAiFallback</p></td>
+            <td class="description last"><p>輸入遞補層事件回調函數，預設null。除上列外之其餘鍵(retryDelayMs、maxBuffer、shouldStop、coolDetect、cooldownMs等)亦一律原樣轉傳dispatchAiFallback</p></td>
         </tr>
 
     
@@ -1478,7 +1685,7 @@ await test()
 
         
 <div class="param-desc">
-    <p>回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、error(錯誤訊息字串)，本函數不會reject</p>
+    <p>回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、usage(api類之token用量原樣透傳，CLI類為null)、error(錯誤訊息字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)，本函數不會reject</p>
 </div>
 
 
@@ -1521,7 +1728,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line137">line 137</a>
+        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line141">line 141</a>
     </li></ul></dd>
     
 
@@ -1762,6 +1969,208 @@ await test()
 
     
 
+    <h4 class="name" id="castPintOr"><span class="type-signature"></span>castPintOr<span class="signature">(v, df)</span><span class="type-signature"> &rarr; {Number|*}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>正整數正規化：有效正整數即轉整數回傳，否則回傳預設值</p>
+<p>本套件各層之數值設定(timeoutMs、budgetMs、minAttemptMs、cooldownMs、retryDelayMs等)
+皆採同一寬容策略「無效即靜默回退預設」，統一收斂於此，
+避免同一7行判斷區塊散落各轉接器(曾重複6處)</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="castPintOr.mjs.html">castPintOr.mjs</a>, <a href="castPintOr.mjs.html#line29">line 29</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import castPintOr from './src/castPintOr.mjs'
+
+console.log(castPintOr(5000, 300000))
+// => 5000
+
+console.log(castPintOr('abc', 300000))
+// => 300000
+
+console.log(castPintOr(undefined, null))
+// => null</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>v</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入待正規化之值</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>df</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入無效時之預設值(可為null代表不限)</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳正規化後之正整數，v非有效正整數時回傳df</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Number</span>
+|
+
+<span class="param-type">*</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
     <h4 class="name" id="defaultIntegratePrompt"><span class="type-signature"></span>defaultIntegratePrompt<span class="signature">(candidates, opt<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {String}</span></h4>
 
     
@@ -1986,18 +2395,19 @@ await test()
 <dl class="details">
     
     <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>依供應商種類(kind)分派至對應之CLI轉接器</p>
-<p>三種供應商的差異(2026-08-08於本機實測確認)：
-opencode支援逐次注入金鑰(OPENCODE_AUTH_CONTENT)，故可多把金鑰輪替；
-claude與codex則沿用CLI既有登入狀態，無逐次金鑰概念。
+    <dd class="tag-description"><ul class="dummy"><li><p>依供應商種類(kind)分派至對應之轉接器</p>
+<p>kind清單以adapters.mjs對照表為唯一來源(目前為'opencode'、'claude'、'codex'、'antigravity'、
+'api-openai-compat'，CLI或API之選型判準見adapters.mjs檔頭)。
+各家金鑰模式不同(2026-08-08起於本機實測確認)：opencode與api-openai-compat支援逐次注入金鑰，
+故可多把金鑰輪替；claude/codex/antigravity沿用CLI既有登入狀態，無逐次金鑰概念。
 故「輪替」的單位是「供應商條目」而非單純的金鑰：一個條目即一組(kind, model, 可選的key／provider)，
-輪到誰就用誰的CLI與模型</p></li></ul></dd>
+輪到誰就用誰的轉接器與模型</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAi.mjs.html">dispatchAi.mjs</a>, <a href="dispatchAi.mjs.html#line43">line 43</a>
+        <a href="dispatchAi.mjs.html">dispatchAi.mjs</a>, <a href="dispatchAi.mjs.html#line44">line 44</a>
     </li></ul></dd>
     
 
@@ -2055,8 +2465,8 @@ let test = async () => {
     // => true '完成'
 
     let re = await dispatchAi('gemini', 'abc')
-    console.log(re.ok, re.error)
-    // => false 'unknown ai kind: "gemini" (available: opencode, claude, codex)'
+    console.log(re.ok, re.error.indexOf('unknown ai kind: "gemini"') === 0)
+    // => false true
 
 }
 await test()
@@ -2125,7 +2535,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入供應商種類字串，可選'opencode'、'claude'、'codex'</p></td>
+            <td class="description last"><p>輸入供應商種類字串，須為adapters.mjs對照表之鍵名，目前可選'opencode'、'claude'、'codex'、'antigravity'、'api-openai-compat'</p></td>
         </tr>
 
     
@@ -2161,7 +2571,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入提示詞字串，一律以stdin傳入子進程</p></td>
+            <td class="description last"><p>輸入提示詞字串</p></td>
         </tr>
 
     
@@ -2201,7 +2611,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex，預設{}</p></td>
+            <td class="description last"><p>輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat，預設{}</p></td>
         </tr>
 
     
@@ -2227,7 +2637,7 @@ await test()
 
         
 <div class="param-desc">
-    <p>回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject</p>
+    <p>回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject</p>
 </div>
 
 
@@ -2278,7 +2688,7 @@ providers陣列順序即優先序，排前面的先用；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line199">line 199</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line292">line 292</a>
     </li></ul></dd>
     
 
@@ -2631,6 +3041,44 @@ await test()
         </tr>
 
     
+
+        <tr>
+            
+                <td class="name"><code>meta</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳對應轉接器——條目其餘鍵一律原樣轉傳，自有欄位放此鍵可與轉傳機制永久絕緣，預設undefined</p></td>
+        </tr>
+
+    
     </tbody>
 </table>
 
@@ -2794,7 +3242,125 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入供應商冷卻視窗毫秒非負整數，&gt;0啟用：條目(限有明給id者)遭遇限流(HTTP 429，僅api類可偵測)或逾時(TIMEOUT開頭)後，於冷卻視窗內之後續呼叫中被移至鏈尾——只降序不移除，前面全敗時仍會被嘗試，任一次成功立即解除；注意啟用時「providers順序即優先序」會被暫時重排，此即本機制之目的；預設0代表不啟用</p></td>
+            <td class="description last"><p>輸入供應商冷卻視窗毫秒非負整數，&gt;0啟用：條目(限有明給id者)遭遇限流(HTTP 429，僅api類可偵測；CLI類可經coolDetect注入判定)或逾時(TIMEOUT開頭)後，於冷卻視窗內之後續呼叫中被移至鏈尾——只降序不移除，前面全敗時仍會被嘗試，任一次成功立即解除；注意啟用時「providers順序即優先序」會被暫時重排，此即本機制之目的；預設0代表不啟用</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>coolDetect</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入冷卻觸發判定函數(r)=&gt;Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429/TIMEOUT觸發不受影響)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=&gt;/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs&gt;0時有效，回調拋出例外視同false，預設null</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>shouldStop</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入中止判定函數()=&gt;Boolean，於每次嘗試之間檢查，回傳true即停止遞補回報ABORTED(不中止進行中之嘗試)——供呼叫端於成果已無人接收時(如客戶端斷線)止損；經工作流層原樣轉傳，中止後各後續呼叫進門即回ABORTED令整條工作流快速收束；回調拋出例外視同false，預設null</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>meta</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">*</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入呼叫端自有資訊，保留鍵保證永不轉傳各轉接器，預設undefined</p></td>
         </tr>
 
     
@@ -2834,7 +3400,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入事件回調函數(ev)=&gt;{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'；失敗事件(next-key/skip-group)另帶stdout(被拒回覆)與stderr(錯誤輸出)供診斷，兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null</p></td>
+            <td class="description last"><p>輸入事件回調函數(ev)=&gt;{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs&gt;0時出現)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null</p></td>
         </tr>
 
     
@@ -2988,7 +3554,7 @@ await test()
 
         
 <div class="param-desc">
-    <p>回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含stdout與stderr供診斷被拒原因)，本函數不會reject</p>
+    <p>回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；本函數不會reject</p>
 </div>
 
 
@@ -4077,7 +4643,7 @@ prompt走HTTP body，無命令列長度限制；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line327">line 327</a>
+        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line325">line 325</a>
     </li></ul></dd>
     
 
@@ -4708,7 +5274,7 @@ await test()
 
         
 <div class="param-desc">
-    <p>回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject</p>
+    <p>回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，無則null)，本函數不會reject</p>
 </div>
 
 
@@ -7082,7 +7648,7 @@ console.log(getCliArgs('-p', null, 123, ['', '--verbose']))
 
     
 
-    <h4 class="name" id="getErrorResult"><span class="type-signature"></span>getErrorResult<span class="signature">(error)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+    <h4 class="name" id="getErrorResult"><span class="type-signature"></span>getErrorResult<span class="signature">(error, errorType<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {Object}</span></h4>
 
     
 
@@ -7101,7 +7667,7 @@ console.log(getCliArgs('-p', null, 123, ['', '--verbose']))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="getErrorResult.mjs.html">getErrorResult.mjs</a>, <a href="getErrorResult.mjs.html#line24">line 24</a>
+        <a href="getErrorResult.mjs.html">getErrorResult.mjs</a>, <a href="getErrorResult.mjs.html#line25">line 25</a>
     </li></ul></dd>
     
 
@@ -7151,10 +7717,241 @@ console.log(getCliArgs('-p', null, 123, ['', '--verbose']))
     <pre class="prettyprint"><code>import getErrorResult from './src/getErrorResult.mjs'
 
 console.log(getErrorResult('prompt must be a non-empty string'))
-// => { ok: false, stdout: '', stderr: '', code: null, error: 'prompt must be a non-empty string', durationMs: 0, attempts: 0 }
+// => { ok: false, stdout: '', stderr: '', code: null, error: 'prompt must be a non-empty string', errorType: 'params', durationMs: 0, attempts: 0 }
 
 console.log(getErrorResult(null).error)
 // => 'unknown error'</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>error</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入錯誤訊息字串</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>errorType</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>'params'</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入機器可讀之錯誤類別字串(一覽見getErrorType.mjs檔頭)，預設'params'(參數/設定檢核失敗)</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳結果物件，內含ok(布林值，恆為false)、stdout(空字串)、stderr(空字串)、code(null)、error(錯誤訊息字串)、errorType(錯誤類別字串)、durationMs(0)、attempts(0)</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Object</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="getErrorType"><span class="type-signature"></span>getErrorType<span class="signature">(r)</span><span class="type-signature"> &rarr; {String}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>由失敗結果物件推導機器可讀之errorType(僅機械可判者，其餘歸'exec'，不猜測)</p>
+<p>判準與dispatchAiFallback之isKeyIndependentFail同組：error以TIMEOUT開頭為'timeout'、
+含ENOENT或ENAMETOOLONG為'spawn'、恰為OUTPUT_VALIDATION_FAILED為'validation'，
+其餘失敗一律'exec'(各家CLI字樣不同且隨版本漂移，不維護簽章表)</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="getErrorType.mjs.html">getErrorType.mjs</a>, <a href="getErrorType.mjs.html#line53">line 53</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import getErrorType from './src/getErrorType.mjs'
+
+console.log(getErrorType({ error: 'TIMEOUT after 300s' }))
+// => 'timeout'
+
+console.log(getErrorType({ error: 'spawn cli ENOENT' }))
+// => 'spawn'
+
+console.log(getErrorType({ error: 'Exit code 1' }))
+// => 'exec'</code></pre>
 
 
 
@@ -7184,13 +7981,13 @@ console.log(getErrorResult(null).error)
 
         <tr>
             
-                <td class="name"><code>error</code></td>
+                <td class="name"><code>r</code></td>
             
 
             <td class="type">
             
                 
-<span class="param-type">String</span>
+<span class="param-type">Object</span>
 
 
 
@@ -7201,7 +7998,7 @@ console.log(getErrorResult(null).error)
 
             
 
-            <td class="description last"><p>輸入錯誤訊息字串</p></td>
+            <td class="description last"><p>輸入失敗結果物件(取其error欄位判別)</p></td>
         </tr>
 
     
@@ -7227,7 +8024,165 @@ console.log(getErrorResult(null).error)
 
         
 <div class="param-desc">
-    <p>回傳結果物件，內含ok(布林值，恆為false)、stdout(空字串)、stderr(空字串)、code(null)、error(錯誤訊息字串)、durationMs(0)、attempts(0)</p>
+    <p>回傳errorType字串</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">String</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="initState"><span class="type-signature"></span>initState<span class="signature">(store)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>初始化游標與冷卻狀態(store有效即載入持久化狀態, 否則用行程內記憶體)</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line110">line 110</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>store</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入狀態持久化物件{get,set}，無效代表用行程內記憶體</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳物件，內含state(狀態物件，保證有cursors與cooling)與saveState(寫回函數，store無效或寫入失敗皆靜默)</p>
 </div>
 
 
@@ -7270,7 +8225,7 @@ console.log(getErrorResult(null).error)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line94">line 94</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line183">line 183</a>
     </li></ul></dd>
     
 
@@ -7397,6 +8352,238 @@ console.log(getErrorResult(null).error)
     <dd>
         
 <span class="param-type">Boolean</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="reorderByCooling"><span class="type-signature"></span>reorderByCooling<span class="signature">(providers, state, cooldownMs, saveState)</span><span class="type-signature"> &rarr; {Array}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>依冷卻狀態重排providers：冷卻中的條目「只降序不移除」——移到鏈尾, 前面全敗時仍會被嘗試,
+故不存在把已恢復服務冰住的問題(此為與「金鑰停用清單」的關鍵差異, 後者已被否決)。
+僅追蹤有明給id之條目(索引式id會因重排而錯位); 過期紀錄順手清除並寫回</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line151">line 151</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>providers</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入供應商條目陣列</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>state</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入狀態物件(取其cooling)</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>cooldownMs</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入冷卻視窗毫秒正整數</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>saveState</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入狀態寫回函數</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳重排後之條目陣列(active在前, 冷卻中殿後, 各自保持原相對順序)</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Array</span>
 
 
 
@@ -8058,7 +9245,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入前段名額規格陣列，各元素{ use, fallback, check?, maxRetries?, timeoutMs? }等(check可覆寫頂層檢核；除use/fallback/check外之鍵覆寫該名額呼叫設定)</p></td>
+            <td class="description last"><p>輸入前段名額規格陣列，各元素{ use, fallback, check?, maxRetries?, timeoutMs? }等(check可覆寫頂層檢核；除use/fallback/check/meta外之鍵覆寫該名額呼叫設定；meta為保留鍵，呼叫端自有資訊掛此鍵保證永不轉傳下層)</p></td>
         </tr>
 
     
@@ -8094,7 +9281,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=&gt;String自訂整合提示詞(省略用預設模板)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check</p></td>
+            <td class="description last"><p>輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=&gt;String自訂整合提示詞(省略用預設模板)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check；meta為保留鍵同agents</p></td>
         </tr>
 
     
@@ -8334,7 +9521,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_runFanoutPipeline.mjs.html">wkf/runFanoutPipeline.mjs</a>, <a href="wkf_runFanoutPipeline.mjs.html#line69">line 69</a>
+        <a href="wkf_runFanoutPipeline.mjs.html">wkf/runFanoutPipeline.mjs</a>, <a href="wkf_runFanoutPipeline.mjs.html#line76">line 76</a>
     </li></ul></dd>
     
 
@@ -8920,7 +10107,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_runRolePipeline.mjs.html">wkf/runRolePipeline.mjs</a>, <a href="wkf_runRolePipeline.mjs.html#line75">line 75</a>
+        <a href="wkf_runRolePipeline.mjs.html">wkf/runRolePipeline.mjs</a>, <a href="wkf_runRolePipeline.mjs.html#line76">line 76</a>
     </li></ul></dd>
     
 
@@ -9195,7 +10382,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入階段規格陣列，各元素{ id, use, fallback, prompt:(ctx)=&gt;String, check?, rawText?, maxRetries?, timeoutMs? }等</p></td>
+            <td class="description last"><p>輸入階段規格陣列，各元素{ id, use, fallback, prompt:(ctx)=&gt;String, check?, rawText?, maxRetries?, timeoutMs? }等；meta為保留鍵，呼叫端自有資訊(分類、標籤)掛此鍵保證永不轉傳下層</p></td>
         </tr>
 
     
@@ -9310,7 +10497,7 @@ await test()
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Aug 14 2026 15:11:06 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Aug 15 2026 08:45:29 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
