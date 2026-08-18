@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li></ul>
     
 </nav>
 
@@ -62,6 +62,14 @@ import isearr from 'wsemi/src/isearr.mjs'
 //
 // 【自選】opt.pick給id陣列即可只取用部分條目, 且依pick之順序回傳
 //   (順序即dispatchAiFallback之優先序); 查無之id列入missing回報。
+//
+// 【後處理單一入口: opt.exes與opt.patch】消費端常需於展開後對條目做兩類覆寫:
+//   ①逐kind注入CLI執行檔絕對路徑(Windows排程於session 0執行時PATH可能不含npm
+//     全域目錄, 靠指令名會ENOENT); ②逐id覆寫任意欄位(如各家實測耗時相差近10倍,
+//     timeoutMs須逐條指定)。此前只能於呼叫端自行map, 而陣列版(providers)與表格版
+//     (table)若各自後處理, 極易只套用其一——使用端殷鑑(2026-08-14): 逐條timeout
+//     只加在陣列版, 工作流走表格版全部落回全域預設而不自知。後處理收進本函數,
+//     兩種輸出同源產出, 結構性杜絕單邊套用。
 
 
 /**
@@ -72,29 +80,45 @@ import isearr from 'wsemi/src/isearr.mjs'
  * 缺對應環境變數(或值為空)之條目停用並列入skipped，不中斷不throw；
  * 無envVar之條目(訂閱登入態CLI)原樣通過；條目已自帶有效keys者以keys為準；
  * opt.pick可依id自選子集並以pick順序回傳(順序即遞補優先序)；
+ * opt.exes依kind注入CLI執行檔路徑、opt.patch依id淺合併覆寫欄位——皆於展開後施作，
+ * providers與table同源產出故必然一致；
  * 輸入陣列與條目皆不被改動(輸出為淺拷貝)
  *
  * @param {Array} providers 輸入providers條目物件陣列(如providers.mjs之預設匯出)
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env
+ * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env。建議以readEnvFile('./.env')讀成物件傳入，不污染process.env
  * @param {Array} [opt.pick=null] 輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)
+ * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件(如{claude:'C:/.../claude.exe'})，命中kind之條目補上exe欄位(條目已自帶exe者不覆寫——條目層設定優先)，預設null代表不注入
+ * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件(如{'claude:sonnet':{timeoutMs:360000}})，命中id之條目淺合併覆寫，於exes之後施作故可覆寫exe，預設null代表不覆寫
  * @returns {Object} 回傳物件，內含providers(可直接餵dispatchAiFallback之條目陣列)、table(id對條目之物件，可直接餵dispatchAiWkf)、skipped(缺環境變數而停用之{id,envVar}陣列)、missing(pick查無之id字串陣列)
  * @example
  *
  * import resolveProviders from './src/resolveProviders.mjs'
+ * import readEnvFile from './src/readEnvFile.mjs'
  * import providersAll from './src/providers.mjs'
  *
- * process.loadEnvFile('./.env') //金鑰放.env, 變數值以逗號分隔多把
+ * //金鑰放.env(變數值以逗號分隔多把), 以readEnvFile讀成物件, 不污染process.env
+ * let env = readEnvFile('./.env')
  *
  * //全取: envVar展開為keys, 缺環境變數者列入skipped
- * let { providers, table, skipped } = resolveProviders(providersAll)
+ * let { providers, table, skipped } = resolveProviders(providersAll, { env })
  * console.log(providers.length, skipped)
  * // => 10 []
  *
  * //自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallback
- * let r2 = resolveProviders(providersAll, { pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] })
+ * let r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] })
  * console.log(r2.providers.map((p) => p.id))
  * // => [ 'agnes:agnes-2.5-flash', 'claude:sonnet' ]
+ *
+ * //後處理: exes逐kind注入執行檔、patch逐id覆寫欄位, 陣列與table同步生效
+ * let r3 = resolveProviders(providersAll, {
+ *     env,
+ *     pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'],
+ *     exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },
+ *     patch: { 'claude:sonnet': { timeoutMs: 360000 } },
+ * })
+ * console.log(r3.table['claude:sonnet'].exe, r3.table['claude:sonnet'].timeoutMs)
+ * // => 'C:/Users/x/.local/bin/claude.exe' 360000
  *
  * //table可直接餵dispatchAiWkf之providers定義表
  * //let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })
@@ -151,6 +175,30 @@ function resolveProviders(providers, opt = {}) {
         out.push({ ...omit(entry, ['envVar']), keys })
     }
 
+    //後處理: exes(逐kind)與patch(逐id), 於table組建「之前」施作——
+    //providers與table由同一份out產出, 兩種輸出必然一致(檔頭之單邊套用殷鑑)
+    let exes = get(opt, 'exes', null)
+    let patch = get(opt, 'patch', null)
+    if (isobj(exes) || isobj(patch)) {
+        out = out.map((entry) => {
+            let e = entry
+
+            //exes: 條目已自帶exe者不覆寫(條目層設定優先於全域注入)
+            let exe = isobj(exes) ? get(exes, get(e, 'kind', ''), null) : null
+            if (isestr(exe) &amp;&amp; !isestr(get(e, 'exe', null))) {
+                e = { ...e, exe }
+            }
+
+            //patch: 依id淺合併, 於exes之後施作故可覆寫exe
+            let pt = isobj(patch) ? get(patch, get(e, 'id', ''), null) : null
+            if (isobj(pt)) {
+                e = { ...e, ...pt }
+            }
+
+            return e
+        })
+    }
+
     //table, id → 條目, 可直接作dispatchAiWkf之providers定義表
     let table = {}
     for (let entry of out) {
@@ -176,7 +224,7 @@ export default resolveProviders
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 18 2026 13:42:39 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 18 2026 15:40:27 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
