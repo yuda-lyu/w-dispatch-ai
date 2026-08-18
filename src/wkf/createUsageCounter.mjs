@@ -1,0 +1,141 @@
+import path from 'path'
+import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import ispint from 'wsemi/src/ispint.mjs'
+import fsReadJson from 'wsemi/src/fsReadJson.mjs'
+import fsWriteJson from 'wsemi/src/fsWriteJson.mjs'
+
+
+// createUsageCounter.mjs — 逐日、逐鍵之AI用量計帳(純觀測)
+//
+// 【純觀測, 絕不據以節流或阻擋——本檔最重要的警語】用量門檻是臆測值: 服務端額度視窗
+//   形態多樣(逐日/逐時/5小時滾動/以token計而非以次數計), 呼叫端量得到的只有次數。
+//   以臆測門檻擋自己的呼叫等同拿猜測當事實: 太保守則白白不用已有額度, 太寬鬆則毫無作用。
+//   正確作法是「打下去、失敗了換下一家」(dispatchAiFallback之職責), 本計數器只提供
+//   事後回答「那天各鍵各打了幾次」的本機證據——真要查「某家是不是被打爆了」時,
+//   這是唯一的本機依據。
+//
+// 【於try事件記帳而非事後統計tried】即使行程被外部排程之時限中途砍掉,
+//   已發出的請求仍會留下紀錄; 事後統計則會漏掉被砍那一輪的全部嘗試。
+//   兩個消費端專案已各自寫過此接線(且各寫兩處), 故本函數直接提供onEvent。
+//
+// 【keyOf決定計帳粒度】預設記到金鑰(keyId如'agnes:agnes-2.5-flash#0'),
+//   要記到條目改傳(ev)=>ev.providerId即可。
+//
+// 【本工廠為同步函數會throw】file與dir皆缺屬設定錯誤, 應於組裝期即失敗(fail fast),
+//   與dispatchAiWkf工廠同一約定; 執行期之記帳與查詢則不throw。
+
+
+/**
+ * 建立逐日、逐鍵之用量計數器(純觀測, 不參與任何判斷)
+ *
+ * 特點：
+ * onEvent可直接掛進dispatchAiFallback/dispatchAiWkf，於type為'try'時依keyOf取鍵累加——
+ * 嘗試時即記帳，行程被外部時限中途砍掉已發出的請求仍有紀錄；
+ * 逐日分桶並僅保留最近keepDays天，避免檔案無限成長；
+ * getDate可注入時區錨定之日期函數——預設隨系統時區，排程session之系統時區可能為UTC+0
+ * 而使日界錯8小時，排程環境務必注入
+ *
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {String} [opt.file=null] 輸入用量檔完整路徑字串，與dir/name二擇一
+ * @param {String} [opt.dir=null] 輸入狀態目錄字串
+ * @param {String} [opt.name='ai-usage.json'] 輸入用量檔名字串，預設'ai-usage.json'
+ * @param {Function} [opt.getDate=系統日期] 輸入日期函數()=>'YYYY-MM-DD'，預設隨系統時區(排程環境建議注入時區錨定者)
+ * @param {Number} [opt.keepDays=14] 輸入保留天數正整數，預設14
+ * @param {Function} [opt.keyOf=(ev)=>ev.keyId||ev.providerId] 輸入計帳鍵函數(ev)=>String，決定粒度(金鑰或條目)，預設優先keyId
+ * @returns {Object} 回傳計數器物件，內含onEvent(可直接餵dispatch之onEvent)、bump(手動累加)、today(今日統計)與file(用量檔路徑)
+ * @example
+ *
+ * import createUsageCounter from './src/wkf/createUsageCounter.mjs'
+ *
+ * let usage = createUsageCounter({ dir: './state' })
+ * //let r = await dispatchAiFallback(prompt, { providers, onEvent: usage.onEvent })
+ * //console.log(usage.today())
+ * // => { today: '2026-08-18', byKey: { 'agnes:agnes-2.5-flash#0': 3 }, total: 3 }
+ *
+ */
+function createUsageCounter(opt = {}) {
+    let file = get(opt, 'file', null)
+    if (!isestr(file)) {
+        let dir = get(opt, 'dir', null)
+        if (!isestr(dir)) {
+            throw new Error('createUsageCounter: file or dir is required')
+        }
+        let name = get(opt, 'name', null)
+        file = path.join(dir, isestr(name) ? name : 'ai-usage.json')
+    }
+
+    let getDate = get(opt, 'getDate', null)
+    if (!isfun(getDate)) {
+        getDate = () => {
+            let d = new Date()
+            let p2 = (n) => String(n).padStart(2, '0')
+            return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+        }
+    }
+
+    let keepDays = get(opt, 'keepDays', null)
+    if (!ispint(keepDays)) {
+        keepDays = 14
+    }
+
+    let keyOf = get(opt, 'keyOf', null)
+    if (!isfun(keyOf)) {
+        keyOf = (ev) => get(ev, 'keyId', null) || get(ev, 'providerId', '')
+    }
+
+    let readAll = () => {
+        let r = fsReadJson(file)
+        let j = (get(r, 'error', undefined) !== undefined) ? null : get(r, 'success', null)
+        return isobj(j) ? j : {}
+    }
+
+    let bump = (key, n = 1) => {
+        if (!isestr(key)) {
+            return
+        }
+        let raw = readAll()
+        let today = getDate()
+        let cur = isobj(raw[today]) ? raw[today] : {}
+        cur[key] = (Number(cur[key]) || 0) + n
+        raw[today] = cur
+
+        //只留最近keepDays天
+        let days = Object.keys(raw).sort().slice(-keepDays)
+        let trimmed = {}
+        for (let d of days) {
+            trimmed[d] = raw[d]
+        }
+        fsWriteJson(file, trimmed, { useFormat: true })
+    }
+
+    return {
+
+        file,
+
+        //可直接餵dispatch之onEvent: 於type為'try'時依keyOf記帳。要同時掛自有回調, 於自有onEvent內轉呼叫本函數即可
+        onEvent: (ev) => {
+            if (get(ev, 'type', null) === 'try') {
+                bump(keyOf(ev))
+            }
+        },
+
+        //手動累加(不經事件之呼叫路徑用)
+        bump,
+
+        //今日各鍵用量統計
+        today: () => {
+            let raw = readAll()
+            let today = getDate()
+            let byKey = isobj(raw[today]) ? raw[today] : {}
+            let total = Object.values(byKey).reduce((a, b) => a + (Number(b) || 0), 0)
+            return { today, byKey, total }
+        },
+
+    }
+}
+
+
+export default createUsageCounter

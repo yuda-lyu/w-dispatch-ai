@@ -10,6 +10,12 @@ import dispatchAntigravity from './dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
 import providers from './providers.mjs'
 import resolveProviders from './resolveProviders.mjs'
+import readEnvFile from './readEnvFile.mjs'
+import budgetFor from './budgetFor.mjs'
+import createFileStore from './wkf/createFileStore.mjs'
+import createUsageCounter from './wkf/createUsageCounter.mjs'
+import salvageTruncatedArray from './wkf/salvageTruncatedArray.mjs'
+import NO_SIDE_EFFECT from './wkf/noSideEffectPrefix.mjs'
 
 
 // WDispatchAi.mjs — AI供應商分派層
@@ -27,7 +33,7 @@ let KINDS = keys(adapters)
 /**
  * AI供應商分派
  *
- * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat之async函數，以及providers(預設providers定義檔)與resolveProviders(envVar展開器)
+ * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat之async函數，providers(預設providers定義檔)與resolveProviders(envVar展開器)，以及readEnvFile(讀.env不污染process.env)、budgetFor(遞補鏈時間預算推導)、createFileStore(store檔案持久化)、createUsageCounter(逐日用量計帳)、salvageTruncatedArray(截斷陣列搶救)、NO_SIDE_EFFECT(防副作用prompt前綴)等工具
  * @example
  *
  * 詳見dispatchAi、dispatchAiFallback、dispatchAiWkf、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、resolveProviders範例
@@ -35,6 +41,7 @@ let KINDS = keys(adapters)
  */
 let WDispatchAi = {
     KINDS,
+    NO_SIDE_EFFECT,
     dispatchAi,
     dispatchAiFallback,
     dispatchAiWkf,
@@ -45,6 +52,11 @@ let WDispatchAi = {
     dispatchApiOpenaiCompat,
     providers,
     resolveProviders,
+    readEnvFile,
+    budgetFor,
+    createFileStore,
+    createUsageCounter,
+    salvageTruncatedArray,
 }
 
 

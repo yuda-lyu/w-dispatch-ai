@@ -1,5 +1,6 @@
 import assert from 'assert'
 import callAiWithFallback, { buildChain, NO_SIDE_EFFECT } from '../src/wkf/callAiWithFallback.mjs'
+import noSideEffectPrefix from '../src/wkf/noSideEffectPrefix.mjs'
 import createFakeCli from './tools/fakeCliForTest.mjs'
 
 
@@ -23,6 +24,13 @@ describe('callAiWithFallback', function() {
         if (fake) {
             fake.clean()
         }
+    })
+
+    it('NO_SIDE_EFFECT為單一來源: 本層再匯出與noSideEffectPrefix模組為同一份', function() {
+        //措辭曾分岔於消費端(套件修了codex唯讀豁免、消費端還帶舊措辭), 抽檔後鎖定同源
+        let r = [NO_SIDE_EFFECT === noSideEffectPrefix, NO_SIDE_EFFECT.includes('唯讀查閱')]
+        let rr = [true, true]
+        assert.strict.deepEqual(r, rr)
     })
 
     it('buildChain以名稱展開條目並回報查無定義之名稱', function() {

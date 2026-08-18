@@ -41,7 +41,13 @@ Note:
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
 | `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
-| `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id |
+| `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override |
+| `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
+| `budgetFor(providers)` | derive the time budget to walk a whole fallback chain (sum of per-entry `timeoutMs`, defaults applied) |
+| `createFileStore(opt)` | file-persisted `store` for `dispatchAiFallback` (cursors and cooling survive across processes), exclusion-style passthrough |
+| `createUsageCounter(opt)` | per-day per-key usage counter fed by `onEvent` (observation only, never throttles) |
+| `salvageTruncatedArray(text)` | salvage the complete leading elements of a truncated JSON array (opt-in, not part of default parsing) |
+| `NO_SIDE_EFFECT` | the no-side-effect prompt prefix (single source), auto-applied by workflow `callAi`, prepend manually for direct `dispatchAiFallback` calls |
 | `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']` |
 
 #### Example:
@@ -301,7 +307,7 @@ await test()
 | `providers[].meta` | any | 無 | **保留鍵，保證永不轉傳**轉接器。條目其餘鍵一律原樣轉傳——呼叫端要在條目上掛自有資訊（分類、標籤、註記）一律放`meta`，與轉傳機制永久絕緣（頂層opt與工作流各層規格物件同此約定） |
 | `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs` |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
-| `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用）；假定單行程序列調用 |
+| `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用）；假定單行程序列調用。跨行程持久化可直接用`createFileStore`；自行實作時**務必整包原封存還**，白名單式挑欄位會在套件擴充state時靜默丟棄新欄位 |
 | `cooldownMs` | Integer | `0`不啟用 | 供應商冷卻視窗：條目（限有明給id者）遭遇**限流(HTTP 429，僅api類可偵測)或逾時(TIMEOUT)**後，於視窗內之後續呼叫中被**移至鏈尾（只降序不移除）**——前面全敗時仍會被嘗試、任一次成功立即解除，故不存在把已恢復服務冰住的問題。多階段工作流可大幅省去逐階段重踩已失效供應商的成本（使用端實測107s→15s）。注意啟用時providers順序會被暫時重排，此即機制目的 |
 | `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流埋在stderr且各家字樣不同、隨版本漂移，**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調拋出例外視同`false` |
 | `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調拋出例外視同`false` |
@@ -481,16 +487,38 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
 
 ```alias
 import wdi from 'w-dispatch-ai'
-process.loadEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把
+
+//金鑰放.env(OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把), 以readEnvFile讀成物件——
+//不用process.loadEnvFile: 那會把金鑰塞進process.env, 多專案並行時互相覆蓋
+let env = wdi.readEnvFile('./.env')
 
 //全取: envVar → keys, 缺環境變數之條目自動停用並列入skipped
-let { providers, table, skipped } = wdi.resolveProviders(wdi.providers)
+let { providers, table, skipped } = wdi.resolveProviders(wdi.providers, { env })
 
 //自選: pick順序即遞補優先序; providers餵dispatchAiFallback, table餵dispatchAiWkf
-let picked = wdi.resolveProviders(wdi.providers, { pick: ['agnes:agnes-2.0-flash', 'claude:sonnet'] })
+let picked = wdi.resolveProviders(wdi.providers, { env, pick: ['agnes:agnes-2.0-flash', 'claude:sonnet'] })
 let r = await wdi.dispatchAiFallback(prompt, { providers: picked.providers, timeoutMs: 1200000 })
 let wkf = wdi.dispatchAiWkf({ providers: picked.table, defaults: { timeoutMs: 1200000 } })
+
+//後處理(選用): exes逐kind注入CLI執行檔絕對路徑(Windows排程session 0之PATH常缺npm全域目錄),
+//patch逐id淺合併覆寫任意欄位; 兩者於函數內施作, providers與table同源產出必然一致
+let p2 = wdi.resolveProviders(wdi.providers, {
+    env,
+    pick: ['claude:sonnet', 'codex:gpt-5.6-luna'],
+    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },
+    patch: { 'claude:sonnet': { timeoutMs: 360000 } },
+})
 ```
+
+**配套工具**（皆為選用，深層引入或由聚合物件取用）：
+
+| 工具 | 用途 |
+| --- | --- |
+| `createFileStore({ dir })` | `dispatchAiFallback`之`store`的檔案持久化——排程任務每次執行都是新行程，記憶體游標/冷卻每次歸零；本實作採**排除式passthrough**（state原封存還，僅剔自用欄位`at`），日後套件擴充state欄位自動相容（殷鑑：白名單store曾把1.0.7新增的`cooling`靜默丟棄） |
+| `createUsageCounter({ dir })` | 逐日逐鍵用量計帳，`onEvent`直接掛進dispatch即於`try`事件記帳；**純觀測絕不據以節流**（額度視窗形態多樣，臆測門檻擋自己的呼叫等同拿猜測當事實）；排程環境務必注入`getDate`錨定時區 |
+| `budgetFor(chain)` | 遞補鏈走滿全鏈之時間預算（Σ各條目`timeoutMs`，未帶者以統一預設300000計）；與外部排程硬上限取小者交`budgetMs` |
+| `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可 |
+| `NO_SIDE_EFFECT` | 防副作用prompt前綴之單一來源（措辭含唯讀查閱豁免——codex以shell讀檔，一律禁指令等同禁讀檔）；工作流`callAi`預設自動掛上，直呼`dispatchAiFallback`者自行前綴 |
 
 **內建CLI條目之防寫機制對照**（內建清單定位為唯讀調用，各家CLI條目皆自帶機械防寫；需要寫入能力時於條目或呼叫時覆寫該欄位即可。api類為純文字生成天然無寫檔能力，不在此列）：
 

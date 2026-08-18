@@ -3,7 +3,7 @@
 <head>
     
     <meta charset="utf-8">
-    <title>adapters.mjs - Documentation</title>
+    <title>readEnvFile.mjs - Documentation</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -35,7 +35,7 @@
 
 <div id="main">
     
-    <h1 class="page-title">adapters.mjs</h1>
+    <h1 class="page-title">readEnvFile.mjs</h1>
     
 
     
@@ -45,72 +45,66 @@
     
     <section>
         <article>
-            <pre class="prettyprint source linenums"><code>import dispatchOpencode from './dispatchOpencode.mjs'
-import dispatchClaude from './dispatchClaude.mjs'
-import dispatchCodex from './dispatchCodex.mjs'
-import dispatchAntigravity from './dispatchAntigravity.mjs'
-import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
+            <pre class="prettyprint source linenums"><code>import fs from 'fs'
 
 
-// adapters.mjs — kind對照表, 亦為「CLI或API」之選型判準所在
+// readEnvFile.mjs — 讀.env為金鑰來源物件(不污染process.env)
 //
-// ══ 選 kind 的唯一判準: 這次呼叫需不需要「工具」? ══
+// 【為何需要】resolveProviders之opt.env本為「不用process.env」而設計——多專案並行時
+//   污染全域環境變數會互相覆蓋金鑰——但「env物件從哪來」套件原無答案, README舊教法
+//   process.loadEnvFile('./.env')反而把金鑰塞進process.env, 與該設計目的自相矛盾。
+//   兩個消費端專案已各寫一份解析器且行為不一致(2026-08-18使用端調研), 收斂於此。
 //
-//   需要工具 → 用CLI類kind(opencode/claude/codex/antigravity)
-//     所謂工具即: 讀取本機檔案、grep搜尋、執行shell指令、抓取網頁、寫檔。
-//     CLI本身是agentic harness, 自帶完整工具迴圈, 呼叫端什麼都不必做。
+// 【為何讀不到回空物件而非拋錯】金鑰缺失由resolveProviders之skipped機制回報
+//   (缺金鑰停用該條目、不中斷), 此處拋錯反而讓「部分供應商無金鑰」升級成整體啟動失敗;
+//   要fail-loud的呼叫端自行檢查回傳(如Object.keys(env).length)。
 //
-//   純文字生成 → 用API類kind(api-openai-compat)
-//     所謂純文字即: 摘要、分析、改寫、翻譯、產出JSON——所有素材都已在prompt內,
-//     模型只需讀prompt再輸出文字, 全程不需要碰外部世界。
-//     免安裝CLI、免預先登入, 且實測比CLI快(agnes: API 1~2.5s vs CLI 4~6s)。
-//
-// ══ 為何API類不自建工具迴圈(2026-08-11實測後之決策, 勿再自行推翻) ══
-//
-//   1. 閘道端零內建工具: 實測Zen與Agnes皆然, 連web_search都沒有——
-//      對`tools:[{type:'web_search'}]`回400並要求function.parameters,
-//      即端點只接受「呼叫端自行定義且自行執行」的function工具。
-//   2. 協定雖支援function calling(Zen之nemotron與Agnes皆實測回tool_calls),
-//      但工具的定義、執行、錯誤處理、安全邊界全部得由本套件實作與維護,
-//      等同重造CLI已經提供的harness; 工作流日後仍會持續擴充,
-//      自建工具集之維護成本只會擴大, 故一律不走此路。
-//   3. tool_calls有會話束縛(tool_call_id須於同一條messages串回填),
-//      無法跨行程外傳給上層agent(如hermes)代為執行——
-//      工作流是被上層阻塞呼叫的函式, 沒有反向請求工具的通道。
-//      詳見dispatchApiOpenaiCompat.mjs檔頭。
-//
-// ══ 混用才是常態 ══
-//
-//   同一條dispatchAiFallback鏈可逐條目混搭kind, 工作流各階段亦然:
-//   產生候選、整合收斂等純文字階段用API(快且省), 需要讀專案檔案或grep的
-//   階段換CLI。判準永遠是「這一步需不需要碰外部世界」, 而非整條鏈二選一。
+// 【只解析KEY=value最簡格式】不引入dotenv: 金鑰為單行純文字, 僅剝除成對之首尾引號,
+//   不做跳脫與多行處理——加解析規則只會製造與其他.env工具的行為差異。
 
 
 /**
- * 各AI供應商種類(kind)對CLI轉接器函數之對照表
+ * 讀取.env檔為鍵值物件(金鑰來源, 不寫入process.env)
  *
- * 本對照表為kind之唯一來源，dispatchAi以其鍵值分派，WDispatchAi以其鍵名產生KINDS，
- * 新增供應商時僅須於此加入一個鍵值對即可
+ * 特點：
+ * 只解析`KEY=value`形式(KEY限英數底線)，忽略空行、註解與無效行；
+ * value修剪空白並剝除成對之首尾引號(單雙引號皆可)；
+ * 檔案不存在或不可讀一律回空物件不throw(金鑰缺失交由resolveProviders之skipped回報)
  *
- * @returns {Object} 回傳對照表物件，鍵名為供應商種類字串，鍵值為對應之dispatch函數
+ * @param {String} file 輸入.env檔案路徑字串
+ * @returns {Object} 回傳鍵值物件(變數名 → 字串值)，讀取失敗回空物件
  * @example
  *
- * import adapters from './src/adapters.mjs'
+ * import readEnvFile from './src/readEnvFile.mjs'
+ * import resolveProviders from './src/resolveProviders.mjs'
+ * import providersAll from './src/providers.mjs'
  *
- * console.log(Object.keys(adapters))
- * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']
+ * //金鑰放.env(變數值以逗號分隔多把), 讀成物件交resolveProviders, 不污染process.env
+ * let env = readEnvFile('./.env')
+ * let { providers, skipped } = resolveProviders(providersAll, { env, pick: ['agnes:agnes-2.5-flash'] })
  *
  */
-let adapters = {
-    'opencode': dispatchOpencode,
-    'claude': dispatchClaude,
-    'codex': dispatchCodex,
-    'antigravity': dispatchAntigravity,
-    'api-openai-compat': dispatchApiOpenaiCompat,
+function readEnvFile(file) {
+    let out = {}
+    let text = ''
+    try {
+        text = fs.readFileSync(file, 'utf8')
+    }
+    catch (e) {
+        return out //檔案不存在或不可讀, 回空由skipped機制回報
+    }
+    for (let line of text.split(/\r?\n/)) {
+        let m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/)
+        if (!m) {
+            continue
+        }
+        out[m[1]] = m[2].trim().replace(/^(["'])(.*)\1$/, '$2')
+    }
+    return out
 }
 
 
-export default adapters
+export default readEnvFile
 </code></pre>
         </article>
     </section>

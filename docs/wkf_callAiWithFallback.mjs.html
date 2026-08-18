@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li></ul>
     
 </nav>
 
@@ -54,6 +54,7 @@ import isobj from 'wsemi/src/isobj.mjs'
 import dispatchAiFallback from '../dispatchAiFallback.mjs'
 import dfTimeoutMs from '../dfTimeoutMs.mjs'
 import extractJsonLoose from './extractJsonLoose.mjs'
+import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
 
 
 // callAiWithFallback.mjs — 工作流的最小呼叫單元: 一個「AI名額」＝主模型＋自帶遞補鏈
@@ -71,15 +72,9 @@ import extractJsonLoose from './extractJsonLoose.mjs'
 //
 // 【防寫檔前綴】agentic CLI對cwd隔離免疫(會自行解析專案根目錄寫檔),
 //   故預設在prompt前掛「禁止建檔」約束(實測有效); 不需要時傳promptPrefix:''關閉。
-//   殷鑑: 2026-08-10執行任務歷史.md遭AI覆寫、評比腳本繞過前綴又產生根目錄孤兒檔。
-//
-//   措辭須豁免「唯讀查閱」(2026-08-13 A/B實測): 各CLI取得檔案內容的途徑不同——
-//   opencode與claude有獨立的read/grep工具, 不受「禁止執行指令」約束;
-//   但codex讀檔即是執行shell指令, 舊措辭「禁止執行任何指令」對它等同「禁止讀檔」,
-//   凡需讀專案的任務會得到一句「請貼上檔案內容」而非成果, 且該拒答是合法字串,
-//   會通過驗證被遞補層當成「成功」, 整條fallback鏈就此停住——兜底地位被靜默廢掉。
-//   實測: 舊措辭下codex回「無法讀取該檔案」, 改為下列措辭後正常讀檔作答(11.1s),
-//   防副作用(建檔/改檔/刪檔/改動系統狀態)之本旨不變。
+//   措辭已移至獨立模組wkf/noSideEffectPrefix.mjs(單一來源)——不經本層、
+//   直接呼叫dispatchAiFallback的呼叫端亦應引用同一份, 措辭修正時全體同步;
+//   措辭本身的殷鑑(孤兒檔、codex唯讀豁免之A/B實測)詳見該檔檔頭。
 
 
 //本層自用之設定鍵, 其餘鍵(timeoutMs/budgetMs/minAttemptMs/maxRetries/cwd/store/onEvent/
@@ -88,16 +83,6 @@ import extractJsonLoose from './extractJsonLoose.mjs'
 //budget保護靜默失效(2026-08-14使用端實測回報), 故改採omit式轉傳杜絕同類漏鍵;
 //meta為保留鍵: 呼叫端自有資訊掛此鍵保證永不轉傳(全套件同約定, 見dispatchAiFallback檔頭)
 let OWN_KEYS = ['providers', 'spec', 'check', 'parse', 'rawText', 'promptPrefix', 'meta']
-
-
-//預設防寫檔前綴(禁副作用, 但豁免唯讀查閱——codex以shell讀檔, 一律禁指令等同禁讀檔)
-let NO_SIDE_EFFECT = [
-    '【執行約束】你只需把結果輸出在回覆內容中。',
-    '禁止建立、修改或刪除任何檔案，也不要執行任何會改動磁碟或系統狀態的指令——',
-    '呼叫端只讀取你的回覆文字，任何寫入磁碟的動作都不會被採用，只會製造無人讀取的垃圾檔。',
-    '唯讀查閱（讀取檔案、搜尋內容、列出目錄）不在此限，需要時請照常使用。',
-    '', '',
-].join('\n')
 
 
 /**
@@ -152,7 +137,7 @@ function buildChain(providers, spec) {
  * @param {Function} [opt.check=null] 輸入結果檢核函數(json)=>Boolean，預設null代表只要能解析出JSON即通過
  * @param {Function} [opt.parse=extractJsonLoose] 輸入回覆解析函數(stdout)=>Object|null，預設寬鬆JSON抽取
  * @param {Boolean} [opt.rawText=false] 輸入是否以純文字模式運作布林值，true代表不解析JSON(json欄位為修剪後文字、check收文字)，預設false
- * @param {String} [opt.promptPrefix=防寫檔約束] 輸入prompt前綴字串，預設為防寫檔約束，傳''關閉
+ * @param {String} [opt.promptPrefix=防寫檔約束] 輸入prompt前綴字串，預設為防寫檔約束(見wkf/noSideEffectPrefix.mjs)，傳''關閉
  * @param {Number} [opt.timeoutMs=300000] 輸入單次嘗試逾時毫秒正整數，全套件統一預設300000
  * @param {Number} [opt.budgetMs=null] 輸入整條遞補鏈之時間預算毫秒正整數，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入搭配budgetMs之開工門檻毫秒正整數，剩餘預算低於此值即不再開工，預設20000
@@ -289,7 +274,7 @@ export { buildChain, NO_SIDE_EFFECT }
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 18 2026 13:42:39 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 18 2026 15:40:27 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

@@ -12,9 +12,10 @@
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
 //   import resolveProviders from 'w-dispatch-ai/src/resolveProviders.mjs'
-//   process.loadEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把
-//   let { providers: ps, table, skipped } = resolveProviders(providers) //全取
-//   let r2 = resolveProviders(providers, { pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] }) //自選, pick順序即遞補優先序
+//   import readEnvFile from 'w-dispatch-ai/src/readEnvFile.mjs'
+//   let env = readEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把; 不污染process.env
+//   let { providers: ps, table, skipped } = resolveProviders(providers, { env }) //全取
+//   let r2 = resolveProviders(providers, { env, pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] }) //自選, pick順序即遞補優先序
 //
 // 【timeout規劃】各條目刻意不帶timeoutMs, 由上層依任務型態統一給定、條目僅於特例覆寫:
 //   簡單任務(秒級~分鐘級): 沿用套件統一預設即可(全轉接器一律300000＝5分鐘, 見dfTimeoutMs.mjs)。

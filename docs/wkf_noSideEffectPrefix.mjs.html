@@ -3,7 +3,7 @@
 <head>
     
     <meta charset="utf-8">
-    <title>adapters.mjs - Documentation</title>
+    <title>wkf/noSideEffectPrefix.mjs - Documentation</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -35,7 +35,7 @@
 
 <div id="main">
     
-    <h1 class="page-title">adapters.mjs</h1>
+    <h1 class="page-title">wkf/noSideEffectPrefix.mjs</h1>
     
 
     
@@ -45,72 +45,55 @@
     
     <section>
         <article>
-            <pre class="prettyprint source linenums"><code>import dispatchOpencode from './dispatchOpencode.mjs'
-import dispatchClaude from './dispatchClaude.mjs'
-import dispatchCodex from './dispatchCodex.mjs'
-import dispatchAntigravity from './dispatchAntigravity.mjs'
-import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
-
-
-// adapters.mjs — kind對照表, 亦為「CLI或API」之選型判準所在
+            <pre class="prettyprint source linenums"><code>// noSideEffectPrefix.mjs — 防副作用prompt前綴(單一來源)
 //
-// ══ 選 kind 的唯一判準: 這次呼叫需不需要「工具」? ══
+// 【為何獨立成檔】此措辭原內嵌於callAiWithFallback, 但不經該層、直接呼叫
+//   dispatchAiFallback的呼叫端也需要同一約束——實例(2026-08-18使用端調研):
+//   某使用端自帶一份「舊措辭」(一律禁止執行任何指令), 而該措辭的codex禁讀bug
+//   本套件早已修正, 形成「套件修了、消費端沒跟上」的分岔。抽成獨立模組後
+//   所有路徑引用同一來源, 措辭再修正時全體同步。
 //
-//   需要工具 → 用CLI類kind(opencode/claude/codex/antigravity)
-//     所謂工具即: 讀取本機檔案、grep搜尋、執行shell指令、抓取網頁、寫檔。
-//     CLI本身是agentic harness, 自帶完整工具迴圈, 呼叫端什麼都不必做。
+// 【為何需要此前綴】agentic CLI自帶檔案讀寫工具且對cwd隔離免疫(會自行解析
+//   專案根目錄以絕對路徑寫檔), 實測會「順手」把結果另存孤兒檔,
+//   甚至可能覆蓋呼叫端資料本體(殷鑑: 2026-08-10執行任務歷史.md遭AI覆寫、
+//   評比腳本繞過前綴又產生根目錄孤兒檔); 各家CLI的權限機制彼此不同(codex有sandbox、
+//   claude有--disallowedTools、opencode有config.permission),
+//   唯有prompt指示跨provider一致生效。CLI層限制可作第二道防線並存
+//   (內建providers.mjs各CLI條目即自帶機械防寫, 對照表見README)。
 //
-//   純文字生成 → 用API類kind(api-openai-compat)
-//     所謂純文字即: 摘要、分析、改寫、翻譯、產出JSON——所有素材都已在prompt內,
-//     模型只需讀prompt再輸出文字, 全程不需要碰外部世界。
-//     免安裝CLI、免預先登入, 且實測比CLI快(agnes: API 1~2.5s vs CLI 4~6s)。
-//
-// ══ 為何API類不自建工具迴圈(2026-08-11實測後之決策, 勿再自行推翻) ══
-//
-//   1. 閘道端零內建工具: 實測Zen與Agnes皆然, 連web_search都沒有——
-//      對`tools:[{type:'web_search'}]`回400並要求function.parameters,
-//      即端點只接受「呼叫端自行定義且自行執行」的function工具。
-//   2. 協定雖支援function calling(Zen之nemotron與Agnes皆實測回tool_calls),
-//      但工具的定義、執行、錯誤處理、安全邊界全部得由本套件實作與維護,
-//      等同重造CLI已經提供的harness; 工作流日後仍會持續擴充,
-//      自建工具集之維護成本只會擴大, 故一律不走此路。
-//   3. tool_calls有會話束縛(tool_call_id須於同一條messages串回填),
-//      無法跨行程外傳給上層agent(如hermes)代為執行——
-//      工作流是被上層阻塞呼叫的函式, 沒有反向請求工具的通道。
-//      詳見dispatchApiOpenaiCompat.mjs檔頭。
-//
-// ══ 混用才是常態 ══
-//
-//   同一條dispatchAiFallback鏈可逐條目混搭kind, 工作流各階段亦然:
-//   產生候選、整合收斂等純文字階段用API(快且省), 需要讀專案檔案或grep的
-//   階段換CLI。判準永遠是「這一步需不需要碰外部世界」, 而非整條鏈二選一。
+// 【措辭須豁免「唯讀查閱」(2026-08-13 A/B實測)】各CLI取得檔案內容的途徑不同——
+//   opencode與claude有獨立的read/grep工具, 不受「禁止執行指令」約束;
+//   但codex讀檔即是執行shell指令, 舊措辭「禁止執行任何指令」對它等同「禁止讀檔」,
+//   凡需讀專案的任務會得到一句「請貼上檔案內容」而非成果, 且該拒答是合法字串,
+//   會通過驗證被遞補層當成「成功」, 整條fallback鏈就此停住——兜底地位被靜默廢掉。
+//   實測: 舊措辭下codex回「無法讀取該檔案」, 現行措辭正常讀檔作答(11.1s),
+//   防副作用(建檔/改檔/刪檔/改動系統狀態)之本旨不變。
 
 
 /**
- * 各AI供應商種類(kind)對CLI轉接器函數之對照表
+ * 防副作用prompt前綴：禁止寫入類副作用、豁免唯讀查閱
  *
- * 本對照表為kind之唯一來源，dispatchAi以其鍵值分派，WDispatchAi以其鍵名產生KINDS，
- * 新增供應商時僅須於此加入一個鍵值對即可
+ * 用法：`NO_SIDE_EFFECT + prompt`後交dispatchAiFallback；
+ * callAiWithFallback預設自動掛上(傳promptPrefix:''關閉)，
+ * 直接呼叫dispatchAiFallback的呼叫端自行前綴
  *
- * @returns {Object} 回傳對照表物件，鍵名為供應商種類字串，鍵值為對應之dispatch函數
  * @example
  *
- * import adapters from './src/adapters.mjs'
+ * import NO_SIDE_EFFECT from './src/wkf/noSideEffectPrefix.mjs'
  *
- * console.log(Object.keys(adapters))
- * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']
+ * //let r = await dispatchAiFallback(NO_SIDE_EFFECT + prompt, { providers })
  *
  */
-let adapters = {
-    'opencode': dispatchOpencode,
-    'claude': dispatchClaude,
-    'codex': dispatchCodex,
-    'antigravity': dispatchAntigravity,
-    'api-openai-compat': dispatchApiOpenaiCompat,
-}
+let NO_SIDE_EFFECT = [
+    '【執行約束】你只需把結果輸出在回覆內容中。',
+    '禁止建立、修改或刪除任何檔案，也不要執行任何會改動磁碟或系統狀態的指令——',
+    '呼叫端只讀取你的回覆文字，任何寫入磁碟的動作都不會被採用，只會製造無人讀取的垃圾檔。',
+    '唯讀查閱（讀取檔案、搜尋內容、列出目錄）不在此限，需要時請照常使用。',
+    '', '',
+].join('\n')
 
 
-export default adapters
+export default NO_SIDE_EFFECT
 </code></pre>
         </article>
     </section>

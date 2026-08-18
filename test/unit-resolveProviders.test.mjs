@@ -82,4 +82,53 @@ describe('resolveProviders', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('exes逐kind注入exe, 條目已自帶exe者不覆寫(條目層優先)', function() {
+        let defs = [
+            { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },
+            { id: 'claude:opus', kind: 'claude', model: 'opus', exe: 'D:/own/claude.exe' }, //自帶exe
+            { id: 'codex:g', kind: 'codex', model: 'g' }, //exes未含codex → 不動
+        ]
+        let t = resolveProviders(defs, { env: {}, exes: { claude: 'C:/bin/claude.exe' } })
+        let r = [
+            t.table['claude:sonnet'].exe,
+            t.table['claude:opus'].exe,
+            t.table['codex:g'].exe,
+            t.providers[0].exe, //陣列版與table版同源, 必然一致
+        ]
+        let rr = ['C:/bin/claude.exe', 'D:/own/claude.exe', undefined, 'C:/bin/claude.exe']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('patch逐id淺合併覆寫, 於exes之後施作故可覆寫exe, 陣列與table同步生效', function() {
+        let defs = [
+            { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },
+            { id: 'codex:g', kind: 'codex', model: 'g' },
+        ]
+        let t = resolveProviders(defs, {
+            env: {},
+            exes: { claude: 'C:/bin/claude.exe' },
+            patch: { 'claude:sonnet': { timeoutMs: 360000, exe: 'C:/patched/claude.exe' } },
+        })
+        let r = [
+            t.table['claude:sonnet'].timeoutMs,
+            t.table['claude:sonnet'].exe, //patch後於exes施作, 覆寫成功
+            t.providers[0].timeoutMs, //陣列版同步
+            t.table['codex:g'].timeoutMs, //未命中id者不動
+            t.providers[0] === t.table['claude:sonnet'], //同源同一物件
+        ]
+        let rr = [360000, 'C:/patched/claude.exe', 360000, undefined, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('exes與patch皆省略時行為與原版完全相同(向後相容), 且不改動輸入條目', function() {
+        let defs = [{ id: 'a:m', kind: 'claude', model: 'm' }]
+        let before = JSON.stringify(defs)
+        let t1 = resolveProviders(defs, { env: {} })
+        let t2 = resolveProviders(defs, { env: {}, exes: { claude: 'C:/bin/claude.exe' }, patch: { 'a:m': { timeoutMs: 1 } } })
+        let r = [JSON.stringify(t1.table['a:m']), JSON.stringify(defs) === before, defs[0].exe, defs[0].timeoutMs]
+        let rr = ['{"id":"a:m","kind":"claude","model":"m"}', true, undefined, undefined]
+        assert.strict.deepEqual(r, rr)
+        assert.strict.deepEqual(t2.table['a:m'].timeoutMs, 1)
+    })
+
 })

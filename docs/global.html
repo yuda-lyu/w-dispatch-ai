@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li></ul>
     
 </nav>
 
@@ -125,6 +125,86 @@
 
         
             
+<h4 class="name" id="NO_SIDE_EFFECT"><span class="type-signature"></span>NO_SIDE_EFFECT<span class="type-signature"></span></h4>
+
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>防副作用prompt前綴：禁止寫入類副作用、豁免唯讀查閱</p>
+<p>用法：<code>NO_SIDE_EFFECT + prompt</code>後交dispatchAiFallback；
+callAiWithFallback預設自動掛上(傳promptPrefix:''關閉)，
+直接呼叫dispatchAiFallback的呼叫端自行前綴</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="wkf_noSideEffectPrefix.mjs.html">wkf/noSideEffectPrefix.mjs</a>, <a href="wkf_noSideEffectPrefix.mjs.html#line40">line 40</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+<div class="description usertext">
+    <p>防副作用prompt前綴：禁止寫入類副作用、豁免唯讀查閱</p>
+<p>用法：<code>NO_SIDE_EFFECT + prompt</code>後交dispatchAiFallback；
+callAiWithFallback預設自動掛上(傳promptPrefix:''關閉)，
+直接呼叫dispatchAiFallback的呼叫端自行前綴</p>
+</div>
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import NO_SIDE_EFFECT from './src/wkf/noSideEffectPrefix.mjs'
+
+//let r = await dispatchAiFallback(NO_SIDE_EFFECT + prompt, { providers })</code></pre>
+
+
+
+        
+            
 <h4 class="name" id="WDispatchAi"><span class="type-signature"></span>WDispatchAi<span class="type-signature"></span></h4>
 
 
@@ -140,7 +220,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line36">line 36</a>
+        <a href="WDispatchAi.mjs.html">WDispatchAi.mjs</a>, <a href="WDispatchAi.mjs.html#line42">line 42</a>
     </li></ul></dd>
     
 
@@ -529,6 +609,179 @@ console.log(attachErrorType({ ok: true, stdout: 'abc' }).errorType)
 
     
 
+    <h4 class="name" id="budgetFor"><span class="type-signature"></span>budgetFor<span class="signature">(providers)</span><span class="type-signature"> &rarr; {Number}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>計算遞補鏈走滿所需之時間預算(＝各條目timeoutMs之總和, 未帶者以套件統一預設計)</p>
+<p>特點：
+條目timeoutMs取正整數者計入，未帶或無效者以dfTimeoutMs(全套件統一預設300000)計——
+與dispatchAiFallback執行時之實際取值一致，故總和即為走滿全鏈之上限；
+輸入非陣列回傳0</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="budgetFor.mjs.html">budgetFor.mjs</a>, <a href="budgetFor.mjs.html#line40">line 40</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import budgetFor from './src/budgetFor.mjs'
+
+console.log(budgetFor([{ timeoutMs: 180000 }, { timeoutMs: 240000 }]))
+// => 420000
+
+console.log(budgetFor([{ timeoutMs: 180000 }, {}])) //未帶者以套件統一預設300000計
+// => 480000</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>providers</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入供應商條目物件陣列(dispatchAiFallback之providers)</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳時間預算毫秒整數</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Number</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
     <h4 class="name" id="buildChain"><span class="type-signature"></span>buildChain<span class="signature">(providers, spec)</span><span class="type-signature"> &rarr; {Object}</span></h4>
 
     
@@ -545,7 +798,7 @@ console.log(attachErrorType({ ok: true, stdout: 'abc' }).errorType)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line71">line 71</a>
+        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line56">line 56</a>
     </li></ul></dd>
     
 
@@ -905,7 +1158,7 @@ parse＋check接進遞補層之validate——非法回覆視為該家失敗而�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line146">line 146</a>
+        <a href="wkf_callAiWithFallback.mjs.html">wkf/callAiWithFallback.mjs</a>, <a href="wkf_callAiWithFallback.mjs.html#line131">line 131</a>
     </li></ul></dd>
     
 
@@ -1334,7 +1587,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入prompt前綴字串，預設為防寫檔約束，傳''關閉</p></td>
+            <td class="description last"><p>輸入prompt前綴字串，預設為防寫檔約束(見wkf/noSideEffectPrefix.mjs)，傳''關閉</p></td>
         </tr>
 
     
@@ -2156,6 +2409,892 @@ console.log(castPintOr(undefined, null))
 |
 
 <span class="param-type">*</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="createFileStore"><span class="type-signature"></span>createFileStore<span class="signature">(opt<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>建立dispatchAiFallback之store的檔案持久化(游標與冷卻跨行程有效)</p>
+<p>特點：
+採排除式passthrough——state原封存還，僅剔除本層自用欄位(預設只有at：人讀的最後更新時間戳)，
+日後套件擴充state欄位(如cooling)即自動相容，不需改本函數；
+檔案不存在或非法JSON時get回空物件(套件視為全新狀態)；
+stamp可注入時間戳函數(排程環境建議注入時區錨定者)，寫入時補進at欄位供人工debug</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="wkf_createFileStore.mjs.html">wkf/createFileStore.mjs</a>, <a href="wkf_createFileStore.mjs.html#line56">line 56</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import createFileStore from './src/wkf/createFileStore.mjs'
+import dispatchAiFallback from './src/dispatchAiFallback.mjs'
+
+let store = createFileStore({ dir: './state' })
+//let r = await dispatchAiFallback(prompt, { providers, store, cooldownMs: 3600000 })</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>opt</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>{}</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入設定物件，預設{}</p>
+                <h6>Properties</h6>
+                
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>file</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入狀態檔完整路徑字串，與dir/name二擇一</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>dir</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入狀態目錄字串，與name組成檔案路徑</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>name</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>'ai-cursor.json'</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入狀態檔名字串，預設'ai-cursor.json'</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>ownKeys</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>['at']</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入本層自用、不屬於套件狀態之欄位名字串陣列，get時剔除set時補回，預設['at']</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>stamp</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>ISO時間戳</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入時間戳函數()=&gt;String，寫入at欄位用，預設回傳new Date().toISOString()</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+            </td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳store物件，內含get、set(可直接餵dispatchAiFallback之store)與file(狀態檔路徑)</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Object</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="createUsageCounter"><span class="type-signature"></span>createUsageCounter<span class="signature">(opt<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>建立逐日、逐鍵之用量計數器(純觀測, 不參與任何判斷)</p>
+<p>特點：
+onEvent可直接掛進dispatchAiFallback/dispatchAiWkf，於type為'try'時依keyOf取鍵累加——
+嘗試時即記帳，行程被外部時限中途砍掉已發出的請求仍有紀錄；
+逐日分桶並僅保留最近keepDays天，避免檔案無限成長；
+getDate可注入時區錨定之日期函數——預設隨系統時區，排程session之系統時區可能為UTC+0
+而使日界錯8小時，排程環境務必注入</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="wkf_createUsageCounter.mjs.html">wkf/createUsageCounter.mjs</a>, <a href="wkf_createUsageCounter.mjs.html#line59">line 59</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import createUsageCounter from './src/wkf/createUsageCounter.mjs'
+
+let usage = createUsageCounter({ dir: './state' })
+//let r = await dispatchAiFallback(prompt, { providers, onEvent: usage.onEvent })
+//console.log(usage.today())
+// => { today: '2026-08-18', byKey: { 'agnes:agnes-2.5-flash#0': 3 }, total: 3 }</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>opt</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>{}</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入設定物件，預設{}</p>
+                <h6>Properties</h6>
+                
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>file</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入用量檔完整路徑字串，與dir/name二擇一</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>dir</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入狀態目錄字串</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>name</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>'ai-usage.json'</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入用量檔名字串，預設'ai-usage.json'</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>getDate</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>系統日期</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入日期函數()=&gt;'YYYY-MM-DD'，預設隨系統時區(排程環境建議注入時區錨定者)</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>keepDays</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Number</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>14</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入保留天數正整數，預設14</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>keyOf</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">function</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>(ev)=>ev.keyId||ev.providerId</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入計帳鍵函數(ev)=&gt;String，決定粒度(金鑰或條目)，預設優先keyId</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+            </td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳計數器物件，內含onEvent(可直接餵dispatch之onEvent)、bump(手動累加)、today(今日統計)與file(用量檔路徑)</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Object</span>
 
 
 
@@ -8367,6 +9506,179 @@ console.log(getErrorType({ error: 'Exit code 1' }))
 
     
 
+    <h4 class="name" id="readEnvFile"><span class="type-signature"></span>readEnvFile<span class="signature">(file)</span><span class="type-signature"> &rarr; {Object}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>讀取.env檔為鍵值物件(金鑰來源, 不寫入process.env)</p>
+<p>特點：
+只解析<code>KEY=value</code>形式(KEY限英數底線)，忽略空行、註解與無效行；
+value修剪空白並剝除成對之首尾引號(單雙引號皆可)；
+檔案不存在或不可讀一律回空物件不throw(金鑰缺失交由resolveProviders之skipped回報)</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="readEnvFile.mjs.html">readEnvFile.mjs</a>, <a href="readEnvFile.mjs.html#line40">line 40</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import readEnvFile from './src/readEnvFile.mjs'
+import resolveProviders from './src/resolveProviders.mjs'
+import providersAll from './src/providers.mjs'
+
+//金鑰放.env(變數值以逗號分隔多把), 讀成物件交resolveProviders, 不污染process.env
+let env = readEnvFile('./.env')
+let { providers, skipped } = resolveProviders(providersAll, { env, pick: ['agnes:agnes-2.5-flash'] })</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>file</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入.env檔案路徑字串</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳鍵值物件(變數名 → 字串值)，讀取失敗回空物件</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Object</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
     <h4 class="name" id="reorderByCooling"><span class="type-signature"></span>reorderByCooling<span class="signature">(providers, state, cooldownMs, saveState)</span><span class="type-signature"> &rarr; {Array}</span></h4>
 
     
@@ -8615,13 +9927,15 @@ console.log(getErrorType({ error: 'Exit code 1' }))
 缺對應環境變數(或值為空)之條目停用並列入skipped，不中斷不throw；
 無envVar之條目(訂閱登入態CLI)原樣通過；條目已自帶有效keys者以keys為準；
 opt.pick可依id自選子集並以pick順序回傳(順序即遞補優先序)；
+opt.exes依kind注入CLI執行檔路徑、opt.patch依id淺合併覆寫欄位——皆於展開後施作，
+providers與table同源產出故必然一致；
 輸入陣列與條目皆不被改動(輸出為淺拷貝)</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="resolveProviders.mjs.html">resolveProviders.mjs</a>, <a href="resolveProviders.mjs.html#line56">line 56</a>
+        <a href="resolveProviders.mjs.html">resolveProviders.mjs</a>, <a href="resolveProviders.mjs.html#line80">line 80</a>
     </li></ul></dd>
     
 
@@ -8669,19 +9983,31 @@ opt.pick可依id自選子集並以pick順序回傳(順序即遞補優先序)；
     <h5 class="h5-examples">Example</h5>
     
     <pre class="prettyprint"><code>import resolveProviders from './src/resolveProviders.mjs'
+import readEnvFile from './src/readEnvFile.mjs'
 import providersAll from './src/providers.mjs'
 
-process.loadEnvFile('./.env') //金鑰放.env, 變數值以逗號分隔多把
+//金鑰放.env(變數值以逗號分隔多把), 以readEnvFile讀成物件, 不污染process.env
+let env = readEnvFile('./.env')
 
 //全取: envVar展開為keys, 缺環境變數者列入skipped
-let { providers, table, skipped } = resolveProviders(providersAll)
+let { providers, table, skipped } = resolveProviders(providersAll, { env })
 console.log(providers.length, skipped)
 // => 10 []
 
 //自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallback
-let r2 = resolveProviders(providersAll, { pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] })
+let r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] })
 console.log(r2.providers.map((p) => p.id))
 // => [ 'agnes:agnes-2.5-flash', 'claude:sonnet' ]
+
+//後處理: exes逐kind注入執行檔、patch逐id覆寫欄位, 陣列與table同步生效
+let r3 = resolveProviders(providersAll, {
+    env,
+    pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'],
+    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },
+    patch: { 'claude:sonnet': { timeoutMs: 360000 } },
+})
+console.log(r3.table['claude:sonnet'].exe, r3.table['claude:sonnet'].timeoutMs)
+// => 'C:/Users/x/.local/bin/claude.exe' 360000
 
 //table可直接餵dispatchAiWkf之providers定義表
 //let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })</code></pre>
@@ -8850,7 +10176,7 @@ console.log(r2.providers.map((p) => p.id))
                 </td>
             
 
-            <td class="description last"><p>輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env</p></td>
+            <td class="description last"><p>輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env。建議以readEnvFile('./.env')讀成物件傳入，不污染process.env</p></td>
         </tr>
 
     
@@ -8891,6 +10217,86 @@ console.log(r2.providers.map((p) => p.id))
             
 
             <td class="description last"><p>輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>exes</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入kind對執行檔絕對路徑之物件(如{claude:'C:/.../claude.exe'})，命中kind之條目補上exe欄位(條目已自帶exe者不覆寫——條目層設定優先)，預設null代表不注入</p></td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>patch</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>null</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入id對部分欄位之物件(如{'claude:sonnet':{timeoutMs:360000}})，命中id之條目淺合併覆寫，於exes之後施作故可覆寫exe，預設null代表不覆寫</p></td>
         </tr>
 
     
@@ -10478,6 +11884,183 @@ await test()
 
 
         
+            
+
+    
+
+    <h4 class="name" id="salvageTruncatedArray"><span class="type-signature"></span>salvageTruncatedArray<span class="signature">(text)</span><span class="type-signature"> &rarr; {Array|null}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>自截斷的JSON陣列文字搶救出前段完整元素(頂層元素須為物件)</p>
+<p>特點：
+自第一個<code>[</code>起逐字元掃描(字串與跳脫感知)，追蹤「最後一個完整結束的頂層物件元素」，
+補上<code>]</code>重新解析——回傳的每個元素皆完整合法，不是半成品；
+陣列有正常閉合(＝非截斷)、無<code>[</code>、或救回後為空陣列，一律回null不硬救；
+典型用法：extractJsonLoose回null時之後備，或組成自訂parse注入callAiWithFallback</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="wkf_salvageTruncatedArray.mjs.html">wkf/salvageTruncatedArray.mjs</a>, <a href="wkf_salvageTruncatedArray.mjs.html#line40">line 40</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import salvageTruncatedArray from './src/wkf/salvageTruncatedArray.mjs'
+
+console.log(salvageTruncatedArray('[{"a":1},{"b":2},{"c":'))
+// => [ { a: 1 }, { b: 2 } ]
+
+console.log(salvageTruncatedArray('[{"a":1}]')) //有閉合＝非截斷, 不在搶救範圍
+// => null</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>text</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">String</span>
+
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last"><p>輸入模型輸出文字字串</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳搶救出之非空陣列，無法搶救回null</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Array</span>
+|
+
+<span class="param-type">null</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
     
 
     
@@ -10497,7 +12080,7 @@ await test()
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 18 2026 13:42:39 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Aug 18 2026 15:40:27 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

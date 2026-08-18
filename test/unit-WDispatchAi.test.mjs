@@ -16,7 +16,7 @@ import resolveProviders from '../src/resolveProviders.mjs'
 
 describe('WDispatchAi', function() {
 
-    it('對外提供KINDS與各dispatch函數', function() {
+    it('對外提供KINDS與各dispatch函數與工具', function() {
         let r = keys(wi)
         let rr = [
             'KINDS',
@@ -30,6 +30,12 @@ describe('WDispatchAi', function() {
             'dispatchApiOpenaiCompat',
             'providers',
             'resolveProviders',
+            'readEnvFile',
+            'budgetFor',
+            'createFileStore',
+            'createUsageCounter',
+            'salvageTruncatedArray',
+            'NO_SIDE_EFFECT',
         ]
         assert.strict.deepEqual(r, rr)
     })
@@ -40,9 +46,9 @@ describe('WDispatchAi', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('各鍵值型別正確(KINDS與providers為物件, 其餘為函數)', function() {
+    it('各鍵值型別正確(KINDS與providers為物件, NO_SIDE_EFFECT為字串, 其餘為函數)', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function']
+        let rr = ['object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'string']
         assert.strict.deepEqual(r, rr)
     })
 
