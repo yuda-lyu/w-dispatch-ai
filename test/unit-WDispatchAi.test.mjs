@@ -20,6 +20,7 @@ describe('WDispatchAi', function() {
         let r = keys(wi)
         let rr = [
             'KINDS',
+            'NO_SIDE_EFFECT',
             'dispatchAi',
             'dispatchAiFallback',
             'dispatchAiWkf',
@@ -35,7 +36,6 @@ describe('WDispatchAi', function() {
             'createFileStore',
             'createUsageCounter',
             'salvageTruncatedArray',
-            'NO_SIDE_EFFECT',
         ]
         assert.strict.deepEqual(r, rr)
     })
@@ -48,7 +48,7 @@ describe('WDispatchAi', function() {
 
     it('各鍵值型別正確(KINDS與providers為物件, NO_SIDE_EFFECT為字串, 其餘為函數)', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'string']
+        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function']
         assert.strict.deepEqual(r, rr)
     })
 

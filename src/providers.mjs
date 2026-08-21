@@ -9,6 +9,13 @@
 //   zen:/agnes:/poolside:＝REST直呼(免CLI免登入、快, 純文字生成)
 //   同一模型之CLI版與REST版屬不同供應商(能力與額度池皆不同), 故各為一條。
 //
+// 【zen免費模型清單為「更新日快照」, 不保證即為當前狀態】zen:系收錄截至2026-08-21
+//   經GET https://opencode.ai/zen/v1/models 查得之「全部」免費模型(*-free), 不做好用篩選——
+//   新模型會上線、舊模型可能下架或限流, 且各模型能力/速度/輸出習慣差異極大
+//   (各條目註解記錄已測特性), 由呼叫端自行評估選用; 要查當前清單, 以OPENCODE_KEYS
+//   打上述/models端點即可。暫時打不通的條目(限流/額度)依本套件哲學保留不移除:
+//   恢復的偵測就是下次再打一次, 代價僅一次快速失敗(fallback/cooldownMs即為此而生)。
+//
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
 //   import resolveProviders from 'w-dispatch-ai/src/resolveProviders.mjs'
@@ -43,6 +50,7 @@ let providers = [
         config: {
             permission: { edit: 'deny', write: 'deny', bash: 'deny' },
         },
+        //2026-08-21實測失敗(UnknownError, 與zen:deepseek同日之401同源); 保留理由見該條註記
     },
     {
         id: 'oc:agnes-ai/agnes-2.5-flash',
@@ -105,6 +113,7 @@ let providers = [
     },
 
     //api版
+    //zen:系為2026-08-21快照(檔頭聲明), 各條註記當日以「請只回覆兩個字：完成」實測之結果
     {
         id: 'zen:deepseek-v4-flash-free',
         model: 'deepseek-v4-flash-free',
@@ -112,6 +121,71 @@ let providers = [
         envVar: 'OPENCODE_KEYS',
         baseURL: 'https://opencode.ai/zen/v1',
         body: { max_tokens: 8192 },
+        //2026-08-21實測回401(官方訊息: Free promotion has ended); opencode方案端仍列此模型,
+        //判讀為用量壓力下之暫時狀態而保留, 恢復之偵測即下次再打
+    },
+    {
+        id: 'zen:laguna-s-2.1-free',
+        model: 'laguna-s-2.1-free',
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 8192 },
+        //2026-08-21實測4.0s; 同一laguna之第三條路(Poolside官方REST/oc CLI/zen), 三者故障域獨立
+    },
+    {
+        id: 'zen:x-preview-f-free',
+        model: 'x-preview-f-free', //官方顯示名Ox Alpha Free
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 8192 },
+        //2026-08-21實測2.4s; 使用端回報批次涵蓋率偏低(3篇輸入常只回1~2篇), 批次任務慎用
+    },
+    {
+        id: 'zen:muse-spark-1.2-contributor-free',
+        model: 'muse-spark-1.2-contributor-free',
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 8192 },
+        //2026-08-21實測3.9s; 使用端回報批次涵蓋率100%、術語標準、內容密度高
+    },
+    {
+        id: 'zen:mimo-v2.5-free',
+        model: 'mimo-v2.5-free',
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 8192 },
+        //2026-08-21實測連續429(FreeUsageLimitError, 容量型)——429證明閘道認得此id(寫錯會回其他4xx)
+    },
+    {
+        id: 'zen:hy3-free',
+        model: 'hy3-free',
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 8192 },
+        //2026-08-21實測3.2s
+    },
+    {
+        id: 'zen:nemotron-3-ultra-free',
+        model: 'nemotron-3-ultra-free',
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 8192 },
+        //2026-08-21實測2.2s; function calling協定實測可用(tool_calls格式標準, 但本套件api類不支援工具)
+    },
+    {
+        id: 'zen:nemotron-3.5-lightning-free',
+        model: 'nemotron-3.5-lightning-free',
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 8192 },
+        //2026-08-21實測27.4s——名為lightning實測卻最慢, timeout與批量規劃須留意
     },
     {
         id: 'agnes:agnes-2.5-flash',

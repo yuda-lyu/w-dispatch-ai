@@ -41,7 +41,7 @@ Note:
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
 | `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
-| `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override |
+| `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
 | `budgetFor(providers)` | derive the time budget to walk a whole fallback chain (sum of per-entry `timeoutMs`, defaults applied) |
 | `createFileStore(opt)` | file-persisted `store` for `dispatchAiFallback` (cursors and cooling survive across processes), exclusion-style passthrough |
@@ -483,7 +483,9 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
 ```
 
 #### providers.mjs(內建供應商定義檔):
-[src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 收錄實測可用之條目(CLI版與REST版)，金鑰以 `envVar` 間接引用(機密只放 `.env`)，經 `resolveProviders` 展開後即可直接使用或以 `pick` 自選：
+[src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 收錄各供應商條目(CLI版與REST版)，金鑰以 `envVar` 間接引用(機密只放 `.env`)，經 `resolveProviders` 展開後即可直接使用或以 `pick` 自選。
+
+**zen免費模型清單為「更新日快照」**：`zen:` 系收錄截至 2026-08-21 經 `GET /zen/v1/models` 查得之**全部**免費模型(`*-free`)，不做好用篩選——新模型會上線、舊模型可能下架或限流，**不保證清單即為當前最新可用狀態**；且各模型能力/速度/輸出習慣差異極大（各條目註解記錄已測特性，如批次涵蓋率、實測耗時），由呼叫端自行評估選用。暫時打不通的條目依本套件哲學保留不移除：恢復的偵測就是下次再打一次，`fallback`/`cooldownMs` 即為此而生。
 
 ```alias
 import wdi from 'w-dispatch-ai'
@@ -508,7 +510,23 @@ let p2 = wdi.resolveProviders(wdi.providers, {
     exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },
     patch: { 'claude:sonnet': { timeoutMs: 360000 } },
 })
+
+//pick打錯字時missing附拼寫提示hints(最接近之可用id), 可直接組出可定位的錯誤訊息
+let pm = wdi.resolveProviders(wdi.providers, { env, pick: ['poolside/laguna-s-2.1'] })
+if (pm.missing.length > 0) {
+    throw new Error(`unknown provider id(s): ${pm.missing.map((id) => `${id} (did you mean ${pm.hints[id]}?)`).join(', ')}`)
+}
 ```
+
+**自帶條目（新模型上線快於套件發版時）**：`resolveProviders` 第一參數就是普通條目陣列，安裝端把自訂條目**合併進輸入**再傳入即可，同 id 時以自訂者覆蓋內建：
+
+```alias
+let extra = [{ id: 'zen:some-new-model-free', model: 'some-new-model-free', kind: 'api-openai-compat', envVar: 'OPENCODE_KEYS', baseURL: 'https://opencode.ai/zen/v1', body: { max_tokens: 8192 } }]
+let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)), ...extra]
+let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
+```
+
+**警語：動「輸入」、不要動「回傳」**——把條目 push 進回傳的 `providers` 陣列不會同步進 `table`，兩者當場分歧；合併輸入再呼叫則兩種輸出同源產出、必然一致。另同 id 重複條目屬設定錯誤（共用游標、日誌無法區分），合併時務必如上例先濾再接。
 
 **配套工具**（皆為選用，深層引入或由聚合物件取用）：
 

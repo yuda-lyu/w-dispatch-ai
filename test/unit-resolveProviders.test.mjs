@@ -120,6 +120,32 @@ describe('resolveProviders', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('pick查無時missing附拼寫提示hints(最接近之可用id), 無missing時hints為空物件', function() {
+        let defs = [
+            { id: 'poolside:laguna-s-2.1', kind: 'api-openai-compat', model: 'm' },
+            { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },
+        ]
+        //實務上pick查無多半是打錯字(如分隔符「/」誤替「:」), hints直接定位
+        let t1 = resolveProviders(defs, { env: {}, pick: ['poolside/laguna-s-2.1', 'claude:sonnet'] })
+        let t2 = resolveProviders(defs, { env: {} })
+        let r = [t1.missing, t1.hints, t1.providers.map((p) => p.id), t2.missing, t2.hints]
+        let rr = [
+            ['poolside/laguna-s-2.1'],
+            { 'poolside/laguna-s-2.1': 'poolside:laguna-s-2.1' },
+            ['claude:sonnet'], //查無者不影響其餘pick
+            [],
+            {},
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('providers為空而pick有值時hints值為null(無可比對之id), 不throw', function() {
+        let t = resolveProviders([], { env: {}, pick: ['x'] })
+        let r = [t.missing, t.hints]
+        let rr = [['x'], { x: null }]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('exes與patch皆省略時行為與原版完全相同(向後相容), 且不改動輸入條目', function() {
         let defs = [{ id: 'a:m', kind: 'claude', model: 'm' }]
         let before = JSON.stringify(defs)
