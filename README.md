@@ -237,6 +237,15 @@ await test()
 | --- | --- | --- | --- |
 | `sandbox` | String | `'workspace-write'` | 沙箱模式，可用`'read-only'`、`'workspace-write'`、`'danger-full-access'` |
 
+**Windows 診斷：Codex 回報所有命令 `blocked by policy`（Codex ≥0.149）**
+
+Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandboxOffline`/`CodexSandboxOnline`＋WFP 網路過濾＋家目錄 read ACL），**需一次性管理員設定**；設定未完成時 execpolicy 會在 spawn 前拒絕**所有** shell 命令（含 `Get-Content`、`rg` 等唯讀命令），錯誤形如 `CreateProcess { message: "Rejected(\"... blocked by policy\")" }`——Codex 讀檔即是執行 shell，等同完全不能讀檔。
+
+- **判別**：`~/.codex/.sandbox/setup_marker.json` 不存在、且 `~/.codex/.sandbox/sandbox.<日期>.log` 只有 `START` 沒有 `SUCCESS` ＝ 設定未完成。
+- **正解**：以互動模式跑一次 `codex` 完成設定（會要求 UAC 提權），完成後 `setup_marker.json` 出現，`read-only`／`workspace-write` 皆可正常執行命令（2026-08-26 於 Codex 0.149.0＋Windows 11 26200 實測：設定完成前全擋、完成後五種設定全通）。
+- **臨時繞道**：`extraArgs: ['--config', 'windows.sandbox="unelevated"']`——跳過管理員設定即可執行，但**隔離較弱**（無專用使用者與網路過濾）；本套件**刻意不**將此設為 Windows 預設，避免在已完成設定的機器上默默降級沙箱。
+- **靜默失敗警語**：被擋時 Codex 常回「請貼上檔案內容」之合法字串，會通過 `validate: 'nonempty'` 被當成功。凡需 Codex 讀檔的任務，`validate`／工作流 `check` 應要求回覆**引用指定行原文**，不要只驗非空；派長任務前先以「讀一個檔並引用第 N 行」做最小探測。
+
 #### Options only for dispatchAntigravity:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -544,7 +553,7 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 | --- | --- | --- | --- |
 | `opencode` | `config.permission: { edit/write/bash: 'deny' }` | opencode設定層拒絕編輯/寫檔/執行指令 | 2026-08 實測 |
 | `claude` | `extraArgs: ['--disallowedTools', 'Write,Edit,NotebookEdit,Bash']` | CLI停用寫入類工具 | 2026-08 實測 |
-| `codex` | `sandbox: 'read-only'` | Codex沙箱唯讀模式 | 2026-08 實測 |
+| `codex` | `sandbox: 'read-only'` | Codex沙箱唯讀模式 | 2026-08-26 於 Codex 0.149.0 實測可執行唯讀命令；前提是 Windows elevated 沙箱之一次性設定已完成，否則所有命令 `blocked by policy`（診斷見「Options only for dispatchCodex」） |
 | `antigravity` | `skipPermissions: false` | 保留agy權限閘門（不送`--dangerously-skip-permissions`） | 2026-08-15 canary實測：無此鎖時要求建檔**會真的落地**；`false`之下寫入被擋且**不卡逾時**（6.4s正常返回）、唯讀工具照常 |
 
 注意agy被權限閘門擋下寫入時回`ok: true`且**stdout為空**（靜默拒絕非報錯）：工作流層無害（空回覆過不了validate而自動遞補），但直接呼叫`dispatchAntigravity`者須以「空輸出」判別被擋，不能只看`ok`。另提示詞層的`NO_SIDE_EFFECT`前綴是「請求」不是「強制」，機械防寫以上表欄位為準。
