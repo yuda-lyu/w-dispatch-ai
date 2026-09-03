@@ -27,7 +27,7 @@ let test = async () => {
 
     //可用之AI供應商種類
     console.log('KINDS:', wdi.KINDS)
-    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat' ]
+    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses' ]
 
     let prompt = '請只回覆兩個字：完成，不要有任何其他文字'
 
@@ -84,7 +84,7 @@ let test = async () => {
     //未知供應商回傳error結果物件, 不會reject
     let r4 = await wdi.dispatchAi('gemini', prompt)
     console.log('invalid kind:', r4.ok, r4.error)
-    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat)
+    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat, api-openai-responses)
 
     //prompt非有效字串亦回傳error結果物件
     let r5 = await wdi.dispatchClaude('')

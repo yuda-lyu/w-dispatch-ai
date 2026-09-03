@@ -1,14 +1,12 @@
 import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
-import isfun from 'wsemi/src/isfun.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
+import cint from 'wsemi/src/cint.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import castPintOr from './castPintOr.mjs'
-import strleft from 'wsemi/src/strleft.mjs'
-import strdelleft from 'wsemi/src/strdelleft.mjs'
+import buildValidator from './buildValidator.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
@@ -63,68 +61,6 @@ let MAX_RETRY_DELAY_MS = 15000
 //optTruncate, 裁切失敗結果之內容時於刪節號後標註原始總長度(同execCli)
 let optTruncate = {
     funWithMsg: (str) => `(truncated, total ${str.length} chars)`,
-}
-
-
-/**
- * 建立驗證函式(規則語法同execCli之validate)
- *
- * @param {String|Function} rule 輸入驗證規則字串('nonempty'、'json'、'min:100', 逗號可串接)或自訂函式
- * @returns {Function|null} 回傳驗證函式，無有效規則回傳null
- */
-function buildValidator(rule) {
-
-    //自訂函式直接使用
-    if (isfun(rule)) {
-        return rule
-    }
-
-    //check
-    if (!isestr(rule)) {
-        return null
-    }
-
-    //checks
-    let checks = rule.split(',').map((r) => r.trim()).filter(Boolean)
-    if (checks.length === 0) {
-        return null
-    }
-
-    return (stdout) => {
-        for (let check of checks) {
-
-            if (check === 'nonempty') {
-                if (!isestr(stdout) || stdout.trim() === '') {
-                    return false
-                }
-            }
-
-            else if (check === 'json') {
-                try {
-                    JSON.parse(stdout)
-                }
-                catch {
-                    return false
-                }
-            }
-
-            else if (strleft(check, 4) === 'min:') {
-
-                //規則本身無效(如min:abc) → 視為驗證失敗, 不靜默跳過
-                let smin = strdelleft(check, 4)
-                if (!isnum(smin)) {
-                    return false
-                }
-
-                let min = cint(smin)
-                if (!isestr(stdout) || stdout.length < min) {
-                    return false
-                }
-            }
-
-        }
-        return true
-    }
 }
 
 

@@ -7,19 +7,20 @@ import dispatchClaude from '../src/dispatchClaude.mjs'
 import dispatchCodex from '../src/dispatchCodex.mjs'
 import dispatchAntigravity from '../src/dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from '../src/dispatchApiOpenaiCompat.mjs'
+import dispatchApiOpenaiResponses from '../src/dispatchApiOpenaiResponses.mjs'
 
 
 describe('adapters', function() {
 
     it('對照表鍵名即為可用之供應商種類', function() {
         let r = keys(adapters)
-        let rr = ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']
+        let rr = ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses']
         assert.strict.deepEqual(r, rr)
     })
 
     it('各鍵值皆為函數', function() {
         let r = map(keys(adapters), (k) => typeof adapters[k])
-        let rr = ['function', 'function', 'function', 'function', 'function']
+        let rr = ['function', 'function', 'function', 'function', 'function', 'function']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -30,8 +31,9 @@ describe('adapters', function() {
             adapters.codex === dispatchCodex,
             adapters.antigravity === dispatchAntigravity,
             adapters['api-openai-compat'] === dispatchApiOpenaiCompat,
+            adapters['api-openai-responses'] === dispatchApiOpenaiResponses,
         ]
-        let rr = [true, true, true, true, true]
+        let rr = [true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 

@@ -57,7 +57,7 @@ import strFindSimilar from 'wsemi/src/strFindSimilar.mjs'
  * //全取: envVar展開為keys, 缺環境變數者列入skipped
  * let { providers, table, skipped } = resolveProviders(providersAll, { env })
  * console.log(providers.length, skipped)
- * // => 16 []
+ * // => 17 []
  *
  * //pick打錯字時, missing附拼寫提示hints(最接近之可用id)
  * let rm = resolveProviders(providersAll, { env, pick: ['poolside/laguna-s-2.1'] })

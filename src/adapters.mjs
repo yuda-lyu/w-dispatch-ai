@@ -3,6 +3,7 @@ import dispatchClaude from './dispatchClaude.mjs'
 import dispatchCodex from './dispatchCodex.mjs'
 import dispatchAntigravity from './dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
+import dispatchApiOpenaiResponses from './dispatchApiOpenaiResponses.mjs'
 
 
 // adapters.mjs — kind對照表, 亦為「CLI或API」之選型判準所在
@@ -51,7 +52,7 @@ import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
  * import adapters from './src/adapters.mjs'
  *
  * console.log(Object.keys(adapters))
- * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']
+ * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses']
  *
  */
 let adapters = {
@@ -60,6 +61,7 @@ let adapters = {
     'codex': dispatchCodex,
     'antigravity': dispatchAntigravity,
     'api-openai-compat': dispatchApiOpenaiCompat,
+    'api-openai-responses': dispatchApiOpenaiResponses,
 }
 
 

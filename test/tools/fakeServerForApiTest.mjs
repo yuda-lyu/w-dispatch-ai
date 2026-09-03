@@ -7,7 +7,11 @@ import http from 'http'
 // 故起一個本機http伺服器, 依請求之model與Authorization決定回應行為,
 // 即可對成功/401/429/500/逾時/畸形回應逐條斷言, 而無須真的呼叫外部API。
 //
-// 【行為路由(依body.model)】
+// 【路由】POST /v1/chat/completions 與 POST /v1/responses 兩種端點,
+//   回應形狀依端點而異(Responses API無choices, 改為output陣列且usage欄位名不同),
+//   對應dispatchApiOpenaiCompat與dispatchApiOpenaiResponses。
+//
+// 【chat/completions之行為路由(依body.model)】
 //   echo           — 200, content為JSON字串{ auth, body }, 供斷言請求組成
 //   empty-content  — 200, content為空字串(驗證路徑用)
 //   slow           — 延遲10秒才回應(逾時路徑用)
@@ -17,6 +21,17 @@ import http from 'http'
 //   not-json       — 200但本體非JSON(畸形回應路徑用)
 //   tool-calls     — 200但finish_reason為tool_calls(工具不支援路徑用)
 //   其他           — 404
+// 【responses之行為路由(依body.model)】
+//   echo           — 200, message之output_text為JSON字串{ auth, body }
+//   multi-message  — 200, 多個message元素(驗證依序串接、reasoning項被略過)
+//   empty-content  — 200但output_text為空字串
+//   incomplete     — 200但status為incomplete(reason: max_output_tokens, output為空)
+//   failed         — 200但status為failed(帶error.message)
+//   reasoning-only — 200且completed但output僅reasoning無message(結構不合規)
+//   tool-calls     — 200但output含function_call元素
+//   no-output      — 200但缺output陣列
+//   not-json/slow/err-500/flaky-429 — 同chat/completions之對應行為
+//   其他           — 401(同Zen實測: 未知model回401非404)
 // 【金鑰規則】Authorization含'sk-bad'一律401(優先於model路由), 模擬無效金鑰。
 
 
@@ -35,8 +50,9 @@ async function fakeServerForApiTest() {
 
     let server = http.createServer((req, res) => {
 
-        //僅受理POST /v1/chat/completions
-        if (req.method !== 'POST' || !req.url.endsWith('/chat/completions')) {
+        //僅受理POST /v1/chat/completions與POST /v1/responses
+        let isResponses = req.url.endsWith('/responses')
+        if (req.method !== 'POST' || (!req.url.endsWith('/chat/completions') && !isResponses)) {
             res.writeHead(404, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ error: { message: 'not found' } }))
             return
@@ -67,6 +83,95 @@ async function fakeServerForApiTest() {
             }
 
             let model = body.model || ''
+
+            //Responses API路由(/responses): 形狀與chat/completions完全不同, 見dispatchApiOpenaiResponses檔頭
+            if (isResponses) {
+                let send = (code, obj) => {
+                    res.writeHead(code, { 'Content-Type': 'application/json' })
+                    res.end(JSON.stringify(obj))
+                }
+                //usage欄位名為input_tokens/output_tokens(與chat/completions不同), 供斷言原樣透傳
+                let usage = { input_tokens: 5, output_tokens: 11, total_tokens: 16 }
+                let okResp = (text) => send(200, {
+                    id: 'resp_x',
+                    object: 'response',
+                    status: 'completed',
+                    model,
+                    error: null,
+                    incomplete_details: null,
+                    output: [
+                        { id: 'rs_1', type: 'reasoning', status: 'completed', content: [] }, //思考項應被略過
+                        { id: 'msg_1', type: 'message', status: 'completed', content: [{ type: 'output_text', text }] },
+                    ],
+                    usage,
+                })
+                if (model === 'echo') {
+                    okResp(JSON.stringify({ auth, body }))
+                }
+                else if (model === 'multi-message') { //多個message元素應依序串接
+                    send(200, {
+                        status: 'completed',
+                        model,
+                        error: null,
+                        incomplete_details: null,
+                        output: [
+                            { type: 'message', content: [{ type: 'output_text', text: 'AA' }] },
+                            { type: 'reasoning', content: [] },
+                            { type: 'message', content: [{ type: 'output_text', text: 'BB' }] },
+                        ],
+                        usage,
+                    })
+                }
+                else if (model === 'empty-content') {
+                    okResp('')
+                }
+                else if (model === 'incomplete') { //max_output_tokens耗盡, output為空
+                    send(200, { status: 'incomplete', model, error: null, incomplete_details: { reason: 'max_output_tokens' }, output: [], usage })
+                }
+                else if (model === 'failed') {
+                    send(200, { status: 'failed', model, error: { code: 'server_error', message: 'upstream blew up' }, incomplete_details: null, output: [], usage })
+                }
+                else if (model === 'reasoning-only') { //僅思考無message, 屬結構不合規
+                    send(200, { status: 'completed', model, error: null, incomplete_details: null, output: [{ type: 'reasoning', content: [] }], usage })
+                }
+                else if (model === 'tool-calls') {
+                    send(200, {
+                        status: 'completed',
+                        model,
+                        error: null,
+                        incomplete_details: null,
+                        output: [{ type: 'function_call', name: 'get_weather', arguments: '{"city":"台北"}', call_id: 'call-1' }],
+                        usage,
+                    })
+                }
+                else if (model === 'no-output') { //缺output陣列
+                    send(200, { status: 'completed', model, id: 'resp_y' })
+                }
+                else if (model === 'not-json') {
+                    res.writeHead(200, { 'Content-Type': 'text/plain' })
+                    res.end('plain text body')
+                }
+                else if (model === 'slow') {
+                    setTimeout(() => okResp('too late'), 10000)
+                }
+                else if (model === 'err-500') {
+                    send(500, { error: { message: 'internal error' } })
+                }
+                else if (model === 'flaky-429') {
+                    flakyCount[auth] = (flakyCount[auth] || 0) + 1
+                    if (flakyCount[auth] === 1) {
+                        send(429, { error: { message: 'rate limited' } })
+                    }
+                    else {
+                        okResp(JSON.stringify({ attempt: flakyCount[auth] }))
+                    }
+                }
+                else {
+                    send(401, { type: 'error', error: { type: 'ModelError', message: `Model ${model} is not supported` } }) //同Zen實測: 未知model回401非404
+                }
+                return
+            }
+
             let ok = (content) => {
                 res.writeHead(200, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({

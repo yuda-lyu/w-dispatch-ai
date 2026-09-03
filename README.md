@@ -32,7 +32,7 @@ Note:
 #### Functions:
 | function | description |
 | --- | --- |
-| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'` |
+| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'`、`'api-openai-responses'` |
 | `dispatchAiFallback(prompt, opt)` | call ai with an ordered provider list, auto rotating keys within a group and falling back to the next group |
 | `dispatchAiWkf(opt)` | workflow factory: inject a named provider table once, returns bound `callAi`／`runFanout`／`runRolePipeline`／`runFanoutPipeline` |
 | `dispatchOpencode(prompt, opt)` | call an ai model by opencode cli, supports per-call api key and provider config |
@@ -40,6 +40,7 @@ Note:
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
 | `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
+| `dispatchApiOpenaiResponses(prompt, opt)` | same, but for the OpenAI **Responses API** (`/responses`) — required by model families that are not served on `/chat/completions` (e.g. OpenCode Zen's muse-spark and GPT families) |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
 | `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
@@ -48,7 +49,7 @@ Note:
 | `createUsageCounter(opt)` | per-day per-key usage counter fed by `onEvent` (observation only, never throttles) |
 | `salvageTruncatedArray(text)` | salvage the complete leading elements of a truncated JSON array (opt-in, not part of default parsing) |
 | `NO_SIDE_EFFECT` | the no-side-effect prompt prefix (single source), auto-applied by workflow `callAi`, prepend manually for direct `dispatchAiFallback` calls |
-| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat']` |
+| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses']` |
 
 #### Example:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/g.mjs)]
@@ -82,7 +83,7 @@ let test = async () => {
 
     //可用之AI供應商種類
     console.log('KINDS:', wdi.KINDS)
-    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat' ]
+    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses' ]
 
     let prompt = '請只回覆兩個字：完成，不要有任何其他文字'
 
@@ -271,6 +272,17 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 另注意 `tool_calls` 有**會話束縛**（`tool_call_id` 須於同一條messages串內回填），無法暫停後跨行程外傳給上層agent代跑；工作流各名額（如 `runFanout` 的agents）也只是同行程的async函數呼叫而非獨立agent，故「讓外殼agent提供工具給工作流內的模型使用」在本架構下不成立——**需要工具就選CLI類kind**。
 
 **混用才是常態**：同一條 `dispatchAiFallback` 鏈可逐條目混搭kind，工作流各階段亦然——產生候選與整合收斂等純文字階段走API，需要翻閱專案檔案的階段換CLI。
+
+**先選對端點型別，再選kind**：同一個閘道的不同模型可能走不同端點，打錯端點會得到 **HTTP 500 而非 404**，極易被誤判為「模型故障」而反覆重試。以 OpenCode Zen 為例（[官方端點對照表](https://opencode.ai/docs/zh-tw/zen/)，2026-09-03 查證）：
+
+| 端點 | 對應kind | 該端點之模型（Zen） |
+| --- | --- | --- |
+| `/v1/chat/completions` | `api-openai-compat` | deepseek／glm／kimi／minimax／nemotron／ling／mimo 等 |
+| `/v1/responses` | `api-openai-responses` | muse-spark 系、GPT 系、Grok 系 |
+| `/v1/messages` | 本套件無（改用 `opencode` CLI kind） | Claude 系、Qwen 系 |
+| `/v1/models/<id>` | 本套件無（改用 `opencode` CLI kind） | Gemini 系 |
+
+實測佐證：`muse-spark-1.2/1.3` 走 `/chat/completions` 連續 10 次 500，同金鑰同模型改打 `/responses` 立即 200；且 1.2 於 2026-08-21 曾以 `/chat/completions` 成功——**閘道會事後改路由，「以前能用」不構成「現在該能用」**。完整診斷流程見 [src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 檔頭。
 
 #### Options only for dispatchApiOpenaiCompat:
 | key | type | default | description |
