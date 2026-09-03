@@ -3,7 +3,7 @@
 <head>
     
     <meta charset="utf-8">
-    <title>dispatchAi.mjs - Documentation</title>
+    <title>buildValidator.mjs - Documentation</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -35,7 +35,7 @@
 
 <div id="main">
     
-    <h1 class="page-title">dispatchAi.mjs</h1>
+    <h1 class="page-title">buildValidator.mjs</h1>
     
 
     
@@ -45,68 +45,100 @@
     
     <section>
         <article>
-            <pre class="prettyprint source linenums"><code>import keys from 'lodash-es/keys.js'
-import includes from 'lodash-es/includes.js'
+            <pre class="prettyprint source linenums"><code>import isfun from 'wsemi/src/isfun.mjs'
+import isnum from 'wsemi/src/isnum.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import adapters from './adapters.mjs'
-import getErrorResult from './getErrorResult.mjs'
+import cint from 'wsemi/src/cint.mjs'
+import strleft from 'wsemi/src/strleft.mjs'
+import strdelleft from 'wsemi/src/strdelleft.mjs'
+
+
+// buildValidator.mjs — 由validate規則建立驗證函式(規則語法同wsemi之execCli)
+//
+// 【為何獨立成檔】CLI類轉接器之validate由execCli實作, 而api類轉接器自行呼叫fetch
+//   故須自備同語法之驗證器; 現有多個api類轉接器(chat/completions與responses)共用同一份,
+//   分居各檔會讓「規則語法」隨修改而分岔——同一個'min:100'在不同kind行為不同即為災難。
 
 
 /**
- * 依供應商種類(kind)分派至對應之轉接器
+ * 建立驗證函式(規則語法同execCli之validate)
  *
- * kind清單以adapters.mjs對照表為唯一來源(目前為'opencode'、'claude'、'codex'、'antigravity'、
- * 'api-openai-compat'，CLI或API之選型判準見adapters.mjs檔頭)。
- * 各家金鑰模式不同(2026-08-08起於本機實測確認)：opencode與api-openai-compat支援逐次注入金鑰，
- * 故可多把金鑰輪替；claude/codex/antigravity沿用CLI既有登入狀態，無逐次金鑰概念。
- * 故「輪替」的單位是「供應商條目」而非單純的金鑰：一個條目即一組(kind, model, 可選的key／provider)，
- * 輪到誰就用誰的轉接器與模型
+ * 特點：
+ * 傳入自訂函式時直接使用；
+ * 規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接(須全部通過)；
+ * 規則本身無效(如'min:abc')視為驗證失敗而非靜默跳過——避免打錯規則卻以為有在驗
  *
- * @param {String} kind 輸入供應商種類字串，須為adapters.mjs對照表之鍵名，目前可選'opencode'、'claude'、'codex'、'antigravity'、'api-openai-compat'
- * @param {String} prompt 輸入提示詞字串
- * @param {Object} [opt={}] 輸入設定物件，原樣轉傳對應轉接器，各轉接器可用設定詳見dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat，預設{}
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @param {String|Function} rule 輸入驗證規則字串('nonempty'、'json'、'min:100', 逗號可串接)或自訂函式
+ * @returns {Function|null} 回傳驗證函式，無有效規則回傳null
  * @example
- * //need claude, codex or opencode cli in system PATH
  *
- * import dispatchAi from './src/dispatchAi.mjs'
+ * import buildValidator from './src/buildValidator.mjs'
  *
- * let test = async () => {
+ * let v = buildValidator('nonempty,min:3')
+ * console.log(v('abcd'), v('ab'), v(''))
+ * // => true false false
  *
- *     let r = await dispatchAi('claude', '請只回覆兩個字：完成', { model: 'sonnet' })
- *     console.log(r.ok, r.stdout.trim())
- *     // => true '完成'
- *
- *     let re = await dispatchAi('gemini', 'abc')
- *     console.log(re.ok, re.error.indexOf('unknown ai kind: "gemini"') === 0)
- *     // => false true
- *
- * }
- * await test()
- *     .catch((err) => {
- *         console.log(err)
- *     })
+ * console.log(buildValidator(null))
+ * // => null
  *
  */
-async function dispatchAi(kind, prompt, opt = {}) {
+function buildValidator(rule) {
 
-    //ks
-    let ks = keys(adapters)
-
-    //check kind, 須為對照表既有鍵名, 不可用物件取值判斷, 否則'constructor'等原型鍵會誤判為有效
-    if (!isestr(kind) || !includes(ks, kind)) {
-        return getErrorResult(`unknown ai kind: "${kind}" (available: ${ks.join(', ')})`)
+    //自訂函式直接使用
+    if (isfun(rule)) {
+        return rule
     }
 
-    //fn
-    let fn = adapters[kind]
+    //check
+    if (!isestr(rule)) {
+        return null
+    }
 
-    //dispatch, prompt與opt之檢核由各轉接器自行負責
-    return fn(prompt, opt)
+    //checks
+    let checks = rule.split(',').map((r) => r.trim()).filter(Boolean)
+    if (checks.length === 0) {
+        return null
+    }
+
+    return (stdout) => {
+        for (let check of checks) {
+
+            if (check === 'nonempty') {
+                if (!isestr(stdout) || stdout.trim() === '') {
+                    return false
+                }
+            }
+
+            else if (check === 'json') {
+                try {
+                    JSON.parse(stdout)
+                }
+                catch {
+                    return false
+                }
+            }
+
+            else if (strleft(check, 4) === 'min:') {
+
+                //規則本身無效(如min:abc) → 視為驗證失敗, 不靜默跳過
+                let smin = strdelleft(check, 4)
+                if (!isnum(smin)) {
+                    return false
+                }
+
+                let min = cint(smin)
+                if (!isestr(stdout) || stdout.length &lt; min) {
+                    return false
+                }
+            }
+
+        }
+        return true
+    }
 }
 
 
-export default dispatchAi
+export default buildValidator
 </code></pre>
         </article>
     </section>
