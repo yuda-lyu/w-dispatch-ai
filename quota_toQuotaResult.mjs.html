@@ -3,7 +3,7 @@
 <head>
     
     <meta charset="utf-8">
-    <title>dispatchClaude.mjs - Documentation</title>
+    <title>quota/toQuotaResult.mjs - Documentation</title>
     
     
     <script src="scripts/prettify/prettify.js"></script>
@@ -35,7 +35,7 @@
 
 <div id="main">
     
-    <h1 class="page-title">dispatchClaude.mjs</h1>
+    <h1 class="page-title">quota/toQuotaResult.mjs</h1>
     
 
     
@@ -46,131 +46,147 @@
     <section>
         <article>
             <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
-import omit from 'lodash-es/omit.js'
-import isbol from 'wsemi/src/isbol.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import execCli from 'wsemi/src/execCli.mjs'
-import getCliArgs from './getCliArgs.mjs'
-import getErrorResult from './getErrorResult.mjs'
-import { attachErrorType } from './getErrorType.mjs'
-import castPintOr from './castPintOr.mjs'
-import dfTimeoutMs from './dfTimeoutMs.mjs'
+import isearr from 'wsemi/src/isearr.mjs'
 
 
-// dispatchClaude.mjs — 以Claude Code CLI呼叫Claude模型
+// toQuotaResult.mjs — 將各家額度查詢結果正規化為統一結構, 並判定帳號是否相符
 //
-// 【調用方式】參考全域技能dispatch-claude之慣例，依專案方針「不直接引用全域技能」，
-//   將其調用方式移植於此，方便本專案自行偵錯、修改與擴充。
-//   2026-08-08於本機實測：`claude -p --dangerously-skip-permissions --model sonnet` + stdin
-//   可正確產出合規JSON摘要(15.5s)。
+// 【email在此類查詢中的真實角色】三家訂閱額度皆綁定「本機該CLI當前登入之憑證」，
+//   無任一家提供「給email即可查任意帳號額度」之公開介面(那將是帳號列舉漏洞)。
+//   故email之作用為比對——查出本機實際登入者，與呼叫端指定之email核對，
+//   相符才視為查到「該帳號」之額度。此設計於一機多帳號(實測本機claude/codex/agy
+//   分屬不同gmail)之情境尤其必要，否則呼叫端會把甲帳號的額度當成乙帳號的。
 //
-// 【認證】沿用Claude Code既有登入狀態(帳號層級)，不需也不支援逐次注入API key，
-//   故本轉接器無key參數——輪替時它是「一個獨立的供應商」而非「另一把金鑰」。
-
-
-//預設值
-let DEFAULT_EXE = 'claude'
-
-
-//本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli
-let OWN_KEYS = ['exe', 'model', 'skipPermissions', 'extraArgs', 'input']
+// 【為何不符時仍回傳額度資料】資料已取得，丟棄只是浪費一次往返；
+//   但ok一律為false且matched為false，令呼叫端不會誤把他人額度當成指定帳號之額度。
+//
+// 【source欄位】各轉接器可能有主路徑與備援(例如codex以app-server為主、HTTP為備援)，
+//   同一供應商回來的資料可能來自不同介面，呼叫端排錯時須知道走了哪條，故獨立一欄記錄。
 
 
 /**
- * 以Claude Code CLI呼叫Claude模型
+ * 將各家額度查詢結果正規化為統一結構，並判定帳號是否相符
  *
- * 特點：
- * prompt一律走stdin而非位置參數，因摘要內文可達數萬字，當命令列參數會spawn ENAMETOOLONG；
- * 沿用Claude Code既有登入狀態，無逐次注入API key之概念，故無key參數；
- * 未給model時不帶`--model`旗標，由CLI自行決定使用模型；
- * 預設帶`--dangerously-skip-permissions`令非互動之`-p`模式不因權限確認而卡住，
- * 惟prompt含不可信內容(例如待摘要之網頁)時該內容之指示亦將無權限閘門執行，
- * 可給予skipPermissions為false保留CLI權限閘門；
- * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
+ * 帳號比對採去空白且不分大小寫之比較，因email本地部分雖理論上區分大小寫，
+ * 但三家供應商實務上皆以不分大小寫視為同一帳號；
+ * 未指定email時不做比對，matched為null，ok僅取決於查詢本身是否成功
  *
- * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
+ * @param {String} provider 輸入供應商種類字串，例如'claude'、'codex'、'antigravity'
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {String} [opt.exe='claude'] 輸入claude執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析，預設'claude'
- * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'sonnet'、'opus'，預設''代表不帶`--model`旗標
- * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
- * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
- * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
- * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @param {String} [opt.email=''] 輸入本機該CLI實際登入之帳號email字串，預設''代表無從取得
+ * @param {String} [opt.emailWant=''] 輸入呼叫端指定欲查詢之帳號email字串，預設''代表不比對
+ * @param {String} [opt.plan=''] 輸入方案別字串，例如'max'、'plus'，預設''
+ * @param {String} [opt.planTier=''] 輸入方案細部級距字串，例如'default_claude_max_20x'，預設''
+ * @param {String} [opt.source=''] 輸入資料來源介面字串，例如'oauth-usage-api'、'codex-app-server'、'agy-print'，預設''
+ * @param {Array} [opt.windows=[]] 輸入額度窗口物件陣列，預設[]
+ * @param {Object} [opt.credits=null] 輸入額外用量或點數資訊物件，預設null代表該供應商無此概念或未啟用
+ * @param {Object} [opt.raw=null] 輸入供應商原始回應物件，預設null
+ * @param {String} [opt.error=''] 輸入錯誤訊息字串，預設''代表查詢成功
+ * @param {String} [opt.errorType=''] 輸入機器可讀之錯誤類別字串，預設''
+ * @param {Number} [opt.durationMs=0] 輸入耗時毫秒，預設0
+ * @returns {Object} 回傳結果物件，內含ok(查詢成功且帳號相符布林值)、provider、email(本機實際登入帳號)、matched(帳號是否相符布林值，未指定email時為null)、plan、planTier、source、windows(窗口陣列)、credits、raw、error、errorType、durationMs
  * @example
- * //need claude cli in system PATH
  *
- * import dispatchClaude from './src/dispatchClaude.mjs'
+ * import toQuotaResult from './src/quota/toQuotaResult.mjs'
  *
- * let test = async () => {
- *
- *     let r = await dispatchClaude('請只回覆兩個字：完成', { model: 'sonnet' })
- *     console.log(r.ok, r.stdout.trim())
- *     // => true '完成'
- *
- *     let re = await dispatchClaude('')
- *     console.log(re.ok, re.error)
- *     // => false 'prompt must be a non-empty string'
- *
- * }
- * await test()
- *     .catch((err) => {
- *         console.log(err)
- *     })
+ * let r = toQuotaResult('claude', { email: 'a@b.com', emailWant: 'c@d.com' })
+ * console.log(r.ok, r.matched)
+ * // => false false
  *
  */
-async function dispatchClaude(prompt, opt = {}) {
+function toQuotaResult(provider, opt = {}) {
 
-    //check prompt, 不reject故以錯誤結果物件回報
-    if (!isestr(prompt)) {
-        return getErrorResult('prompt must be a non-empty string')
+    //provider
+    if (!isestr(provider)) {
+        provider = ''
     }
 
-    //exe, 無效回退預設'claude', 由execCli自系統PATH解析實體路徑
-    let exe = get(opt, 'exe', null)
-    if (!isestr(exe)) {
-        exe = DEFAULT_EXE
+    //email, 本機該CLI實際登入之帳號
+    let email = get(opt, 'email', '')
+    if (!isestr(email)) {
+        email = ''
     }
 
-    //model, 無效時整段`--model`旗標不出現, 由CLI自行決定使用模型
-    let model = get(opt, 'model', null)
-
-    //skipPermissions, 非布林值回退預設true(非互動-p模式不卡權限確認)
-    let skipPermissions = get(opt, 'skipPermissions', null)
-    if (!isbol(skipPermissions)) {
-        skipPermissions = true
+    //emailWant, 呼叫端指定欲查詢之帳號
+    let emailWant = get(opt, 'emailWant', '')
+    if (!isestr(emailWant)) {
+        emailWant = ''
     }
 
-    //extraArgs
-    let extraArgs = get(opt, 'extraArgs', null)
+    //error
+    let error = get(opt, 'error', '')
+    if (!isestr(error)) {
+        error = ''
+    }
 
-    //args
-    let args = getCliArgs(
-        '-p',
-        skipPermissions ? '--dangerously-skip-permissions' : [],
-        isestr(model) ? ['--model', model] : [],
-        extraArgs,
-    )
+    //errorType
+    let errorType = get(opt, 'errorType', '')
+    if (!isestr(errorType)) {
+        errorType = ''
+    }
 
-    //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs)
+    //matched, 未指定emailWant時不比對(null); 指定但無從取得本機帳號時視為不符並補述原因
+    let matched = null
+    if (emailWant !== '') {
+        if (email === '') {
+            matched = false
+            if (error === '') {
+                error = `cannot determine the local ${provider} login account, so it is unknown whether it is the requested account [${emailWant}]`
+                errorType = 'account'
+            }
+        }
+        else {
+            matched = email.trim().toLowerCase() === emailWant.trim().toLowerCase()
+            if (!matched &amp;&amp; error === '') {
+                error = `local ${provider} login account is [${email}], which does not match the requested account [${emailWant}]`
+                errorType = 'account'
+            }
+        }
+    }
 
-    //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
-    let optCli = omit(opt, OWN_KEYS)
+    //windows
+    let windows = get(opt, 'windows', null)
+    if (!isearr(windows)) {
+        windows = []
+    }
 
-    //execCli, prompt一律走stdin; 失敗結果補上機器可讀之errorType(僅機械可判者, 見getErrorType.mjs)
-    let r = await execCli(exe, args, {
-        ...optCli,
-        input: prompt,
-        timeoutMs,
-    })
-    return attachErrorType(r)
+    //plan與planTier與source
+    let plan = get(opt, 'plan', '')
+    if (!isestr(plan)) {
+        plan = ''
+    }
+    let planTier = get(opt, 'planTier', '')
+    if (!isestr(planTier)) {
+        planTier = ''
+    }
+    let source = get(opt, 'source', '')
+    if (!isestr(source)) {
+        source = ''
+    }
+
+    //ok, 須查詢無誤且帳號相符(未指定email時視為相符)
+    let ok = error === '' &amp;&amp; matched !== false
+
+    return {
+        ok,
+        provider,
+        email,
+        matched,
+        plan,
+        planTier,
+        source,
+        windows,
+        credits: get(opt, 'credits', null),
+        raw: get(opt, 'raw', null),
+        error,
+        errorType,
+        durationMs: get(opt, 'durationMs', 0),
+    }
 }
 
 
-export default dispatchClaude
+export default toQuotaResult
 </code></pre>
         </article>
     </section>
