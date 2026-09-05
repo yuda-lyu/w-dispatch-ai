@@ -598,11 +598,11 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 
 | 設計要點 | 說明 |
 | --- | --- |
-| **唯讀憑證，刻意不刷新權杖** | Anthropic 的 refresh token 每次使用即輪替並作廢前一枚；監控程式若自行刷新而不寫回，Claude Code 存檔的權杖立即失效、使用者被迫重登；寫回則與 Claude Code 競爭同一檔。故 401 時的正確指引是「執行一次 claude 讓它自行刷新」，**絕非重新登入**（會使其他工作階段失效）——錯誤訊息已內建此指引 |
+| **唯讀憑證，刻意不刷新權杖** | Anthropic 的 refresh token 每次使用即輪替並作廢前一枚；監控程式若自行刷新而不寫回，Claude Code 存檔的權杖立即失效、使用者被迫重登；寫回則與 Claude Code 競爭同一檔。故 401 時的正確指引是「執行一次 claude 讓它自行刷新」，**不需重新登入**（存檔的 refresh token 仍有效，本機實測期限約登入後 30 天，只是要由 Claude Code 去用它）——錯誤訊息已內建此指引 |
 | **codex 主路徑走第一方協定** | `codex app-server --stdio` JSON-RPC（認證、刷新、多帳號全由 codex 自理，本套件不碰 token），失敗才退回 chatgpt.com 之內部端點（欄位可能變動，對映邏輯獨立於 `fromCodexUsageHttp` 以便離線 fixture 驗證） |
 | **agy 版本閘門** | 1.1.11 之前 `-p "/usage"` 會被當一般 prompt 起一個 agent turn（耗額度、留對話），故先以 `agy --version` 把關，過舊回 `unsupported` 而不冒險執行；另有 num_turns>0 之事後防呆 |
 | **機密不入 log** | HTTP 錯誤訊息中之權杖與帳號 ID 一律先遮蔽（`[REDACTED]`）再截短；回應本文有 1MB 上限防異常頁撐爆 |
-| **可測性／可注入** | `opt.env`（隔離本機環境變數）、`opt.usageUrl`／`opt.profileUrl`（指向假伺服器或企業代理）、`opt.configDir`／`opt.codexHome`／`opt.exe`；額度查詢之預設逾時為 20 秒（`dfQuotaTimeoutMs`，與 agent 推論之 300 秒分開），agy 因啟動較慢預設 60 秒 |
+| **可測性／可注入** | `opt.env`（隔離本機環境變數）、`opt.usageUrl`／`opt.profileUrl`（指向假伺服器或企業代理）、`opt.configDir`／`opt.codexHome`（僅 codex 備援路徑用，app-server 主路徑之子進程繼承本進程的 `CODEX_HOME`）／`opt.exe`；額度查詢之預設逾時為 20 秒（`dfQuotaTimeoutMs`，與 agent 推論之 300 秒分開），agy 因啟動較慢預設 60 秒 |
 | **需 wsemi ≥ 1.8.85** | codex 主路徑依賴其 `execCliJsonRpc`（stdio JSON-RPC 會話管理） |
 
 **內建CLI條目之防寫機制對照**（內建清單定位為唯讀調用，各家CLI條目皆自帶機械防寫；需要寫入能力時於條目或呼叫時覆寫該欄位即可。api類為純文字生成天然無寫檔能力，不在此列）：

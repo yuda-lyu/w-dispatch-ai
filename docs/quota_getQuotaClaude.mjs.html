@@ -67,8 +67,11 @@ import toQuotaResult from './toQuotaResult.mjs'
 //   設定目錄: CLAUDE_CONFIG_DIR(未設則~/.claude); 實測設此變數指向空目錄後claude auth status回
 //     loggedIn:false且該目錄長出.claude.json, 即憑證檔與帳號檔皆隨此變數搬遷——它正是官方的
 //     多帳號機制(anthropics/claude-code issue #33430), 也是本套件email比對設計存在的理由。
-//   憑證: &lt;configDir>/.credentials.json 之 claudeAiOauth.accessToken;
-//     亦接受環境變數CLAUDE_CODE_OAUTH_TOKEN(claude setup-token產生之長效token, 無email可比對)。
+//   憑證: &lt;configDir>/.credentials.json 之 claudeAiOauth.accessToken, 這是唯一權杖來源。
+//     環境變數CLAUDE_CODE_OAUTH_TOKEN(claude setup-token產生之一年期token)【刻意不作為來源】: 2026-09-05實測
+//     以setup-token打usage端點回403 {error_code:'oauth_scope_insufficient', required_scopes:['user:profile']},
+//     即setup-token僅有user:inference(官方文件「can only make model requests」), 查額度必須用/login存檔之
+//     權杖(scopes含user:profile)。故該變數只在憑證檔不存在時用於錯誤提示, 提醒使用者它不能拿來查額度。
 //   帳號: &lt;configDir>/.claude.json(設變數時)或~/.claude.json 之 oauthAccount.emailAddress。
 //   額度: GET https://api.anthropic.com/api/oauth/usage(即/usage指令之同一來源; 同類工具
 //     token-burn、wakamex/ccusage、pinkpixel quota皆用此端點)。
@@ -78,14 +81,15 @@ import toQuotaResult from './toQuotaResult.mjs'
 //   寫回則與Claude Code競爭同一檔(anthropics/claude-code #54443即此類race)。
 //   同類工具token-burn與ccusage以「原子寫回+身分守衛+重讀」做到了, 但監控程式不擁有憑證
 //   生命週期是更穩的邊界, 故本函數維持唯讀。代價: access token實測壽命8小時, Claude Code閒置
-//   逾8小時後查詢會401——此時正確指引是「執行一次claude讓它自行刷新」, 絕非重新登入。
+//   逾8小時後查詢會401——此時正確指引是「執行一次claude讓它自行刷新」; 不需重新登入,
+//   因為存檔之refresh token仍有效(本機實測其期限約登入後30天), 只是要由Claude Code去用它。
 //
 // 【為何windows優先取limits[]】回應同時存在頂層five_hour/seven_day(舊欄位)與limits[](新結構),
 //   後者多出weekly_scoped(帶模型別, 實測Fable 25%), 是實際會先觸頂的窗口; 故優先limits[],
 //   缺漏才回退頂層。limits[]實測欄位: kind/group/percent/severity/resets_at/scope{model{display_name},surface}/is_active。
 //
 // 【已知限制】macOS之Claude Code將憑證存於Keychain, 本函數於該平台會回notfound(未實測故不臆造);
-//   該平台可改設CLAUDE_CODE_OAUTH_TOKEN環境變數供本函數使用。
+//   該平台亦無替代來源(setup-token不能查額度, 見上方實測)。
 
 
 //額度查詢端點與帳號端點
@@ -205,7 +209,7 @@ function fromTopField(data, key, windowSeconds, scope) {
  * @param {Boolean} [opt.profileFallback=true] 輸入本機帳號檔無email時是否改打/api/oauth/profile取得布林值，預設true
  * @param {String} [opt.usageUrl='https://api.anthropic.com/api/oauth/usage'] 輸入額度端點網址字串，供測試指向假伺服器或經企業代理，預設官方端點
  * @param {String} [opt.profileUrl='https://api.anthropic.com/api/oauth/profile'] 輸入帳號端點網址字串，用途同usageUrl，預設官方端點
- * @param {Object} [opt.env=process.env] 輸入環境變數來源物件(讀CLAUDE_CONFIG_DIR、CLAUDE_CODE_OAUTH_TOKEN與非訂閱模式判定用之ANTHROPIC_API_KEY等)，供測試隔離本機環境，預設process.env
+ * @param {Object} [opt.env=process.env] 輸入環境變數來源物件(讀CLAUDE_CONFIG_DIR、非訂閱模式判定用之ANTHROPIC_API_KEY等；CLAUDE_CODE_OAUTH_TOKEN不作為權杖來源，僅於無憑證時用於錯誤提示)，供測試隔離本機環境，預設process.env
  * @param {Number} [opt.timeoutMs=20000] 輸入單次請求之逾時毫秒正整數，預設20000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok、provider('claude')、email(本機實際登入帳號)、matched、plan(方案別，例如'max')、planTier(級距，例如'default_claude_max_20x')、source('anthropic-oauth-usage-api')、windows(額度窗口陣列，含5小時、7天、7天模型別)、credits(額外用量與花費資訊)、raw(原始回應)、error、errorType、durationMs，本函數不會reject
  * @example
@@ -283,15 +287,9 @@ async function getQuotaClaude(email = '', opt = {}) {
     let cred = readJsonOrNull(fpCred)
     let conf = readJsonOrNull(fpConf)
 
-    //token, 環境變數優先(headless部署慣例), 其次憑證檔
-    let tokenSource = 'file'
-    let token = get(env, 'CLAUDE_CODE_OAUTH_TOKEN', '')
-    if (isestr(token)) {
-        tokenSource = 'env'
-    }
-    else {
-        token = get(cred, 'claudeAiOauth.accessToken', '')
-    }
+    //token, 僅取憑證檔(登入所存之access token, 帶user:profile scope); 環境變數CLAUDE_CODE_OAUTH_TOKEN
+    //不作為來源(setup-token缺usage端點要求之scope, 見檔頭實測), 僅於下方無憑證時用來給更準的提示
+    let token = get(cred, 'claudeAiOauth.accessToken', '')
 
     //emailHave, 僅帳號檔載有email, 額度端點本身不回傳帳號
     let emailHave = get(conf, 'oauthAccount.emailAddress', '')
@@ -340,8 +338,12 @@ async function getQuotaClaude(email = '', opt = {}) {
             })
         }
 
+        //notfound; 環境變數有setup-token時特別說明它不能拿來查額度(2026-09-05實測403 oauth_scope_insufficient), 免得使用者以為設了就該能查
+        let noteEnv = isestr(get(env, 'CLAUDE_CODE_OAUTH_TOKEN', ''))
+            ? ' Env CLAUDE_CODE_OAUTH_TOKEN is set but is ignored here: a setup-token lacks the user:profile scope the usage endpoint requires, so only a stored login can be queried.'
+            : ''
         return fin({
-            error: `Claude Code credential not found (${fpCred}); run [claude auth login] first. On macOS the credential lives in Keychain instead of this file; set env CLAUDE_CODE_OAUTH_TOKEN as an alternative`,
+            error: `Claude Code credential not found (${fpCred}); run [claude auth login] first (with the same CLAUDE_CONFIG_DIR if this config dir is relocated). On macOS the credential lives in Keychain instead of this file, which this function cannot read.${noteEnv}`,
             errorType: 'notfound',
         })
     }
@@ -361,12 +363,10 @@ async function getQuotaClaude(email = '', opt = {}) {
         let msg = r.error
 
         //auth, 最常見成因是access token自然到期(實測壽命8小時); Claude Code每次執行皆會自行刷新,
-        //正確指引是執行一次claude, 絕非重新登入(重新登入使其他工作階段之權杖失效)
+        //正確指引是執行一次claude; 不需重新登入(存檔之refresh token仍有效, 只是要由Claude Code去用它)
         if (r.errorType === 'auth') {
             let expiresAt = get(cred, 'claudeAiOauth.expiresAt', null)
-            let hint = tokenSource === 'env'
-                ? 'the token in env CLAUDE_CODE_OAUTH_TOKEN is no longer valid; regenerate it with [claude setup-token]'
-                : 'run any claude command (just open claude) so Claude Code refreshes the token itself, then retry; do NOT run claude auth login, Anthropic rotates the refresh token on every use and a re-login invalidates other sessions'
+            let hint = 'run any claude command (just open claude) so Claude Code refreshes the token itself, then retry; re-login is not needed, the stored refresh token is still valid and only has to be used by Claude Code'
             let when = isnum(expiresAt) ? `(local recorded expiry: ${new Date(expiresAt).toISOString()})` : ''
             msg = `${msg} ${when} → ${hint}`
         }
@@ -422,7 +422,6 @@ async function getQuotaClaude(email = '', opt = {}) {
         windows,
         credits,
         raw: {
-            tokenSource,
             configDir,
             usage: data,
         },
@@ -445,7 +444,7 @@ export default getQuotaClaude
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 05 2026 19:31:48 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 05 2026 22:03:08 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

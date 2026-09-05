@@ -240,7 +240,7 @@ async function fetchQuotaJson(url, opt = {}) {
     }
 
     //auth, 401代表憑證本身不被接受(過期或撤銷)。此處不給處置指引——各家正確處置不同
-    //(Claude/Codex之CLI會於執行時自行刷新, 貿然指引「重新登入」反而使其他工作階段失效), 由各轉接器補述
+    //(Claude/Codex之CLI會於執行時自行刷新, 存檔之refresh token仍有效, 貿然指引「重新登入」是多餘的), 由各轉接器補述
     if (r.status === 401) {
         return rs(false, r.status, null, `unauthorized(401), credential rejected (expired or revoked): ${snip(text)}`, 'auth')
     }

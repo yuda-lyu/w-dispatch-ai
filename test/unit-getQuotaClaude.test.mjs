@@ -56,13 +56,13 @@ describe('getQuotaClaude', function() {
         let rr = [
             r.ok, r.matched, r.provider, r.email, r.plan, r.planTier, r.source,
             r.windows.map((w) => `${w.key}|${w.label}|${w.usedPercent}|${w.active}|${w.severity}`),
-            r.raw.tokenSource,
+            r.raw.configDir === configDir,
             r.credits.spendCurrency,
         ]
         assert.strict.deepEqual(rr, [
             true, null, 'claude', 'claude-user@example.com', 'max', 'default_claude_max_20x', 'anthropic-oauth-usage-api',
             ['session|5小時|3|false|normal', 'weekly_all|7天|13|false|normal', 'weekly_scoped|7天(Fable)|15|true|normal'],
-            'file',
+            true,
             'USD',
         ])
     })
@@ -96,20 +96,27 @@ describe('getQuotaClaude', function() {
         assert.strict.deepEqual(rr, [[false, 'notfound', true, true], [false, 'unsupported', true]])
     })
 
-    it('權杖被拒(401)→auth, 訊息附本機到期時刻與「執行一次claude自行刷新、勿重新登入」指引', async function() {
+    it('權杖被拒(401)→auth, 訊息附本機到期時刻與「執行一次claude自行刷新、不需重新登入」指引', async function() {
         let configDir = mkConfigDir('expired', { claudeAiOauth: { accessToken: 'tok-401', expiresAt: 946684800000 } }, { oauthAccount: { emailAddress: 'a@b.c' } })
         let r = await getQuotaClaude('', { ...base, configDir })
         //錯誤訊息不得外洩權杖明文(redact於fetchQuotaJson層施作)
-        let rr = [r.ok, r.errorType, /local recorded expiry: 2000-01-01/.test(r.error), /do NOT run claude auth login/.test(r.error), /tok-401/.test(r.error)]
+        let rr = [r.ok, r.errorType, /local recorded expiry: 2000-01-01/.test(r.error), /re-login is not needed/.test(r.error), /tok-401/.test(r.error)]
         assert.strict.deepEqual(rr, [false, 'auth', true, true, false])
     })
 
-    it('環境變數CLAUDE_CODE_OAUTH_TOKEN優先於憑證檔, 401時指引改為重新setup-token', async function() {
-        let configDir = mkConfigDir('envtok', { claudeAiOauth: { accessToken: 'tok-ok' } }, { oauthAccount: { emailAddress: 'a@b.c' } })
-        let r1 = await getQuotaClaude('', { ...base, configDir, env: { CLAUDE_CODE_OAUTH_TOKEN: 'tok-ok' } })
-        let r2 = await getQuotaClaude('', { ...base, configDir, env: { CLAUDE_CODE_OAUTH_TOKEN: 'tok-401' } })
-        let rr = [[r1.ok, r1.raw.tokenSource], [r2.ok, r2.errorType, /claude setup-token/.test(r2.error)]]
-        assert.strict.deepEqual(rr, [[true, 'env'], [false, 'auth', true]])
+    it('環境變數CLAUDE_CODE_OAUTH_TOKEN不作為權杖來源(setup-token缺user:profile scope, 2026-09-05實測403): 有憑證檔即用憑證檔; 無憑證檔時notfound並說明該變數被忽略之原因', async function() {
+        let configDir = mkConfigDir('envtok', { claudeAiOauth: { accessToken: 'tok-ok', subscriptionType: 'max' } }, { oauthAccount: { emailAddress: 'a@b.c' } })
+        let configDir2 = mkConfigDir('envtok-nocred', null, null)
+        //環境變數給一枚會被端點拒絕的權杖, 若被誤用為來源便會401而非ok
+        let r1 = await getQuotaClaude('', { ...base, configDir, env: { CLAUDE_CODE_OAUTH_TOKEN: 'tok-401' } })
+        let r2 = await getQuotaClaude('', { ...base, configDir: configDir2, env: { CLAUDE_CODE_OAUTH_TOKEN: 'tok-ok' } })
+        let r3 = await getQuotaClaude('', { ...base, configDir: configDir2 })
+        let rr = [
+            [r1.ok, r1.email, r1.plan],
+            [r2.ok, r2.errorType, /CLAUDE_CODE_OAUTH_TOKEN is set but is ignored/.test(r2.error), /user:profile/.test(r2.error)],
+            [r3.ok, r3.errorType, /CLAUDE_CODE_OAUTH_TOKEN/.test(r3.error)],
+        ]
+        assert.strict.deepEqual(rr, [[true, 'a@b.c', 'max'], [false, 'notfound', true, true], [false, 'notfound', false]])
     })
 
     it('帳號檔無email時改打profile端點取得(profileFallback), 關閉則email為空', async function() {

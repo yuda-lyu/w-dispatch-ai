@@ -4038,7 +4038,7 @@ let usage = createUsageCounter({ dir: './state' })
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line70">line 70</a>
+        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line72">line 72</a>
     </li></ul></dd>
     
 
@@ -11540,7 +11540,7 @@ console.log(m.windows.map((w) => `${w.key}=${w.label}`))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaClaude.mjs.html">quota/getQuotaClaude.mjs</a>, <a href="quota_getQuotaClaude.mjs.html#line81">line 81</a>
+        <a href="quota_getQuotaClaude.mjs.html">quota/getQuotaClaude.mjs</a>, <a href="quota_getQuotaClaude.mjs.html#line85">line 85</a>
     </li></ul></dd>
     
 
@@ -11698,7 +11698,7 @@ console.log(m.windows.map((w) => `${w.key}=${w.label}`))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line92">line 92</a>
+        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line94">line 94</a>
     </li></ul></dd>
     
 
@@ -11907,7 +11907,7 @@ console.log(m.windows.map((w) => `${w.key}=${w.label}`))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaClaude.mjs.html">quota/getQuotaClaude.mjs</a>, <a href="quota_getQuotaClaude.mjs.html#line128">line 128</a>
+        <a href="quota_getQuotaClaude.mjs.html">quota/getQuotaClaude.mjs</a>, <a href="quota_getQuotaClaude.mjs.html#line132">line 132</a>
     </li></ul></dd>
     
 
@@ -13414,7 +13414,7 @@ test()</code></pre>
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaClaude.mjs.html">quota/getQuotaClaude.mjs</a>, <a href="quota_getQuotaClaude.mjs.html#line179">line 179</a>
+        <a href="quota_getQuotaClaude.mjs.html">quota/getQuotaClaude.mjs</a>, <a href="quota_getQuotaClaude.mjs.html#line183">line 183</a>
     </li></ul></dd>
     
 
@@ -13461,18 +13461,7 @@ test()</code></pre>
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>//need claude code logged in
-
-import getQuotaClaude from './src/quota/getQuotaClaude.mjs'
-
-let test = async () => {
-    let r = await getQuotaClaude('firsemisphere2@gmail.com')
-    console.log(r.ok, r.plan)
-    // => true max
-    console.log(r.windows[0].label, r.windows[0].usedPercent)
-    // => 5小時 11 (百分比為查詢當下之即時值, 每次不同)
-}
-test()</code></pre>
+    <pre class="prettyprint"><code>//need claude code logged inimport getQuotaClaude from './src/quota/getQuotaClaude.mjs'let test = async () => {    let r = await getQuotaClaude('firsemisphere2@gmail.com')    console.log(r.ok, r.plan)    // => true max    console.log(r.windows[0].label, r.windows[0].usedPercent)    // => 5小時 11 (百分比為查詢當下之即時值, 每次不同)}test()</code></pre>
 
 
 
@@ -13880,7 +13869,7 @@ test()</code></pre>
                 </td>
             
 
-            <td class="description last"><p>輸入環境變數來源物件(讀CLAUDE_CONFIG_DIR、CLAUDE_CODE_OAUTH_TOKEN與非訂閱模式判定用之ANTHROPIC_API_KEY等)，供測試隔離本機環境，預設process.env</p></td>
+            <td class="description last"><p>輸入環境變數來源物件(讀CLAUDE_CONFIG_DIR、非訂閱模式判定用之ANTHROPIC_API_KEY等；CLAUDE_CODE_OAUTH_TOKEN不作為權杖來源，僅於無憑證時用於錯誤提示)，供測試隔離本機環境，預設process.env</p></td>
         </tr>
 
     
@@ -14001,7 +13990,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line349">line 349</a>
+        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line351">line 351</a>
     </li></ul></dd>
     
 
@@ -14048,18 +14037,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>//need codex cli logged in
-
-import getQuotaCodex from './src/quota/getQuotaCodex.mjs'
-
-let test = async () => {
-    let r = await getQuotaCodex('firsemisphere@gmail.com')
-    console.log(r.ok, r.plan, r.source)
-    // => true plus codex-app-server
-    console.log(r.windows[0].label, r.windows[0].usedPercent)
-    // => 5小時 37 (百分比為查詢當下之即時值, 每次不同)
-}
-test()</code></pre>
+    <pre class="prettyprint"><code>//need codex cli logged inimport getQuotaCodex from './src/quota/getQuotaCodex.mjs'let test = async () => {    let r = await getQuotaCodex('firsemisphere@gmail.com')    console.log(r.ok, r.plan, r.source)    // => true plus codex-app-server    console.log(r.windows[0].label, r.windows[0].usedPercent)    // => 5小時 37 (百分比為查詢當下之即時值, 每次不同)}test()</code></pre>
 
 
 
@@ -14347,7 +14325,7 @@ test()</code></pre>
                 </td>
             
 
-            <td class="description last"><p>輸入codex設定目錄字串(備援用)，預設取環境變數CODEX_HOME，未設則<homeDir>/.codex</p></td>
+            <td class="description last"><p>輸入codex設定目錄字串，僅備援路徑讀其auth.json時生效；app-server主路徑之子進程繼承本進程環境，查的是本進程CODEX_HOME所指之帳號，不受此參數影響（要讓主路徑查別的目錄，須於本進程環境設CODEX_HOME，或以useAppServer:false改走備援），預設取環境變數CODEX_HOME，未設則<homeDir>/.codex</p></td>
         </tr>
 
     
@@ -19948,7 +19926,7 @@ console.log(w.label, w.remainingPercent)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line115">line 115</a>
+        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line117">line 117</a>
     </li></ul></dd>
     
 
@@ -20106,7 +20084,7 @@ console.log(w.label, w.remainingPercent)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line224">line 224</a>
+        <a href="quota_getQuotaCodex.mjs.html">quota/getQuotaCodex.mjs</a>, <a href="quota_getQuotaCodex.mjs.html#line226">line 226</a>
     </li></ul></dd>
     
 
@@ -20472,7 +20450,7 @@ console.log(w.label, w.remainingPercent)
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 05 2026 19:31:48 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 05 2026 22:03:08 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
