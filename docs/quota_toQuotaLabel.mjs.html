@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>quota/toQuotaLabel.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">quota/toQuotaLabel.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import isnum from 'wsemi/src/isnum.mjs'
+import cdbl from 'wsemi/src/cdbl.mjs'
+
+
+// toQuotaLabel.mjs — 由額度窗口長度秒數推導人類可讀之中文標籤(單一來源)
+//
+// 【為何獨立成檔】toQuotaWindow推導預設標籤用它; 各轉接器對「帶模型別或群組別」之窗口
+//   須自組「7天(Fable)」「5小時(Gemini)」這類標籤, 也用它取基底。
+//   原版把此邏輯藏在toQuotaWindow內部, 轉接器只好各自手寫「7天(」字串,
+//   結果session窗口與weekly窗口之標籤不對稱(前者漏了「5小時」基底); 抽出後只剩一份規則。
+//
+// 【為何由秒數推導而非寫死】寫死「5小時/7天」等於把當下的窗口長度當成永久事實,
+//   供應商調整窗口時字面會說謊且無人察覺; 由秒數推導則窗口一變標籤即隨之正確。
+
+
+//每分鐘/每小時/每日之秒數
+let SEC_MIN = 60
+let SEC_HOUR = 3600
+let SEC_DAY = 86400
+
+
+/**
+ * 由額度窗口長度秒數推導人類可讀之中文標籤
+ *
+ * 能整除日數即以「N天」表示，其次「N小時」、「N分鐘」，皆不整除則「N秒」；
+ * 無效或非正數回傳空字串，令呼叫端可用空字串判斷「供應商未提供窗口長度」
+ *
+ * @param {Number} sec 輸入窗口長度秒數
+ * @returns {String} 回傳中文標籤字串，無效秒數回傳空字串
+ * @example
+ *
+ * import toQuotaLabel from './src/quota/toQuotaLabel.mjs'
+ *
+ * console.log(toQuotaLabel(18000))
+ * // => 5小時
+ *
+ * console.log(toQuotaLabel(604800))
+ * // => 7天
+ *
+ * console.log(toQuotaLabel(900))
+ * // => 15分鐘
+ *
+ * console.log(toQuotaLabel(null))
+ * // => (空字串)
+ *
+ */
+function toQuotaLabel(sec) {
+
+    //check, 無效或非正數無從推導
+    if (!isnum(sec) || cdbl(sec) &lt;= 0) {
+        return ''
+    }
+    sec = cdbl(sec)
+
+    //day
+    if (sec % SEC_DAY === 0) {
+        return `${sec / SEC_DAY}天`
+    }
+
+    //hour
+    if (sec % SEC_HOUR === 0) {
+        return `${sec / SEC_HOUR}小時`
+    }
+
+    //minute
+    if (sec % SEC_MIN === 0) {
+        return `${sec / SEC_MIN}分鐘`
+    }
+
+    return `${sec}秒`
+}
+
+
+export default toQuotaLabel
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Sep 05 2026 19:31:48 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

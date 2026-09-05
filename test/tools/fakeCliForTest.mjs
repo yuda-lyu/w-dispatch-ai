@@ -81,9 +81,10 @@ process.stdin.on('end', () => {
  * 產生一支測試用的假CLI，回傳其執行檔路徑與清除函數
  *
  * @param {String} name 輸入假CLI名稱字串，各測試檔須給予不同名稱，避免mocha並行執行時互相干擾
+ * @param {String} [entryCode=CODE_ENTRY] 輸入假CLI之node腳本原始碼字串，預設為回聲args/stdin/env之腳本；需模擬特定協定(如codex app-server之JSON-RPC、agy之--version與-p /usage)時自訂
  * @returns {Object} 回傳物件，內含exe(假CLI執行檔絕對路徑字串)、fd(產物資料夾絕對路徑字串)、clean(清除產物之函數)
  */
-function createFakeCli(name) {
+function createFakeCli(name, entryCode = CODE_ENTRY) {
 
     //fd, 印出absolute路徑供除錯驗收
     let fd = path.resolve(FD_BASE, name)
@@ -92,9 +93,9 @@ function createFakeCli(name) {
     let fdEntry = path.join(fd, 'node_modules', name)
     fs.mkdirSync(fdEntry, { recursive: true })
 
-    //entry
+    //entry, 預設回聲腳本或呼叫端自訂之協定模擬腳本
     let fpEntry = path.join(fdEntry, 'entry.mjs')
-    fs.writeFileSync(fpEntry, CODE_ENTRY, 'utf8')
+    fs.writeFileSync(fpEntry, typeof entryCode === 'string' && entryCode !== '' ? entryCode : CODE_ENTRY, 'utf8')
 
     //exe
     let exe = ''

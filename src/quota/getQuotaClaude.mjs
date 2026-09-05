@@ -1,0 +1,386 @@
+import os from 'os'
+import path from 'path'
+import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isearr from 'wsemi/src/isearr.mjs'
+import isnum from 'wsemi/src/isnum.mjs'
+import castPintOr from '../castPintOr.mjs'
+import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
+import readJsonOrNull from './readJsonOrNull.mjs'
+import fetchQuotaJson from './fetchQuotaJson.mjs'
+import toQuotaScopedLabel from './toQuotaScopedLabel.mjs'
+import toQuotaWindow from './toQuotaWindow.mjs'
+import toQuotaResult from './toQuotaResult.mjs'
+
+
+// getQuotaClaude.mjs — 查詢Claude(Claude Code訂閱)帳號之當前額度
+//
+// 【資料來源, 2026-09-05於本機實測】
+//   設定目錄: CLAUDE_CONFIG_DIR(未設則~/.claude); 實測設此變數指向空目錄後claude auth status回
+//     loggedIn:false且該目錄長出.claude.json, 即憑證檔與帳號檔皆隨此變數搬遷——它正是官方的
+//     多帳號機制(anthropics/claude-code issue #33430), 也是本套件email比對設計存在的理由。
+//   憑證: <configDir>/.credentials.json 之 claudeAiOauth.accessToken;
+//     亦接受環境變數CLAUDE_CODE_OAUTH_TOKEN(claude setup-token產生之長效token, 無email可比對)。
+//   帳號: <configDir>/.claude.json(設變數時)或~/.claude.json 之 oauthAccount.emailAddress。
+//   額度: GET https://api.anthropic.com/api/oauth/usage(即/usage指令之同一來源; 同類工具
+//     token-burn、wakamex/ccusage、pinkpixel quota皆用此端點)。
+//
+// 【為何不自行刷新權杖(刻意)】Anthropic之refresh token每次使用即輪替並作廢前一枚;
+//   本函數若刷新而不寫回, Claude Code存檔的refresh token立即失效, 使用者被迫重新登入;
+//   寫回則與Claude Code競爭同一檔(anthropics/claude-code #54443即此類race)。
+//   同類工具token-burn與ccusage以「原子寫回+身分守衛+重讀」做到了, 但監控程式不擁有憑證
+//   生命週期是更穩的邊界, 故本函數維持唯讀。代價: access token實測壽命8小時, Claude Code閒置
+//   逾8小時後查詢會401——此時正確指引是「執行一次claude讓它自行刷新」, 絕非重新登入。
+//
+// 【為何windows優先取limits[]】回應同時存在頂層five_hour/seven_day(舊欄位)與limits[](新結構),
+//   後者多出weekly_scoped(帶模型別, 實測Fable 25%), 是實際會先觸頂的窗口; 故優先limits[],
+//   缺漏才回退頂層。limits[]實測欄位: kind/group/percent/severity/resets_at/scope{model{display_name},surface}/is_active。
+//
+// 【已知限制】macOS之Claude Code將憑證存於Keychain, 本函數於該平台會回notfound(未實測故不臆造);
+//   該平台可改設CLAUDE_CODE_OAUTH_TOKEN環境變數供本函數使用。
+
+
+//額度查詢端點與帳號端點
+let URL_USAGE = 'https://api.anthropic.com/api/oauth/usage'
+let URL_PROFILE = 'https://api.anthropic.com/api/oauth/profile'
+
+
+//端點所需之beta旗標與預設UA(未帶claude-code UA會落入嚴苛之429請求池, 見claude-code #30930)
+let BETA_HEADER = 'oauth-2025-04-20'
+let DEFAULT_UA = 'claude-code/2.1.259'
+
+
+//各窗口群組之長度秒數。端點未回傳窗口長度, 此為Anthropic公告之定義(session=5小時、weekly=7天),
+//屬推導值; 供應商若調整而此處未更新, 僅label與windowSeconds失準, usedPercent與resets_at仍為實值
+let SEC_SESSION = 18000
+let SEC_WEEKLY = 604800
+
+
+//頂層舊欄位回退清單: [欄位鍵, 窗口秒數, 範圍]
+let TOP_FIELDS = [
+    ['five_hour', SEC_SESSION, ''],
+    ['seven_day', SEC_WEEKLY, ''],
+    ['seven_day_opus', SEC_WEEKLY, 'Opus'],
+    ['seven_day_sonnet', SEC_WEEKLY, 'Sonnet'],
+    ['seven_day_cowork', SEC_WEEKLY, 'Cowork'],
+    ['seven_day_oauth_apps', SEC_WEEKLY, 'OAuth apps'],
+]
+
+
+//代表Claude Code以非訂閱模式運作之環境變數; 任一有值即無訂閱額度窗口可查
+let ENV_NON_SUBSCRIPTION = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX']
+
+
+/**
+ * 將limits[]之單筆正規化為統一窗口物件
+ *
+ * @param {Object} it 輸入limits[]之單筆物件
+ * @returns {Object} 回傳統一窗口物件
+ */
+function fromLimitItem(it) {
+
+    //group, 決定窗口長度
+    let group = get(it, 'group', '')
+    let windowSeconds = null
+    if (group === 'session') {
+        windowSeconds = SEC_SESSION
+    }
+    else if (group === 'weekly') {
+        windowSeconds = SEC_WEEKLY
+    }
+
+    //scope, 模型別與介面別皆可能出現(實測scope:{model:{display_name:'Fable'},surface:null}),
+    //兩者並列以斜線相接, 令surface-scoped窗口不會與全域窗口同標籤而無從分辨
+    let parts = []
+    let model = get(it, 'scope.model.display_name', '')
+    if (isestr(model)) {
+        parts.push(model)
+    }
+    let surface = get(it, 'scope.surface', '')
+    if (isestr(surface)) {
+        parts.push(surface)
+    }
+    let scope = parts.join('/')
+
+    return toQuotaWindow({
+        key: get(it, 'kind', ''),
+        label: toQuotaScopedLabel(windowSeconds, scope),
+        windowSeconds,
+        usedPercent: get(it, 'percent', null),
+        resetAt: get(it, 'resets_at', ''),
+        scope,
+        active: get(it, 'is_active', false),
+        severity: get(it, 'severity', ''),
+    })
+}
+
+
+/**
+ * 將頂層舊欄位正規化為統一窗口物件
+ *
+ * @param {Object} data 輸入端點回應物件
+ * @param {String} key 輸入欄位鍵字串
+ * @param {Number} windowSeconds 輸入窗口長度秒數
+ * @param {String} scope 輸入適用範圍字串
+ * @returns {Object|null} 回傳統一窗口物件, 該欄位不存在或為null回傳null
+ */
+function fromTopField(data, key, windowSeconds, scope) {
+    let o = get(data, key, null)
+    if (o === null || o === undefined) {
+        return null
+    }
+    return toQuotaWindow({
+        key,
+        label: toQuotaScopedLabel(windowSeconds, scope),
+        windowSeconds,
+        usedPercent: get(o, 'utilization', null),
+        resetAt: get(o, 'resets_at', ''),
+        scope,
+    })
+}
+
+
+/**
+ * 查詢Claude(Claude Code訂閱)帳號之當前額度
+ *
+ * 額度綁定本機Claude Code之登入憑證，無「給email查任意帳號」之公開介面，
+ * 故email參數之作用為比對——查出本機實際登入者後與其核對，
+ * 不符時ok為false且matched為false，並於error載明本機實際登入之帳號；
+ * 未給email時不比對，直接回報本機當前帳號之額度。
+ * 本函數唯讀憑證、不自行刷新權杖(理由見檔頭)；不會reject，一律以結果物件之ok與error欄位回報成敗
+ *
+ * @param {String} [email=''] 輸入欲查詢之帳號email字串，預設''代表不比對而直接回報本機當前帳號
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {String} [opt.configDir] 輸入Claude設定目錄字串，預設取環境變數CLAUDE_CONFIG_DIR，未設則<homeDir>/.claude
+ * @param {String} [opt.homeDir=os.homedir()] 輸入家目錄字串，僅於未指定configDir且未設環境變數時使用，供測試指向替身目錄
+ * @param {String} [opt.userAgent='claude-code/2.1.259'] 輸入User-Agent字串，須為claude-code/<版本>形式否則端點將以嚴苛頻率限制回應429
+ * @param {Boolean} [opt.profileFallback=true] 輸入本機帳號檔無email時是否改打/api/oauth/profile取得布林值，預設true
+ * @param {String} [opt.usageUrl='https://api.anthropic.com/api/oauth/usage'] 輸入額度端點網址字串，供測試指向假伺服器或經企業代理，預設官方端點
+ * @param {String} [opt.profileUrl='https://api.anthropic.com/api/oauth/profile'] 輸入帳號端點網址字串，用途同usageUrl，預設官方端點
+ * @param {Object} [opt.env=process.env] 輸入環境變數來源物件(讀CLAUDE_CONFIG_DIR、CLAUDE_CODE_OAUTH_TOKEN與非訂閱模式判定用之ANTHROPIC_API_KEY等)，供測試隔離本機環境，預設process.env
+ * @param {Number} [opt.timeoutMs=20000] 輸入單次請求之逾時毫秒正整數，預設20000
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok、provider('claude')、email(本機實際登入帳號)、matched、plan(方案別，例如'max')、planTier(級距，例如'default_claude_max_20x')、source('anthropic-oauth-usage-api')、windows(額度窗口陣列，含5小時、7天、7天模型別)、credits(額外用量與花費資訊)、raw(原始回應)、error、errorType、durationMs，本函數不會reject
+ * @example
+ * //need claude code logged in
+ *
+ * import getQuotaClaude from './src/quota/getQuotaClaude.mjs'
+ *
+ * let test = async () => {
+ *     let r = await getQuotaClaude('firsemisphere2@gmail.com')
+ *     console.log(r.ok, r.plan)
+ *     // => true max
+ *     console.log(r.windows[0].label, r.windows[0].usedPercent)
+ *     // => 5小時 11 (百分比為查詢當下之即時值, 每次不同)
+ * }
+ * test()
+ *
+ */
+async function getQuotaClaude(email = '', opt = {}) {
+
+    let t0 = Date.now()
+    let source = 'anthropic-oauth-usage-api'
+
+    //emailWant, 非有效字串視為不比對
+    let emailWant = isestr(email) ? email : ''
+
+    //env, 環境變數來源可注入(測試以替身隔離本機環境; 亦供多帳號部署逐呼叫給定), 預設process.env
+    let env = get(opt, 'env', null)
+    if (!isobj(env)) {
+        env = process.env
+    }
+
+    //homeDir
+    let homeDir = get(opt, 'homeDir', null)
+    if (!isestr(homeDir)) {
+        homeDir = os.homedir()
+    }
+
+    //configDir, 依序取opt、CLAUDE_CONFIG_DIR、<homeDir>/.claude; 前二者代表使用者刻意搬遷,
+    //此時.claude.json亦在該目錄(實測), 否則在家目錄
+    let configDir = get(opt, 'configDir', null)
+    let relocated = true
+    if (!isestr(configDir)) {
+        configDir = get(env, 'CLAUDE_CONFIG_DIR', '')
+        if (!isestr(configDir)) {
+            configDir = path.join(homeDir, '.claude')
+            relocated = false
+        }
+    }
+    let fpCred = path.join(configDir, '.credentials.json')
+    let fpConf = relocated ? path.join(configDir, '.claude.json') : path.join(homeDir, '.claude.json')
+
+    //timeoutMs
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfQuotaTimeoutMs)
+
+    //userAgent
+    let userAgent = get(opt, 'userAgent', null)
+    if (!isestr(userAgent)) {
+        userAgent = DEFAULT_UA
+    }
+
+    //profileFallback
+    let profileFallback = get(opt, 'profileFallback', true) !== false
+
+    //usageUrl與profileUrl, 可覆寫(測試指向假伺服器、或經企業代理), 預設官方端點
+    let usageUrl = get(opt, 'usageUrl', null)
+    if (!isestr(usageUrl)) {
+        usageUrl = URL_USAGE
+    }
+    let profileUrl = get(opt, 'profileUrl', null)
+    if (!isestr(profileUrl)) {
+        profileUrl = URL_PROFILE
+    }
+
+    //cred與conf
+    let cred = readJsonOrNull(fpCred)
+    let conf = readJsonOrNull(fpConf)
+
+    //token, 環境變數優先(headless部署慣例), 其次憑證檔
+    let tokenSource = 'file'
+    let token = get(env, 'CLAUDE_CODE_OAUTH_TOKEN', '')
+    if (isestr(token)) {
+        tokenSource = 'env'
+    }
+    else {
+        token = get(cred, 'claudeAiOauth.accessToken', '')
+    }
+
+    //emailHave, 僅帳號檔載有email, 額度端點本身不回傳帳號
+    let emailHave = get(conf, 'oauthAccount.emailAddress', '')
+    if (!isestr(emailHave)) {
+        emailHave = ''
+    }
+
+    //plan與planTier, 憑證檔為先(登入當下寫入), 帳號檔次之
+    let plan = get(cred, 'claudeAiOauth.subscriptionType', '')
+    if (!isestr(plan)) {
+        plan = get(conf, 'oauthAccount.organizationType', '')
+        if (!isestr(plan)) {
+            plan = ''
+        }
+    }
+    let planTier = get(cred, 'claudeAiOauth.rateLimitTier', '')
+    if (!isestr(planTier)) {
+        planTier = get(conf, 'oauthAccount.organizationRateLimitTier', '')
+        if (!isestr(planTier)) {
+            planTier = ''
+        }
+    }
+
+    //fin, 統一收尾
+    let fin = (o) => {
+        return toQuotaResult('claude', {
+            email: emailHave,
+            emailWant,
+            plan,
+            planTier,
+            source,
+            durationMs: Date.now() - t0,
+            ...o,
+        })
+    }
+
+    //check token
+    if (!isestr(token)) {
+
+        //unsupported, 以API key或雲端閘道模式運作者按用量計費, 無訂閱額度窗口, 指引其登入只是誤導
+        let envs = ENV_NON_SUBSCRIPTION.filter((k) => isestr(get(env, k, '')))
+        if (envs.length > 0) {
+            return fin({
+                error: `Claude Code is running in non-subscription mode (env ${envs.join(', ')} is set); this mode is billed by usage and has no 5-hour/7-day subscription quota windows`,
+                errorType: 'unsupported',
+            })
+        }
+
+        return fin({
+            error: `Claude Code credential not found (${fpCred}); run [claude auth login] first. On macOS the credential lives in Keychain instead of this file; set env CLAUDE_CODE_OAUTH_TOKEN as an alternative`,
+            errorType: 'notfound',
+        })
+    }
+
+    //headers
+    let headers = {
+        'Authorization': `Bearer ${token}`,
+        'anthropic-beta': BETA_HEADER,
+        'User-Agent': userAgent,
+        'Content-Type': 'application/json',
+    }
+
+    //fetch usage, 錯誤訊息中之權杖一律遮蔽
+    let r = await fetchQuotaJson(usageUrl, { headers, timeoutMs, redact: [token] })
+    if (!r.ok) {
+
+        let msg = r.error
+
+        //auth, 最常見成因是access token自然到期(實測壽命8小時); Claude Code每次執行皆會自行刷新,
+        //正確指引是執行一次claude, 絕非重新登入(重新登入使其他工作階段之權杖失效)
+        if (r.errorType === 'auth') {
+            let expiresAt = get(cred, 'claudeAiOauth.expiresAt', null)
+            let hint = tokenSource === 'env'
+                ? 'the token in env CLAUDE_CODE_OAUTH_TOKEN is no longer valid; regenerate it with [claude setup-token]'
+                : 'run any claude command (just open claude) so Claude Code refreshes the token itself, then retry; do NOT run claude auth login, Anthropic rotates the refresh token on every use and a re-login invalidates other sessions'
+            let when = isnum(expiresAt) ? `(local recorded expiry: ${new Date(expiresAt).toISOString()})` : ''
+            msg = `${msg} ${when} → ${hint}`
+        }
+
+        //forbidden, 組織層級禁用OAuth用量查詢時端點回403並帶此錯誤碼(見wakamex/ccusage)
+        if (r.errorType === 'forbidden' && /oauth_not_allowed_for_organization/.test(msg)) {
+            msg = `this account's organization disallows OAuth usage queries (oauth_not_allowed_for_organization); subscription quota must be viewed by an org admin in the console: ${msg}`
+        }
+
+        return fin({ error: msg, errorType: r.errorType })
+    }
+
+    let data = r.data
+
+    //emailHave, 帳號檔無email(例如僅以環境變數提供權杖)時改打profile端點; 形狀採寬容取法
+    if (emailHave === '' && profileFallback) {
+        let rp = await fetchQuotaJson(profileUrl, { headers, timeoutMs, redact: [token] })
+        if (rp.ok) {
+            for (let k of ['account.email', 'account.email_address', 'email', 'email_address']) {
+                let v = get(rp.data, k, '')
+                if (isestr(v)) {
+                    emailHave = v
+                    break
+                }
+            }
+        }
+    }
+
+    //windows, 優先取新版limits[](含模型別與介面別週限額), 缺漏才回退頂層舊欄位
+    let windows = []
+    let limits = get(data, 'limits', null)
+    if (isearr(limits)) {
+        windows = limits.map(fromLimitItem)
+    }
+    else {
+        windows = TOP_FIELDS
+            .map(([key, sec, scope]) => fromTopField(data, key, sec, scope))
+            .filter((v) => v !== null)
+    }
+
+    //credits, 額外用量(超出方案額度後之付費用量)與已花費金額
+    let credits = {
+        extraUsageEnabled: get(data, 'extra_usage.is_enabled', false),
+        monthlyLimit: get(data, 'extra_usage.monthly_limit', null),
+        usedCredits: get(data, 'extra_usage.used_credits', null),
+        utilization: get(data, 'extra_usage.utilization', null),
+        spendUsedMinor: get(data, 'spend.used.amount_minor', null),
+        spendCurrency: get(data, 'spend.used.currency', ''),
+        spendPercent: get(data, 'spend.percent', null),
+    }
+
+    return fin({
+        windows,
+        credits,
+        raw: {
+            tokenSource,
+            configDir,
+            usage: data,
+        },
+    })
+}
+
+
+export default getQuotaClaude

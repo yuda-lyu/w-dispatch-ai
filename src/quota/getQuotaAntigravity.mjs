@@ -1,0 +1,391 @@
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import crypto from 'crypto'
+import get from 'lodash-es/get.js'
+import isestr from 'wsemi/src/isestr.mjs'
+import isearr from 'wsemi/src/isearr.mjs'
+import isbol from 'wsemi/src/isbol.mjs'
+import isnum from 'wsemi/src/isnum.mjs'
+import cdbl from 'wsemi/src/cdbl.mjs'
+import execCli from 'wsemi/src/execCli.mjs'
+import strCompareForVersion from 'wsemi/src/strCompareForVersion.mjs'
+import castPintOr from '../castPintOr.mjs'
+import toQuotaLabel from './toQuotaLabel.mjs'
+import toQuotaWindow from './toQuotaWindow.mjs'
+import toQuotaResult from './toQuotaResult.mjs'
+
+
+// getQuotaAntigravity.mjs — 查詢Antigravity(Google側, agy CLI)帳號之當前額度
+//
+// 【資料來源: agy自身之print模式(官方、無頭、不碰憑證), 2026-09-05本機實測(agy 1.1.27)】
+//   `agy -p "/usage" --output-format json` 回 {status:'SUCCESS', num_turns:0, usage:{全零},
+//     command:{name:'usage', data:{groups:[{name:'Gemini Models', buckets:[
+//       {id:'gemini-weekly', window:'weekly', remaining_fraction, reset_time, description}, {id:'gemini-5h', window:'5h', ...}]},
+//       {name:'Claude and GPT models', buckets:[{id:'3p-weekly',...},{id:'3p-5h',...}]}]}}}
+//   agy CHANGELOG 1.1.11原文: 「-p "/usage", /quota, /credits ... emit a structured payload under
+//   --output-format json ... without starting an agent turn, spending quota, or leaving a conversation behind」。
+//   帳號email: 同一次spawn加`--log-file <暫存檔>`, log內有`applyAuthResult: email=..., authMethod=consumer`。
+//   耗時實測5~8秒(agy啟動、認證、loadCodeAssist與fetchAvailableModels兩個後端往返), 故預設逾時較寬。
+//
+// 【為何不走Gemini CLI憑證或Code Assist端點】Google已於2026-06-18終止Gemini CLI對個人層之服務;
+//   ~/.gemini/google_accounts.json與oauth_creds.json為舊Gemini CLI所留, 實測其帳號(firsemisphere6)
+//   與agy實際登入帳號(firsemisphere)不同, 且打Code Assist端點回403; 同類工具為此各自借token
+//   (讀IDE之state.vscdb、讀Windows認證管理員、掃agy二進位取client secret、自建OAuth登入),
+//   全屬未公開之內部格式與灰色地帶。agy既已提供官方無頭介面, 上述路徑一概不做。
+//
+// 【版本閘門】1.1.11之前的agy會把「/usage」當一般prompt起一個agent turn(耗額度、留對話),
+//   故先以`agy --version`把關(實測<1秒), 低於門檻即回unsupported而非冒險執行。
+//
+// 【Git Bash陷阱(僅影響手動測試)】MSYS會把以斜線開頭之參數「/usage」轉譯成Windows路徑
+//   (C:/Program Files/Git/usage), agy收到路徑字串就當成prompt執行; Node之spawn無此轉譯,
+//   本函數不受影響, 但在Git Bash手動驗證須加MSYS_NO_PATHCONV=1。
+
+
+//預設值
+let DEFAULT_EXE = 'agy'
+let DEFAULT_TIMEOUT_MS = 60000
+let MIN_VERSION = '1.1.11'
+
+
+//各窗口字串對應之秒數; 未列者以正則解析Nh/Nd, 皆不成則null(標籤退回桶名)
+let WINDOW_SECONDS = {
+    '5h': 18000,
+    'five_hour': 18000,
+    'five-hour': 18000,
+    'weekly': 604800,
+    'week': 604800,
+    'daily': 86400,
+    'day': 86400,
+}
+
+
+/**
+ * 由桶之window字串推得窗口秒數
+ *
+ * @param {String} w 輸入window字串, 例如'5h'、'weekly'
+ * @returns {Number|null} 回傳秒數, 無法推得回傳null
+ */
+function windowToSeconds(w) {
+    if (!isestr(w)) {
+        return null
+    }
+    let k = w.trim().toLowerCase()
+    if (WINDOW_SECONDS[k] !== undefined) {
+        return WINDOW_SECONDS[k]
+    }
+    let m = k.match(/^(\d+)\s*(h|hr|hour|hours|d|day|days|m|min|minutes)$/)
+    if (!m) {
+        return null
+    }
+    let n = Number(m[1])
+    if (/^h/.test(m[2])) {
+        return n * 3600
+    }
+    if (/^d/.test(m[2])) {
+        return n * 86400
+    }
+    return n * 60
+}
+
+
+/**
+ * 將群組內之單一桶正規化為統一窗口物件
+ *
+ * @param {Object} g 輸入群組物件
+ * @param {Object} b 輸入桶物件
+ * @returns {Object|null} 回傳統一窗口物件, 桶無id或無剩餘比例回傳null
+ */
+function fromBucket(g, b) {
+
+    let key = get(b, 'id', '')
+    if (!isestr(key)) {
+        return null
+    }
+
+    //usedPercent, 由剩餘比例反推; 文件載明可能為數值或字串故一律轉數值
+    let rf = get(b, 'remaining_fraction', null)
+    let usedPercent = null
+    if (isnum(rf)) {
+        usedPercent = Math.round((1 - cdbl(rf)) * 100 * 100) / 100
+    }
+
+    //scope與label, 群組名為範圍; 窗口秒數可推得時標籤為「5小時(Gemini Models)」, 否則退回桶名
+    let scope = get(g, 'name', '')
+    if (!isestr(scope)) {
+        scope = ''
+    }
+    let windowSeconds = windowToSeconds(get(b, 'window', ''))
+    let base = toQuotaLabel(windowSeconds)
+    if (base === '') {
+        base = get(b, 'name', '')
+        if (!isestr(base)) {
+            base = key
+        }
+    }
+    let label = scope === '' ? base : `${base}(${scope})`
+
+    //severity, 用罄與停用須明示; 其餘normal
+    let severity = 'normal'
+    if (get(b, 'disabled', false) === true) {
+        severity = 'disabled'
+    }
+    else if (usedPercent !== null && usedPercent >= 100) {
+        severity = 'exhausted'
+    }
+
+    return toQuotaWindow({
+        key,
+        label,
+        windowSeconds,
+        usedPercent,
+        resetAt: get(b, 'reset_time', ''),
+        scope,
+        active: false,
+        severity,
+    })
+}
+
+
+/**
+ * 執行agy之print模式讀取型slash指令並解析其JSON回應
+ *
+ * @param {String} exe 輸入agy執行檔
+ * @param {String} cmd 輸入slash指令字串, 例如'/usage'
+ * @param {Object} o 輸入設定物件{timeoutMs, cwd, logFile}
+ * @returns {Promise} 回傳物件{ok, data, response, stderr, error, errorType, code}
+ */
+async function agyPrint(exe, cmd, o) {
+
+    let args = []
+    if (isestr(o.logFile)) {
+        args.push('--log-file', o.logFile)
+    }
+    args.push('-p', cmd, '--output-format', 'json', '--print-timeout', `${Math.max(5, Math.ceil(o.timeoutMs / 1000))}s`)
+
+    let r = await execCli(exe, args, { timeoutMs: o.timeoutMs, cwd: o.cwd })
+
+    //stdout最後一行非空者為JSON
+    let last = String(get(r, 'stdout', '')).trim().split('\n').map((s) => s.trim()).filter((s) => s !== '').pop() || ''
+    let j = null
+    try {
+        j = JSON.parse(last)
+    }
+    catch (err) {}
+
+    if (!r.ok) {
+        let tail = String(get(r, 'stderr', '')).trim().slice(-300)
+        let errorType = /timeout/i.test(get(r, 'error', '')) ? 'timeout' : 'exit'
+        if (/not logged in|login|sign in|authenticate/i.test(tail)) {
+            errorType = 'auth'
+        }
+        return { ok: false, data: null, response: '', stderr: tail, error: `agy ${cmd} failed: ${get(r, 'error', '')}${tail ? ` | stderr: ${tail}` : ''}`, errorType, code: get(r, 'code', null) }
+    }
+
+    if (j === null) {
+        return { ok: false, data: null, response: '', stderr: '', error: `agy ${cmd} stdout is not JSON: ${last.slice(0, 200)}`, errorType: 'parse', code: r.code }
+    }
+
+    //防呆: 若agy把指令當成prompt執行(num_turns>0或無command), 代表版本過舊或slash展開被停用
+    let numTurns = get(j, 'num_turns', 0)
+    let cname = get(j, 'command.name', '')
+    if (!isestr(cname) || (isnum(numTurns) && cdbl(numTurns) > 0)) {
+        return { ok: false, data: null, response: get(j, 'response', ''), stderr: '', error: `agy did not handle ${cmd} as a slash command (num_turns=${numTurns}); version may be below ${MIN_VERSION} or --disable-slash-commands is set; this call may have consumed quota`, errorType: 'unsupported', code: r.code }
+    }
+
+    if (get(j, 'status', '') !== 'SUCCESS') {
+        return { ok: false, data: get(j, 'command.data', null), response: get(j, 'response', ''), stderr: '', error: `agy ${cmd} reported status=${get(j, 'status', '')}: ${String(get(j, 'response', '')).slice(0, 200)}`, errorType: 'exit', code: r.code }
+    }
+
+    return { ok: true, data: get(j, 'command.data', null), response: get(j, 'response', ''), stderr: '', error: '', errorType: '', code: r.code, raw: j }
+}
+
+
+/**
+ * 查詢Antigravity(Google側, agy CLI)帳號之當前額度
+ *
+ * 以agy自身之print模式取得額度(官方、無頭、不碰憑證)：`agy -p "/usage" --output-format json`，
+ * 並以同一次執行之`--log-file`取得登入帳號email。
+ * 額度綁定本機agy之登入憑證，email參數之作用為比對——不符時ok為false且matched為false；
+ * 未給email時不比對。本函數不會reject，一律以結果物件之ok與error欄位回報成敗
+ *
+ * @param {String} [email=''] 輸入欲查詢之帳號email字串，預設''代表不比對而直接回報本機當前帳號
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或路徑字串，預設'agy'
+ * @param {Boolean} [opt.checkVersion=true] 輸入是否先以`agy --version`把關版本布林值，低於1.1.11即回unsupported而不執行(舊版會把/usage當prompt跑而耗額度)，預設true
+ * @param {Boolean} [opt.withCredits=false] 輸入是否另執行`/credits`取得G1點數餘額布林值，會多一次約5秒之啟動，預設false
+ * @param {String} [opt.cwd=os.tmpdir()] 輸入子進程工作目錄字串，預設系統暫存目錄以免在專案目錄留下痕跡
+ * @param {Number} [opt.timeoutMs=60000] 輸入單次agy執行之逾時毫秒正整數，預設60000(agy啟動加兩個後端往返實測5~8秒)
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok、provider('antigravity')、email(agy登入帳號)、matched、plan(空字串，/usage不提供方案別)、planTier(空字串)、source('agy-print-usage')、windows(每群組之5小時與7天窗口，scope為群組名)、credits(withCredits時為{remainingCredits, upgradeUri}，否則null)、raw(含agy版本、authMethod、原始回應)、error、errorType、durationMs，本函數不會reject
+ * @example
+ * //need agy cli (>=1.1.11) logged in
+ *
+ * import getQuotaAntigravity from './src/quota/getQuotaAntigravity.mjs'
+ *
+ * let test = async () => {
+ *     let r = await getQuotaAntigravity('firsemisphere@gmail.com')
+ *     console.log(r.ok, r.email)
+ *     // => true firsemisphere@gmail.com
+ *     console.log(r.windows.map((w) => `${w.label}:${w.remainingPercent}%`).join(' '))
+ *     // => 7天(Gemini Models):85% 5小時(Gemini Models):90% 7天(Claude and GPT models):100% 5小時(Claude and GPT models):100% (即時值)
+ * }
+ * test()
+ *
+ */
+async function getQuotaAntigravity(email = '', opt = {}) {
+
+    let t0 = Date.now()
+    let source = 'agy-print-usage'
+
+    //emailWant
+    let emailWant = isestr(email) ? email : ''
+
+    //exe
+    let exe = get(opt, 'exe', null)
+    if (!isestr(exe)) {
+        exe = DEFAULT_EXE
+    }
+
+    //timeoutMs
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+
+    //cwd
+    let cwd = get(opt, 'cwd', null)
+    if (!isestr(cwd)) {
+        cwd = os.tmpdir()
+    }
+
+    //checkVersion與withCredits
+    let checkVersion = get(opt, 'checkVersion', true) !== false
+    let withCredits = get(opt, 'withCredits', null)
+    if (!isbol(withCredits)) {
+        withCredits = false
+    }
+
+    //fin
+    let fin = (o) => {
+        return toQuotaResult('antigravity', {
+            emailWant,
+            source,
+            durationMs: Date.now() - t0,
+            ...o,
+        })
+    }
+
+    //version gate
+    let version = ''
+    if (checkVersion) {
+        let rv = await execCli(exe, ['--version'], { timeoutMs: Math.min(timeoutMs, 15000), cwd })
+        if (!rv.ok) {
+            return fin({
+                error: `agy not found or not executable (${exe}): ${get(rv, 'error', '')}${String(get(rv, 'stderr', '')).trim() ? ` | ${String(rv.stderr).trim().slice(-200)}` : ''}; see https://antigravity.google/docs/cli/ for install and login`,
+                errorType: 'notfound',
+            })
+        }
+        version = String(get(rv, 'stdout', '')).trim().split('\n')[0]
+
+        //strCompareForVersion可直接餵--version原始輸出; 解析不出三段版本號回null, 一律視為不達門檻
+        let cmp = strCompareForVersion(version, MIN_VERSION)
+        if (cmp === null || cmp < 0) {
+            return fin({
+                error: `agy version [${version || 'unknown'}] is below ${MIN_VERSION}; its print mode cannot run /usage non-interactively (it would treat it as a prompt and consume quota); run [agy update]`,
+                errorType: 'unsupported',
+                raw: { version },
+            })
+        }
+    }
+
+    //logFile, 供取得登入帳號; 落系統暫存目錄, 結束必刪
+    let logFile = path.join(os.tmpdir(), `w-dispatch-ai-agy-${process.pid}-${crypto.randomBytes(4).toString('hex')}.log`)
+
+    let ru = null
+    let rc = null
+    let emailHave = ''
+    let authMethod = ''
+    try {
+
+        //usage
+        ru = await agyPrint(exe, '/usage', { timeoutMs, cwd, logFile })
+
+        //email, 自log取得(agy於認證後寫入applyAuthResult行)
+        let log = ''
+        try {
+            log = fs.readFileSync(logFile, 'utf8')
+        }
+        catch (err) {}
+        let m = log.match(/applyAuthResult: email=([^,\s]+), authMethod=(\w+)/)
+        if (m) {
+            emailHave = m[1]
+            authMethod = m[2]
+        }
+        else {
+            let m2 = log.match(/authenticated successfully as (\S+)/)
+            if (m2) {
+                emailHave = m2[1]
+            }
+        }
+
+        //credits, 選配
+        if (ru.ok && withCredits) {
+            rc = await agyPrint(exe, '/credits', { timeoutMs, cwd, logFile: '' })
+        }
+
+    }
+    finally {
+        try {
+            fs.unlinkSync(logFile)
+        }
+        catch (err) {}
+    }
+
+    if (!ru.ok) {
+        return fin({
+            email: emailHave,
+            error: ru.error,
+            errorType: ru.errorType,
+            raw: { version, authMethod, response: ru.response, stderr: ru.stderr },
+        })
+    }
+
+    //windows
+    let windows = []
+    let groups = get(ru.data, 'groups', null)
+    if (isearr(groups)) {
+        for (let g of groups) {
+            let buckets = get(g, 'buckets', null)
+            if (!isearr(buckets)) {
+                continue
+            }
+            for (let b of buckets) {
+                let w = fromBucket(g, b)
+                if (w !== null) {
+                    windows.push(w)
+                }
+            }
+        }
+    }
+
+    //credits
+    let credits = null
+    if (rc !== null) {
+        credits = rc.ok
+            ? { remainingCredits: get(rc.data, 'remaining_credits', null), upgradeUri: get(rc.data, 'upgrade_uri', '') }
+            : { error: rc.error }
+    }
+
+    return fin({
+        email: emailHave,
+        windows,
+        credits,
+        raw: {
+            version,
+            authMethod,
+            description: get(ru.data, 'description', ''),
+            usage: ru.raw,
+            credits: rc !== null ? get(rc, 'raw', null) : null,
+        },
+    })
+}
+
+
+export default getQuotaAntigravity

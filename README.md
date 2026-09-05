@@ -49,6 +49,9 @@ Note:
 | `createUsageCounter(opt)` | per-day per-key usage counter fed by `onEvent` (observation only, never throttles) |
 | `salvageTruncatedArray(text)` | salvage the complete leading elements of a truncated JSON array (opt-in, not part of default parsing) |
 | `NO_SIDE_EFFECT` | the no-side-effect prompt prefix (single source), auto-applied by workflow `callAi`, prepend manually for direct `dispatchAiFallback` calls |
+| `getQuotaClaude(email, opt)` | read the current subscription quota windows (5h / 7d / per-model 7d) of the locally logged-in Claude Code account via Anthropic's OAuth usage API; `email` is compared against the local account, not used to look one up |
+| `getQuotaCodex(email, opt)` | same for the Codex CLI account: primary path `codex app-server` JSON-RPC (auth handled by codex), fallback to chatgpt.com's usage endpoint |
+| `getQuotaAntigravity(email, opt)` | same for the Antigravity CLI (`agy`) account via its headless `-p "/usage" --output-format json` (agy ≥ 1.1.11, version-gated) |
 | `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses']` |
 
 #### Example:
@@ -558,6 +561,49 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 | `budgetFor(chain)` | 遞補鏈走滿全鏈之時間預算（Σ各條目`timeoutMs`，未帶者以統一預設300000計）；與外部排程硬上限取小者交`budgetMs` |
 | `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可 |
 | `NO_SIDE_EFFECT` | 防副作用prompt前綴之單一來源（措辭含唯讀查閱豁免——codex以shell讀檔，一律禁指令等同禁讀檔）；工作流`callAi`預設自動掛上，直呼`dispatchAiFallback`者自行前綴 |
+
+#### 訂閱額度查詢(quota)：`getQuotaClaude`／`getQuotaCodex`／`getQuotaAntigravity`
+
+查詢**本機各 CLI 當前登入帳號**之訂閱額度窗口（5 小時／7 天／模型別 7 天等），三家回傳統一結構。所在目錄 `src/quota/`，深層引入 `w-dispatch-ai/src/quota/getQuotaClaude.mjs` 或由聚合物件取用。
+
+```alias
+import wdi from 'w-dispatch-ai'
+
+let r = await wdi.getQuotaClaude('me@example.com') //給email即「比對」本機登入帳號; 給''則不比對直接回報
+console.log(r.ok, r.matched, r.email, r.plan)
+r.windows.forEach((w) => console.log(w.key, w.label, w.usedPercent, w.remainingPercent, w.resetAt, w.active, w.severity))
+// session 5小時 3 97 2026-... false normal
+// weekly_all 7天 13 87 2026-... false normal
+// weekly_scoped 7天(Fable) 15 85 2026-... true normal   ← 帶模型別、實際會先觸頂的窗口
+
+let c = await wdi.getQuotaCodex()        // source: 'codex-app-server'(主) 或 'chatgpt-wham-usage-api'(備援)
+let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows之scope為群組名(Gemini Models / Claude and GPT models)
+```
+
+**email 的真實角色是「比對」不是「查詢」**：三家額度皆綁定本機該 CLI 當前登入之憑證，沒有任何一家提供「給 email 查任意帳號」的公開介面（那會是帳號列舉漏洞）。故 `email` 參數用來核對本機實際登入者——一機多帳號時（實測本機 claude／codex／agy 分屬不同 gmail）不核對就會把甲帳號的額度當成乙的。不符時 `ok:false`、`matched:false`、`errorType:'account'`，但額度資料**仍回傳**（已取得，丟棄只是浪費）。
+
+**結果結構**：`{ ok, provider, email, matched, plan, planTier, source, windows[], credits, raw, error, errorType, durationMs }`；每個窗口 `{ key, label, windowSeconds, usedPercent, remainingPercent, resetAt(ISO), resetAfterSeconds, scope, active, severity }`。`severity` 供應商有給即用，未給則由 `usedPercent` 推導（用罄 `exhausted`／其餘 `normal`）。
+
+**`key` 是各家原生識別、刻意不統一；跨家比較用 `windowSeconds` 配 `scope`**。統一的是信封（上列欄位）——三家原始欄位確實互異（Claude 給已用 % `utilization`＋ISO `resets_at`；Codex 給 `usedPercent`＋unix 秒 `resetsAt`＋`windowDurationMins`；agy 給**剩餘**比例 `remaining_fraction`＋ISO `reset_time`），全部正規化為 `usedPercent`／`resetAt`／`resetAfterSeconds`／`windowSeconds`。但 `key` 原樣透傳各家自己的窗口識別：
+
+| 供應商 | `key` 值 | 來源 |
+| --- | --- | --- |
+| Claude | `session`／`weekly_all`／`weekly_scoped` | Anthropic `limits[].kind` 原值（回退舊欄位時為 `five_hour`／`seven_day_opus` 等欄位名） |
+| Codex | `primary`／`secondary`；巢狀限額為 `code_review:primary`、`<limitId>:primary` | app-server `rateLimits.primary`／`.secondary` 物件名；巢狀者由套件組唯一鍵 |
+| agy | `gemini-5h`／`gemini-weekly`／`3p-5h`／`3p-weekly` | agy `buckets[].id` 原值 |
+
+保留原生值可回溯 `raw`，也不必為求一致把 agy 的 4 桶 2 群組硬壓成 2 個。要「跨家找 5 小時窗口」請用 `windowSeconds === 18000`（7 天為 `604800`）配 `scope`，**不要比對 `key` 字串**。
+
+**errorType（quota 專用詞彙，與轉接器之 errorType 分開）**：`params`／`notfound`（憑證或執行檔不存在、未登入）／`unsupported`（API key 或雲端模式無訂閱額度、agy 版本過舊）／`auth`（權杖被拒）／`forbidden`／`ratelimit`（查詢端點自身之 429，非訂閱額度用罄）／`http`／`parse`／`timeout`／`network`／`toolarge`／`account`（帳號不符）／`exit`／`rpc`。
+
+| 設計要點 | 說明 |
+| --- | --- |
+| **唯讀憑證，刻意不刷新權杖** | Anthropic 的 refresh token 每次使用即輪替並作廢前一枚；監控程式若自行刷新而不寫回，Claude Code 存檔的權杖立即失效、使用者被迫重登；寫回則與 Claude Code 競爭同一檔。故 401 時的正確指引是「執行一次 claude 讓它自行刷新」，**絕非重新登入**（會使其他工作階段失效）——錯誤訊息已內建此指引 |
+| **codex 主路徑走第一方協定** | `codex app-server --stdio` JSON-RPC（認證、刷新、多帳號全由 codex 自理，本套件不碰 token），失敗才退回 chatgpt.com 之內部端點（欄位可能變動，對映邏輯獨立於 `fromCodexUsageHttp` 以便離線 fixture 驗證） |
+| **agy 版本閘門** | 1.1.11 之前 `-p "/usage"` 會被當一般 prompt 起一個 agent turn（耗額度、留對話），故先以 `agy --version` 把關，過舊回 `unsupported` 而不冒險執行；另有 num_turns>0 之事後防呆 |
+| **機密不入 log** | HTTP 錯誤訊息中之權杖與帳號 ID 一律先遮蔽（`[REDACTED]`）再截短；回應本文有 1MB 上限防異常頁撐爆 |
+| **可測性／可注入** | `opt.env`（隔離本機環境變數）、`opt.usageUrl`／`opt.profileUrl`（指向假伺服器或企業代理）、`opt.configDir`／`opt.codexHome`／`opt.exe`；額度查詢之預設逾時為 20 秒（`dfQuotaTimeoutMs`，與 agent 推論之 300 秒分開），agy 因啟動較慢預設 60 秒 |
+| **需 wsemi ≥ 1.8.85** | codex 主路徑依賴其 `execCliJsonRpc`（stdio JSON-RPC 會話管理） |
 
 **內建CLI條目之防寫機制對照**（內建清單定位為唯讀調用，各家CLI條目皆自帶機械防寫；需要寫入能力時於條目或呼叫時覆寫該欄位即可。api類為純文字生成天然無寫檔能力，不在此列）：
 

@@ -13,6 +13,9 @@ import dispatchApiOpenaiCompat from '../src/dispatchApiOpenaiCompat.mjs'
 import dispatchApiOpenaiResponses from '../src/dispatchApiOpenaiResponses.mjs'
 import providers from '../src/providers.mjs'
 import resolveProviders from '../src/resolveProviders.mjs'
+import getQuotaClaude from '../src/quota/getQuotaClaude.mjs'
+import getQuotaCodex from '../src/quota/getQuotaCodex.mjs'
+import getQuotaAntigravity from '../src/quota/getQuotaAntigravity.mjs'
 
 
 describe('WDispatchAi', function() {
@@ -38,6 +41,9 @@ describe('WDispatchAi', function() {
             'createFileStore',
             'createUsageCounter',
             'salvageTruncatedArray',
+            'getQuotaClaude',
+            'getQuotaCodex',
+            'getQuotaAntigravity',
         ]
         assert.strict.deepEqual(r, rr)
     })
@@ -50,7 +56,7 @@ describe('WDispatchAi', function() {
 
     it('各鍵值型別正確(KINDS與providers為物件, NO_SIDE_EFFECT為字串, 其餘為函數)', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function']
+        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -67,8 +73,11 @@ describe('WDispatchAi', function() {
             wi.dispatchApiOpenaiResponses === dispatchApiOpenaiResponses,
             wi.providers === providers,
             wi.resolveProviders === resolveProviders,
+            wi.getQuotaClaude === getQuotaClaude,
+            wi.getQuotaCodex === getQuotaCodex,
+            wi.getQuotaAntigravity === getQuotaAntigravity,
         ]
-        let rr = [true, true, true, true, true, true, true, true, true, true, true]
+        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 
