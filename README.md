@@ -522,7 +522,7 @@ let env = wdi.readEnvFile('./.env')
 let { providers, table, skipped } = wdi.resolveProviders(wdi.providers, { env })
 
 //自選: pick順序即遞補優先序; providers餵dispatchAiFallback, table餵dispatchAiWkf
-let picked = wdi.resolveProviders(wdi.providers, { env, pick: ['agnes:agnes-2.0-flash', 'claude:sonnet'] })
+let picked = wdi.resolveProviders(wdi.providers, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] })
 let r = await wdi.dispatchAiFallback(prompt, { providers: picked.providers, timeoutMs: 1200000 })
 let wkf = wdi.dispatchAiWkf({ providers: picked.table, defaults: { timeoutMs: 1200000 } })
 

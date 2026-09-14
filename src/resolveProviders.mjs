@@ -65,14 +65,14 @@ import strFindSimilar from 'wsemi/src/strFindSimilar.mjs'
  * // => [ 'poolside/laguna-s-2.1' ] { 'poolside/laguna-s-2.1': 'poolside:laguna-s-2.1' }
  *
  * //自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallback
- * let r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] })
+ * let r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] })
  * console.log(r2.providers.map((p) => p.id))
- * // => [ 'agnes:agnes-2.5-flash', 'claude:sonnet' ]
+ * // => [ 'agnes:agnes-3.0-flash', 'claude:sonnet' ]
  *
  * //後處理: exes逐kind注入執行檔、patch逐id覆寫欄位, 陣列與table同步生效
  * let r3 = resolveProviders(providersAll, {
  *     env,
- *     pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'],
+ *     pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'],
  *     exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },
  *     patch: { 'claude:sonnet': { timeoutMs: 360000 } },
  * })

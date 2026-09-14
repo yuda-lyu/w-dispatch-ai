@@ -82,7 +82,7 @@
 //   import readEnvFile from 'w-dispatch-ai/src/readEnvFile.mjs'
 //   let env = readEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把; 不污染process.env
 //   let { providers: ps, table, skipped } = resolveProviders(providers, { env }) //全取
-//   let r2 = resolveProviders(providers, { env, pick: ['agnes:agnes-2.5-flash', 'claude:sonnet'] }) //自選, pick順序即遞補優先序
+//   let r2 = resolveProviders(providers, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] }) //自選, pick順序即遞補優先序
 //
 // 【timeout規劃】各條目刻意不帶timeoutMs, 由上層依任務型態統一給定、條目僅於特例覆寫:
 //   簡單任務(秒級~分鐘級): 沿用套件統一預設即可(全轉接器一律300000＝5分鐘, 見dfTimeoutMs.mjs)。
@@ -101,9 +101,11 @@
 let providers = [
 
     //cli版
+    //agnes: 2026-09-14以2.5→3.0(官方2026-09-11發布, /models已列; 五題探測3.0答對推理題而2.5答錯,
+    //3.0總耗時41s對2.5之281s; 3.0僅「三點條列」未加項目符號), 兩條目同步改, 舊版2.5仍在/models但不再收錄
     {
-        id: 'oc:agnes-ai/agnes-2.5-flash',
-        model: 'agnes-ai/agnes-2.5-flash',
+        id: 'oc:agnes-ai/agnes-3.0-flash',
+        model: 'agnes-ai/agnes-3.0-flash',
         kind: 'opencode',
         envVar: 'AGNES_KEYS',
         provider: 'agnes-ai',
@@ -113,7 +115,7 @@ let providers = [
                     npm: '@ai-sdk/openai-compatible',
                     name: 'Agnes',
                     options: { baseURL: 'https://apihub.agnes-ai.com/v1' },
-                    models: { 'agnes-2.5-flash': { name: 'Agnes 2.5 Flash' } },
+                    models: { 'agnes-3.0-flash': { name: 'Agnes 3.0 Flash' } },
                 },
             },
             permission: { edit: 'deny', write: 'deny', bash: 'deny' },
@@ -198,8 +200,8 @@ let providers = [
     //api版
     //zen:系為2026-08-21快照(檔頭聲明), 各條註記當日以「請只回覆兩個字：完成」實測之結果
     {
-        id: 'agnes:agnes-2.5-flash',
-        model: 'agnes-2.5-flash',
+        id: 'agnes:agnes-3.0-flash',
+        model: 'agnes-3.0-flash',
         kind: 'api-openai-compat',
         envVar: 'AGNES_KEYS',
         baseURL: 'https://apihub.agnes-ai.com/v1',

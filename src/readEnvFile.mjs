@@ -34,7 +34,7 @@ import fs from 'fs'
  *
  * //金鑰放.env(變數值以逗號分隔多把), 讀成物件交resolveProviders, 不污染process.env
  * let env = readEnvFile('./.env')
- * let { providers, skipped } = resolveProviders(providersAll, { env, pick: ['agnes:agnes-2.5-flash'] })
+ * let { providers, skipped } = resolveProviders(providersAll, { env, pick: ['agnes:agnes-3.0-flash'] })
  *
  */
 function readEnvFile(file) {
