@@ -32,7 +32,7 @@ Note:
 #### Functions:
 | function | description |
 | --- | --- |
-| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'`、`'api-openai-responses'` |
+| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'`、`'api-openai-responses'`、`'api-typesafe-systemone'` |
 | `dispatchAiFallback(prompt, opt)` | call ai with an ordered provider list, auto rotating keys within a group and falling back to the next group |
 | `dispatchAiWkf(opt)` | workflow factory: inject a named provider table once, returns bound `callAi`／`runFanout`／`runRolePipeline`／`runFanoutPipeline` |
 | `dispatchOpencode(prompt, opt)` | call an ai model by opencode cli, supports per-call api key and provider config |
@@ -41,6 +41,7 @@ Note:
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
 | `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
 | `dispatchApiOpenaiResponses(prompt, opt)` | same, but for the OpenAI **Responses API** (`/responses`) — required by model families that are not served on `/chat/completions` (e.g. OpenCode Zen's muse-spark and GPT families) |
+| `dispatchApiTypesafeSystemone(prompt, opt)` | call TypeSafe's **jev** decision model (`POST /v1/systemone`): not text generation — the prompt is the state to evaluate and `opt.questions` defines typed yes/no, choice and score questions; returns typed `answers` with probabilities (API only, TypeSafe has no cli) |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
 | `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
@@ -52,7 +53,7 @@ Note:
 | `getQuotaClaude(email, opt)` | read the current subscription quota windows (5h / 7d / per-model 7d) of the locally logged-in Claude Code account via Anthropic's OAuth usage API; `email` is compared against the local account, not used to look one up |
 | `getQuotaCodex(email, opt)` | same for the Codex CLI account: primary path `codex app-server` JSON-RPC (auth handled by codex), fallback to chatgpt.com's usage endpoint |
 | `getQuotaAntigravity(email, opt)` | same for the Antigravity CLI (`agy`) account via its headless `-p "/usage" --output-format json` (agy ≥ 1.1.11, version-gated) |
-| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses']` |
+| `KINDS` | array of available kinds, `['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-typesafe-systemone']` |
 
 #### Example:
 > **Link:** [[dev source code](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/g.mjs)]
@@ -86,7 +87,7 @@ let test = async () => {
 
     //可用之AI供應商種類
     console.log('KINDS:', wdi.KINDS)
-    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses' ]
+    // => KINDS: [ 'opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-typesafe-systemone' ]
 
     let prompt = '請只回覆兩個字：完成，不要有任何其他文字'
 
@@ -316,11 +317,62 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `http` | HTTP非2xx（`code`為狀態碼） | api類 |
 | `fetch` | 網路層錯誤（DNS／連線拒絕） | api類 |
 | `tool-unsupported` | 模型回tool_calls而api類不支援工具 | api類 |
-| `invalid-response` | 回應缺`choices[0].message.content` | api類 |
+| `invalid-response` | 回應結構不合規（缺`choices[0].message.content`、缺`output`陣列，或 systemone 缺`answers`／缺所請求題目之答案） | api類 |
 | `aborted` | `shouldStop`中止 | fallback層 |
 | `budget` | 時間預算用盡 | fallback層 |
 
 僅涵蓋**機械可判**者：CLI類之其餘失敗（額度上限／金鑰無效／服務端錯誤，各家字樣不同且隨版本漂移）一律歸`exec`，套件不維護簽章表（與否決金鑰停用清單同一理由）——需細分時以`coolDetect`式注入自判，或依`tried`內之`error`與`stderr`自行決策。
+
+#### Options only for dispatchApiTypesafeSystemone:
+[TypeSafe](https://typesafe.ai) 的 **jev** 是「System One」決策模型：**不產生文字**，而是對一段內容（state）回答你定義的型別化問題，每題回傳受限於你給的選項之答案與機率。官方只提供 API 與 Python／JavaScript SDK，**沒有 CLI**，故本套件只有 API 版（`kind: 'api-typesafe-systemone'`）。權威文件：[API reference](https://docs.typesafe.ai/api)。
+
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `questions` | Object | 必填 | 題目物件，鍵為自訂題目 id，值為下表三型之一；題型與欄位由伺服器驗證（不合規回 422） |
+| `baseURL` | String | `'https://api.typesafe.ai/v1'` | 將於尾端接上`/systemone` |
+| `model` | String | `'jev-latest'` | 另有`'jev-preview'`；回應之實際版本見結果之`modelResolved`（如`'jev-1.13.0'`） |
+| `key` | String | `''` | API key（`.env` 慣用 `TYPESAFE_KEYS`），以`Bearer`置於`Authorization`標頭 |
+| `body`／`headers` | Object | `{}` | 額外請求本體／標頭，同名鍵覆寫預設 |
+| `timeoutMs`／`validate`／`maxRetries`／`retryDelayMs` | | | 同 `dispatchApiOpenaiCompat`（4xx 除 429 外不重試） |
+
+| 題型 `type` | `criteria` | 答案欄位 |
+| --- | --- | --- |
+| `noul`（是非題） | 選填 `{ true, false }` 說明是與否的意思 | `noul`：答案為「是」的機率（0～1） |
+| `choice`（單選題） | 必填 `{ 選項: 描述或 null }` | `choice`、`probabilities`、`confidence` |
+| `score`（有序量表） | 必填 `[層級描述, ...]`（至少 2 級） | `score`（可落在兩級之間）、`legend`、`probabilities`、`confidence` |
+
+```alias
+let r = await wdi.dispatchApiTypesafeSystemone('房間浴室水龍頭一直滴水，吵到睡不著', {
+    key: typesafeKeys[0],
+    questions: {
+        category: {
+            type: 'choice',
+            instructions: '這則客房訊息屬於哪一類?',
+            criteria: {
+                '設備故障報修': '客人回報房間硬體設備損壞、水電問題或故障',
+                '索取備品': '客人需要毛巾、牙刷、礦泉水等客房備品',
+                '退房詢問': '詢問退房時間、行李寄放或延退相關事宜',
+                '其他複雜對話': '閒聊、餐廳推薦或特殊客訴',
+            },
+        },
+        urgent: { type: 'noul', instructions: '客人是否表達急迫性?' },
+    },
+})
+console.log(r.ok, r.answers.category.choice, r.answers.category.probabilities, r.answers.urgent.noul)
+// => true 設備故障報修 { '設備故障報修': 1, '索取備品': 0, '退房詢問': 0, '其他複雜對話': 0 } 0.86   (2026-09-17 實測約 1 秒；noul 為機率，每次可能差 0.01)
+```
+
+- **prompt 即 state**：結構化內容請傳 `JSON.stringify(物件)`（實測與傳物件之答案一致），題目的 `instructions` 可用 `` `ticket.messages[0].text` `` 這類路徑指向其中欄位。
+- **結果**：`stdout` 為 `answers` 的 JSON 字串（遞補層與工作流層的 `parse`／`check` 可直接用），另追加 `answers`（已解析物件）與 `modelResolved`；`usage` 為 `{ input_tokens, output_tokens }` 原樣透傳。請求的題目 id 在回應中缺任何一個即回 `invalid-response`。
+- **錯誤（實測）**：壞金鑰 401、未知 model 400、題型不合規 422，皆為 `errorType: 'http'`，原始本體（含 `detail`）在 `stderr`。
+- **預設 `providers` 收有 `typesafe:jev-latest`（`envVar: 'TYPESAFE_KEYS'`），請以 `pick` 單獨取出**，`questions` 放呼叫層即會透傳；它不可與文字生成條目一起遞補（答案形狀不同）。全取做文字遞補時，此條因沒有 `questions` 會以 `params` 錯誤 0 毫秒失敗（每把金鑰各一次）後換下一家，不影響其他家；它刻意不放在清單末端，免得前面全敗時最終錯誤變成「questions 必填」而掩蓋真正原因：
+
+```alias
+let { providers: jev } = wdi.resolveProviders(wdi.providers, { env, pick: ['typesafe:jev-latest'] })
+let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
+```
+
+- **經工作流 `callAi` 呼叫時務必傳 `promptPrefix: ''`**：預設的防寫檔前綴會被當成 state 的一部分送去評估。
 
 #### Options for dispatchAiFallback:
 | key | type | default | description |

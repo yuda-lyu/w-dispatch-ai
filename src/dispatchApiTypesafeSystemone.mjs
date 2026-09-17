@@ -1,0 +1,375 @@
+import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import iseobj from 'wsemi/src/iseobj.mjs'
+import isnum from 'wsemi/src/isnum.mjs'
+import cint from 'wsemi/src/cint.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isp0int from 'wsemi/src/isp0int.mjs'
+import delay from 'wsemi/src/delay.mjs'
+import strTruncate from 'wsemi/src/strTruncate.mjs'
+import castPintOr from './castPintOr.mjs'
+import buildValidator from './buildValidator.mjs'
+import getErrorResult from './getErrorResult.mjs'
+import dfTimeoutMs from './dfTimeoutMs.mjs'
+
+
+// dispatchApiTypesafeSystemone.mjs — 以fetch直呼TypeSafe AI之System One API(POST /v1/systemone)
+//
+// 【這不是文字生成模型(2026-09-17實測後新增)】TypeSafe之jev為「System One」決策模型:
+//   不產生文字, 而是對一段state(被評估的內容)回答呼叫端定義的型別化問題(questions),
+//   每題回傳受限於呼叫端選項之答案與機率。權威文件: https://docs.typesafe.ai/api
+//   (索引 https://docs.typesafe.ai/llms.txt)。官方僅提供Python/JavaScript SDK、Playground與
+//   agent skill, 無CLI(npm之@typesafe-ai/sdk無bin、PyPI之typesafe-sdk無console script), 故只有API版。
+//
+// 【請求】POST <baseURL>/systemone, Authorization: Bearer <key>, body為{ model, state, questions }:
+//   state     ← 本轉接器之prompt(字串)。結構化內容請以JSON.stringify(物件)傳入——2026-09-17實測
+//               同一組引用欄位路徑之問題, 物件state與JSON字串state之答案一致(差異≤0.01)。
+//   questions ← opt.questions(必填, 非空物件), 鍵為呼叫端自訂之題目id, 值為:
+//               { type:'noul', instructions, criteria?:{true,false} }   是非題, 回yes之機率
+//               { type:'choice', instructions, criteria:{選項:描述|null} } 單選題
+//               { type:'score', instructions, criteria:[層級描述...] }   有序量表(至少2級)
+//               題型與欄位由伺服器驗證(不合規回422), 本轉接器只擋「未給questions」, 不重複伺服器規則。
+//   model     ← opt.model, 預設'jev-latest'(官方SDK之預設; 回應之model為實際版本如'jev-1.13.0')。
+//
+// 【回應(實測)】{ model:'jev-1.13.0', answers:{ <id>:{type,choice|score|noul,probabilities?,confidence?,legend?} },
+//   usage:{ input_tokens, output_tokens } }; 回應標頭帶x-typesafe-request-id。
+//   本轉接器之stdout為JSON.stringify(answers)(令dispatchAiFallback與工作流層之parse/check無須修改即可用),
+//   另於結果物件追加answers(已解析物件)與modelResolved(實際模型版本)。
+//   請求的題目id在answers中缺任一個即視為INVALID_RESPONSE, 不讓下游取到undefined。
+//
+// 【錯誤(實測)】壞金鑰401 {detail:{error_type:'authentication_error'}}; 未知model 400
+//   {detail:{error_type:'api_usage_error', message:'Unknown model: X'}}; 題型不合規或questions為空422
+//   {detail:[{type,loc,msg,...}]}。皆以HTTP <code>回報、原始本體置stderr; 4xx(429除外)不重試。
+//
+// 【混用注意】
+//   1. 答案形狀與文字模型完全不同, 不可與文字生成條目混在同一條dispatchAiFallback鏈中遞補;
+//      同一鏈只放本kind之條目(可多把金鑰輪替)。預設providers.mjs收有typesafe:jev-latest,
+//      請以pick單獨取出; 全取做文字遞補時該條因無questions以params錯誤0ms失敗後換下一家。
+//   2. questions於dispatchAiFallback可放呼叫層opt(非fallback自用鍵會透傳給各條目), 不必寫進條目。
+//   3. 工作流callAi預設在prompt前掛防寫檔前綴(NO_SIDE_EFFECT), 對本kind等於把前綴混進被評估的state,
+//      經工作流呼叫時務必傳promptPrefix:''。
+
+
+//預設值
+let DEFAULT_BASE_URL = 'https://api.typesafe.ai/v1'
+let DEFAULT_MODEL = 'jev-latest'
+let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
+let DEFAULT_RETRY_DELAY_MS = 5000
+let MAX_RETRY_DELAY_MS = 15000
+
+
+//optTruncate, 裁切失敗結果之內容時於刪節號後標註原始總長度(同execCli)
+let optTruncate = {
+    funWithMsg: (str) => `(truncated, total ${str.length} chars)`,
+}
+
+
+/**
+ * 單次HTTP呼叫(內部使用, 不含重試邏輯)
+ *
+ * @param {String} url 輸入完整端點網址字串
+ * @param {Object} headers 輸入請求標頭物件
+ * @param {Object} body 輸入請求本體物件
+ * @param {Array} ids 輸入請求之題目id陣列，用於檢核回應是否每題皆有答案
+ * @param {Number} timeoutMs 輸入逾時毫秒
+ * @param {Function|null} validator 輸入驗證函式
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件
+ */
+async function callOnce(url, headers, body, ids, timeoutMs, validator) {
+
+    let t0 = Date.now()
+
+    //mkResult, 結果形狀之單一來源(欄位對齊其他api類轉接器, 追加answers與modelResolved)
+    let mkResult = (patch) => ({
+        ok: false,
+        stdout: '',
+        stderr: '',
+        code: null,
+        error: '',
+        durationMs: Date.now() - t0,
+        usage: null,
+        answers: null,
+        modelResolved: '',
+        ...patch,
+    })
+
+    //AbortController, 逾時中止(含回應本體之讀取)
+    let controller = new AbortController()
+    let timer = setTimeout(() => {
+        controller.abort()
+    }, timeoutMs)
+
+    let res = null
+    let txt = ''
+    try {
+        res = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        })
+        txt = await res.text()
+    }
+    catch (err) {
+        clearTimeout(timer)
+
+        //逾時, error以TIMEOUT開頭令dispatchAiFallback視為與金鑰無關而跳組
+        if (err.name === 'AbortError') {
+            return mkResult({ error: `TIMEOUT after ${timeoutMs / 1000}s`, errorType: 'timeout' })
+        }
+
+        //網路層錯誤(DNS/連線拒絕等)
+        let cause = get(err, 'cause.code', '') || err.message
+        return mkResult({ error: `FETCH_ERROR: ${cause}`, errorType: 'fetch' })
+    }
+    clearTimeout(timer)
+
+    //HTTP非2xx, 原始回應本體放stderr(401/400之detail.message、422之detail陣列皆在其中)
+    if (!res.ok) {
+        return mkResult({
+            stderr: strTruncate(txt, 1000, optTruncate),
+            code: res.status,
+            error: `HTTP ${res.status}`,
+            errorType: 'http',
+        })
+    }
+
+    //解析answers/model/usage
+    let answers = null
+    let modelResolved = ''
+    let usage = null
+    try {
+        let j = JSON.parse(txt)
+        answers = get(j, 'answers', null)
+        modelResolved = get(j, 'model', '')
+        if (!isestr(modelResolved)) {
+            modelResolved = ''
+        }
+        usage = get(j, 'usage', null)
+        if (!isobj(usage)) {
+            usage = null
+        }
+    }
+    catch {
+        answers = null
+    }
+    if (!isobj(answers)) {
+        return mkResult({
+            stderr: strTruncate(txt, 500, optTruncate),
+            code: res.status,
+            error: 'INVALID_RESPONSE: missing answers object',
+            errorType: 'invalid-response',
+            usage,
+            modelResolved,
+        })
+    }
+
+    //每個請求之題目皆須有答案, 缺漏即不合規(避免下游取到undefined)
+    let missing = ids.filter((id) => !isobj(answers[id]))
+    if (missing.length > 0) {
+        return mkResult({
+            stderr: strTruncate(txt, 500, optTruncate),
+            code: res.status,
+            error: `INVALID_RESPONSE: missing answers for [${missing.join(', ')}]`,
+            errorType: 'invalid-response',
+            usage,
+            modelResolved,
+        })
+    }
+
+    //content, answers序列化為stdout(令遞補層與工作流層之parse/check通用)
+    let content = JSON.stringify(answers)
+
+    //validator, error與execCli一致令dispatchAiFallback可統一分流
+    if (validator && !validator(content)) {
+        return mkResult({
+            stdout: strTruncate(content, 500, optTruncate),
+            code: res.status,
+            error: 'OUTPUT_VALIDATION_FAILED',
+            errorType: 'validation',
+            usage,
+            modelResolved,
+        })
+    }
+
+    return mkResult({
+        ok: true,
+        stdout: content,
+        code: res.status,
+        usage,
+        answers,
+        modelResolved,
+    })
+}
+
+
+//本轉接器不使用execCli, 全部設定鍵自理, 未知鍵一律忽略
+
+
+/**
+ * 以fetch直呼TypeSafe AI之System One API(POST /v1/systemone)，對prompt(即state)回答型別化問題
+ *
+ * 特點：
+ * 非文字生成——jev等System One模型對state回答呼叫端定義之questions(noul是非題、choice單選題、score量表)，
+ * 每題回傳受限於選項之答案與機率；官方無CLI，僅此API路徑；
+ * prompt即state，結構化內容以JSON.stringify(物件)傳入(實測答案與物件state一致)；
+ * stdout為answers之JSON字串，另於結果追加answers(已解析物件)與modelResolved(實際模型版本)；
+ * 請求之題目id於回應缺任一即以INVALID_RESPONSE回報；
+ * 不可與文字生成條目混在同一條遞補鏈，經工作流callAi呼叫時須傳promptPrefix:''(理由見檔頭)；
+ * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
+ *
+ * @param {String} prompt 輸入被評估之內容字串，作為state置於HTTP body，結構化內容請先JSON.stringify
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Object} opt.questions 輸入題目物件(必填且非空)，鍵為自訂題目id，值為{type:'noul'|'choice'|'score', instructions, criteria}，格式見檔頭與https://docs.typesafe.ai/api
+ * @param {String} [opt.baseURL='https://api.typesafe.ai/v1'] 輸入API基底網址字串，將於尾端接上/systemone，預設官方端點
+ * @param {String} [opt.model='jev-latest'] 輸入模型名稱字串，預設'jev-latest'(另有'jev-preview')
+ * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
+ * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}
+ * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，預設{}
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求，全套件統一預設300000
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
+ * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(answers之JSON字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，欄位名為input_tokens/output_tokens，無則null)、answers(成功時為已解析之答案物件，否則null)、modelResolved(回應所載之實際模型版本字串，如'jev-1.13.0'，無則'')，本函數不會reject
+ * @example
+ * //need network and a TypeSafe api key, no cli required
+ *
+ * import dispatchApiTypesafeSystemone from './src/dispatchApiTypesafeSystemone.mjs'
+ *
+ * let test = async () => {
+ *
+ *     let r = await dispatchApiTypesafeSystemone('房間浴室水龍頭一直滴水，吵到睡不著', {
+ *         key: 'apikey_xxxxxx',
+ *         questions: {
+ *             category: {
+ *                 type: 'choice',
+ *                 instructions: '這則客房訊息屬於哪一類?',
+ *                 criteria: {
+ *                     '設備故障報修': '客人回報房間硬體設備損壞、水電問題或故障',
+ *                     '索取備品': '客人需要毛巾、牙刷、礦泉水等客房備品',
+ *                     '其他': null,
+ *                 },
+ *             },
+ *             urgent: { type: 'noul', instructions: '客人是否表達急迫性?' },
+ *         },
+ *     })
+ *     console.log(r.ok, r.answers.category.choice, r.answers.urgent.noul)
+ *     // => true 設備故障報修 0.86 (2026-09-17實測; noul為機率, 每次可能差0.01)
+ *
+ *     let re = await dispatchApiTypesafeSystemone('abc', { key: 'apikey_bad', questions: { a: { type: 'noul', instructions: 'x?' } } })
+ *     console.log(re.ok, re.code, re.errorType)
+ *     // => false 401 http
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
+
+    //check prompt, 不reject故以錯誤結果物件回報
+    if (!isestr(prompt)) {
+        return getErrorResult('prompt must be a non-empty string')
+    }
+
+    //questions必填且非空, 題型細節交伺服器驗證(回422)
+    let questions = get(opt, 'questions', null)
+    if (!iseobj(questions)) {
+        return getErrorResult('questions must be a non-empty object')
+    }
+
+    //baseURL, 無效回退官方端點
+    let baseURL = get(opt, 'baseURL', null)
+    if (!isestr(baseURL)) {
+        baseURL = DEFAULT_BASE_URL
+    }
+
+    //model, 無效回退官方預設
+    let model = get(opt, 'model', null)
+    if (!isestr(model)) {
+        model = DEFAULT_MODEL
+    }
+
+    //key, 無效代表不帶認證標頭
+    let key = get(opt, 'key', null)
+
+    //bodyExtra
+    let bodyExtra = get(opt, 'body', null)
+    if (!isobj(bodyExtra)) {
+        bodyExtra = {}
+    }
+
+    //headersExtra
+    let headersExtra = get(opt, 'headers', null)
+    if (!isobj(headersExtra)) {
+        headersExtra = {}
+    }
+
+    //timeoutMs
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+
+    //maxRetries
+    let maxRetries = get(opt, 'maxRetries', null)
+    if (!isp0int(maxRetries)) {
+        maxRetries = 0
+    }
+    else {
+        maxRetries = cint(maxRetries)
+    }
+
+    //retryDelayMs
+    let retryDelayMs = castPintOr(get(opt, 'retryDelayMs', null), DEFAULT_RETRY_DELAY_MS)
+
+    //validator
+    let validator = buildValidator(get(opt, 'validate', null))
+
+    //url, baseURL尾端斜線正規化後接上端點
+    let url = baseURL.replace(/\/+$/, '') + '/systemone'
+
+    //body, prompt即state; 額外鍵以bodyExtra為準
+    let body = { model, state: prompt, questions, ...bodyExtra }
+
+    //ids, 用於檢核回應是否每題皆有答案(以實際送出之questions為準)
+    let ids = Object.keys(isobj(body.questions) ? body.questions : questions)
+
+    //headers
+    let headers = { 'Content-Type': 'application/json', ...headersExtra }
+    if (isestr(key)) {
+        headers['Authorization'] = `Bearer ${key}`
+    }
+
+    let lastResult = null
+    let totalAttempts = 0
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+
+        //delay, 重試間隔隨次數遞增, 上限15000ms(同execCli)
+        if (attempt > 0) {
+            await delay(Math.min(retryDelayMs * attempt, MAX_RETRY_DELAY_MS))
+        }
+
+        lastResult = await callOnce(url, headers, body, ids, timeoutMs, validator)
+        totalAttempts = attempt + 1
+
+        if (lastResult.ok) {
+            lastResult.attempts = totalAttempts
+            return lastResult
+        }
+
+        //不可重試: 4xx(429除外)為客戶端錯誤, 重試無意義
+        let c = lastResult.code
+        if (isnum(c) && c >= 400 && c < 500 && c !== 429) {
+            break
+        }
+
+    }
+
+    lastResult.attempts = totalAttempts
+
+    return lastResult
+}
+
+
+export default dispatchApiTypesafeSystemone

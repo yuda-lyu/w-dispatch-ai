@@ -22,7 +22,8 @@ import isestr from 'wsemi/src/isestr.mjs'
 //   'http'             HTTP非2xx(code為狀態碼, 僅api類)
 //   'fetch'            網路層錯誤(DNS/連線拒絕, 僅api類)
 //   'tool-unsupported' 模型回tool_calls而本轉接器不支援工具(僅api類)
-//   'invalid-response' 回應結構不合規(缺choices[0].message.content或缺output陣列, 僅api類)
+//   'invalid-response' 回應結構不合規(缺choices[0].message.content、缺output陣列,
+//                      或api-typesafe-systemone缺answers物件/缺所請求題目之答案, 僅api類)
 //   'incomplete'       Responses API之status非completed(如max_output_tokens耗盡而截斷,
 //                      僅api-openai-responses; 半截內容不當成功回傳, 見該轉接器檔頭)
 //   'aborted'          shouldStop中止(僅dispatchAiFallback)

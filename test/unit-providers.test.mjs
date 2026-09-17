@@ -57,6 +57,13 @@ describe('providers', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('決策型條目(api-typesafe-systemone)不位於清單末端, 免得全取遞補全敗時以「questions必填」掩蓋真正錯誤', function() {
+        let idx = providers.map((p, i) => p.kind === 'api-typesafe-systemone' ? i : -1).filter((i) => i >= 0)
+        let r = [idx.length > 0, idx.every((i) => i < providers.length - 1)]
+        let rr = [true, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('條目不自帶timeoutMs(由上層依任務型態統一給定)', function() {
         let r = providers.every((p) => p.timeoutMs === undefined)
         let rr = true

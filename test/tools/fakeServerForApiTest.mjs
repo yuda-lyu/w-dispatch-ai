@@ -32,7 +32,15 @@ import http from 'http'
 //   no-output      — 200但缺output陣列
 //   not-json/slow/err-500/flaky-429 — 同chat/completions之對應行為
 //   其他           — 401(同Zen實測: 未知model回401非404)
-// 【金鑰規則】Authorization含'sk-bad'一律401(優先於model路由), 模擬無效金鑰。
+// 【systemone之行為路由(POST /v1/systemone, 依body.model; 形狀取自2026-09-17 TypeSafe實測)】
+//   echo / jev-latest — 200, 每題回{type:'noul', noul:0.5, echoAuth, echoBody}, 供斷言請求組成
+//   missing-answer    — 200但answers缺最後一題
+//   no-answers        — 200但無answers
+//   bad-question      — 422 {detail:[{type:'union_tag_invalid',...}]}
+//   not-json/slow/err-500/flaky-429 — 同chat/completions之對應行為
+//   其他              — 400 {detail:{error_type:'api_usage_error', message:'Unknown model: X'}}
+// 【金鑰規則】Authorization含'sk-bad'一律401(優先於model路由), 模擬無效金鑰;
+//   systemone路由之401本體採TypeSafe形狀{detail:{error_type:'authentication_error'}}。
 
 
 /**
@@ -50,9 +58,10 @@ async function fakeServerForApiTest() {
 
     let server = http.createServer((req, res) => {
 
-        //僅受理POST /v1/chat/completions與POST /v1/responses
+        //僅受理POST /v1/chat/completions、POST /v1/responses與POST /v1/systemone
         let isResponses = req.url.endsWith('/responses')
-        if (req.method !== 'POST' || (!req.url.endsWith('/chat/completions') && !isResponses)) {
+        let isSystemOne = req.url.endsWith('/systemone')
+        if (req.method !== 'POST' || (!req.url.endsWith('/chat/completions') && !isResponses && !isSystemOne)) {
             res.writeHead(404, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ error: { message: 'not found' } }))
             return
@@ -75,14 +84,75 @@ async function fakeServerForApiTest() {
                 return
             }
 
-            //無效金鑰, 模擬Zen之401形態
+            //無效金鑰, 模擬Zen之401形態(systemone則模擬TypeSafe之形態)
             if (auth.includes('sk-bad')) {
                 res.writeHead(401, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ type: 'error', error: { type: 'AuthError', message: 'Invalid API key.' } }))
+                if (isSystemOne) {
+                    res.end(JSON.stringify({ detail: { error_type: 'authentication_error', message: 'Cannot authenticate with the server. Please check your API key and try again.' } }))
+                }
+                else {
+                    res.end(JSON.stringify({ type: 'error', error: { type: 'AuthError', message: 'Invalid API key.' } }))
+                }
                 return
             }
 
             let model = body.model || ''
+
+            //System One路由(/systemone): 回answers而非文字, 見dispatchApiTypesafeSystemone檔頭
+            if (isSystemOne) {
+                let send = (code, obj) => {
+                    res.writeHead(code, { 'Content-Type': 'application/json' })
+                    res.end(JSON.stringify(obj))
+                }
+                let ids = Object.keys(body.questions || {})
+                let usage = { input_tokens: 7, output_tokens: 3 }
+                let okResp = (extra = {}) => {
+                    let answers = {}
+                    for (let id of ids) {
+                        answers[id] = { type: 'noul', noul: 0.5, ...extra }
+                    }
+                    send(200, { model: 'jev-1.13.0', answers, usage })
+                }
+                if (model === 'echo' || model === 'jev-latest') {
+                    okResp({ echoAuth: auth, echoBody: body })
+                }
+                else if (model === 'missing-answer') {
+                    let answers = {}
+                    for (let id of ids.slice(0, -1)) {
+                        answers[id] = { type: 'noul', noul: 0.5 }
+                    }
+                    send(200, { model: 'jev-1.13.0', answers, usage })
+                }
+                else if (model === 'no-answers') {
+                    send(200, { model: 'jev-1.13.0', usage })
+                }
+                else if (model === 'bad-question') {
+                    send(422, { detail: [{ type: 'union_tag_invalid', loc: ['body', 'questions', ids[0]], msg: 'Input tag does not match any of the expected tags' }] })
+                }
+                else if (model === 'not-json') {
+                    res.writeHead(200, { 'Content-Type': 'text/plain' })
+                    res.end('plain text body')
+                }
+                else if (model === 'slow') {
+                    setTimeout(() => okResp(), 10000)
+                }
+                else if (model === 'err-500') {
+                    send(500, { detail: { error_type: 'server_error', message: 'internal error' } })
+                }
+                else if (model === 'flaky-429') {
+                    flakyCount[auth] = (flakyCount[auth] || 0) + 1
+                    if (flakyCount[auth] === 1) {
+                        send(429, { detail: { error_type: 'rate_limit_error', message: 'rate limited' } })
+                    }
+                    else {
+                        okResp({ attempt: flakyCount[auth] })
+                    }
+                }
+                else {
+                    send(400, { detail: { error_type: 'api_usage_error', message: `Unknown model: ${model}` } })
+                }
+                return
+            }
 
             //Responses API路由(/responses): 形狀與chat/completions完全不同, 見dispatchApiOpenaiResponses檔頭
             if (isResponses) {

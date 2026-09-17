@@ -11,6 +11,7 @@ import dispatchCodex from '../src/dispatchCodex.mjs'
 import dispatchAntigravity from '../src/dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from '../src/dispatchApiOpenaiCompat.mjs'
 import dispatchApiOpenaiResponses from '../src/dispatchApiOpenaiResponses.mjs'
+import dispatchApiTypesafeSystemone from '../src/dispatchApiTypesafeSystemone.mjs'
 import providers from '../src/providers.mjs'
 import resolveProviders from '../src/resolveProviders.mjs'
 import getQuotaClaude from '../src/quota/getQuotaClaude.mjs'
@@ -34,6 +35,7 @@ describe('WDispatchAi', function() {
             'dispatchAntigravity',
             'dispatchApiOpenaiCompat',
             'dispatchApiOpenaiResponses',
+            'dispatchApiTypesafeSystemone',
             'providers',
             'resolveProviders',
             'readEnvFile',
@@ -50,13 +52,13 @@ describe('WDispatchAi', function() {
 
     it('KINDS為可用之供應商種類字串陣列', function() {
         let r = wi.KINDS
-        let rr = ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses']
+        let rr = ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-typesafe-systemone']
         assert.strict.deepEqual(r, rr)
     })
 
     it('各鍵值型別正確(KINDS與providers為物件, NO_SIDE_EFFECT為字串, 其餘為函數)', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
+        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -71,13 +73,14 @@ describe('WDispatchAi', function() {
             wi.dispatchAntigravity === dispatchAntigravity,
             wi.dispatchApiOpenaiCompat === dispatchApiOpenaiCompat,
             wi.dispatchApiOpenaiResponses === dispatchApiOpenaiResponses,
+            wi.dispatchApiTypesafeSystemone === dispatchApiTypesafeSystemone,
             wi.providers === providers,
             wi.resolveProviders === resolveProviders,
             wi.getQuotaClaude === getQuotaClaude,
             wi.getQuotaCodex === getQuotaCodex,
             wi.getQuotaAntigravity === getQuotaAntigravity,
         ]
-        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -87,24 +90,25 @@ describe('WDispatchAi', function() {
             let t = await wi.dispatchAi(kind, '')
             r.push(t.error)
         }
-        let rr = ['prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string']
+        let rr = ['prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string', 'prompt must be a non-empty string']
         assert.strict.deepEqual(r, rr)
     })
 
     it('可由WDispatchAi呼叫dispatchAi', async function() {
         let t = await wi.dispatchAi('gemini', 'abc')
         let r = [t.ok, t.error]
-        let rr = [false, 'unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat, api-openai-responses)']
+        let rr = [false, 'unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat, api-openai-responses, api-typesafe-systemone)']
         assert.strict.deepEqual(r, rr)
     })
 
     it('可由WDispatchAi呼叫各轉接器', async function() {
         let r = []
-        for (let fn of [wi.dispatchOpencode, wi.dispatchClaude, wi.dispatchCodex, wi.dispatchAntigravity, wi.dispatchApiOpenaiCompat, wi.dispatchApiOpenaiResponses]) {
+        for (let fn of [wi.dispatchOpencode, wi.dispatchClaude, wi.dispatchCodex, wi.dispatchAntigravity, wi.dispatchApiOpenaiCompat, wi.dispatchApiOpenaiResponses, wi.dispatchApiTypesafeSystemone]) {
             let t = await fn('')
             r.push([t.ok, t.error])
         }
         let rr = [
+            [false, 'prompt must be a non-empty string'],
             [false, 'prompt must be a non-empty string'],
             [false, 'prompt must be a non-empty string'],
             [false, 'prompt must be a non-empty string'],

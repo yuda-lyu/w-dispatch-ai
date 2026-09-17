@@ -4,6 +4,7 @@ import dispatchCodex from './dispatchCodex.mjs'
 import dispatchAntigravity from './dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
 import dispatchApiOpenaiResponses from './dispatchApiOpenaiResponses.mjs'
+import dispatchApiTypesafeSystemone from './dispatchApiTypesafeSystemone.mjs'
 
 
 // adapters.mjs — kind對照表, 亦為「CLI或API」之選型判準所在
@@ -38,6 +39,11 @@ import dispatchApiOpenaiResponses from './dispatchApiOpenaiResponses.mjs'
 //   同一條dispatchAiFallback鏈可逐條目混搭kind, 工作流各階段亦然:
 //   產生候選、整合收斂等純文字階段用API(快且省), 需要讀專案檔案或grep的
 //   階段換CLI。判準永遠是「這一步需不需要碰外部世界」, 而非整條鏈二選一。
+//
+// ══ 例外: api-typesafe-systemone 不是文字生成 ══
+//
+//   TypeSafe之jev(System One模型)對prompt(state)回答型別化questions, stdout為答案JSON,
+//   與上述文字生成kind之輸出形狀不同, 不可與其混在同一條遞補鏈; 詳見dispatchApiTypesafeSystemone.mjs檔頭。
 
 
 /**
@@ -52,7 +58,7 @@ import dispatchApiOpenaiResponses from './dispatchApiOpenaiResponses.mjs'
  * import adapters from './src/adapters.mjs'
  *
  * console.log(Object.keys(adapters))
- * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses']
+ * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-typesafe-systemone']
  *
  */
 let adapters = {
@@ -62,6 +68,7 @@ let adapters = {
     'antigravity': dispatchAntigravity,
     'api-openai-compat': dispatchApiOpenaiCompat,
     'api-openai-responses': dispatchApiOpenaiResponses,
+    'api-typesafe-systemone': dispatchApiTypesafeSystemone,
 }
 
 

@@ -7,6 +7,7 @@
 // 【id命名】依「路徑:模型」規則(詳dispatchAiFallback.mjs檔頭之id設計規則):
 //   oc:＝經opencode CLI(有工具、較慢) / agy:＝antigravity CLI / claude:/codex:＝訂閱登入態CLI
 //   zen:/agnes:/poolside:＝REST直呼(免CLI免登入、快, 純文字生成)
+//   typesafe:＝REST直呼之決策模型(非文字生成, 須給questions, 見該條註解)
 //   同一模型之CLI版與REST版屬不同供應商(能力與額度池皆不同), 故各為一條。
 //
 // ══════════════════════════════════════════════════════════════════════════════
@@ -51,6 +52,9 @@
 //     HTTP 503  → 上游時斷時續(server_error: Upstream request failed: Endpoint is unavailable),
 //                 暫時性, 遞補層換家即可; 判別法: 同時段打另一免費模型作對照組。
 //     HTTP 429  → 閘道容量型限流(FreeUsageLimitError), 與金鑰無關(換金鑰照樣429), 暫時性。
+//     HTTP 403 FreeTierError(free tier can only be used from within OpenCode)
+//               → 該免費模型只開放opencode客戶端, REST直呼被刻意擋下(2026-09-17 union-alpha實測), 屬政策非故障,
+//                 只能收oc:版。另401 Model is disabled＝該金鑰所屬工作區未開此模型, 換工作區或於後台開啟。
 //     HTTP 401/400 → 額度/促銷結束或模型暫時下架(訊息如Free promotion has ended、
 //                 Upstream request failed: Model is unavailable), 屬服務端狀態非設定錯誤。
 //     任一碼皆非「條目寫錯」之證據——model id寫錯時閘道回的是其他4xx且訊息明指model。
@@ -80,9 +84,11 @@
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
 //   import resolveProviders from 'w-dispatch-ai/src/resolveProviders.mjs'
 //   import readEnvFile from 'w-dispatch-ai/src/readEnvFile.mjs'
-//   let env = readEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把; 不污染process.env
+//   let env = readEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS, 逗號分隔多把; 不污染process.env
 //   let { providers: ps, table, skipped } = resolveProviders(providers, { env }) //全取
 //   let r2 = resolveProviders(providers, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] }) //自選, pick順序即遞補優先序
+//   let r3 = resolveProviders(providers, { env, pick: ['typesafe:jev-latest'] }) //決策模型單獨取出
+//   await dispatchAiFallback(state, { providers: r3.providers, questions }) //questions置呼叫層
 //
 // 【timeout規劃】各條目刻意不帶timeoutMs, 由上層依任務型態統一給定、條目僅於特例覆寫:
 //   簡單任務(秒級~分鐘級): 沿用套件統一預設即可(全轉接器一律300000＝5分鐘, 見dfTimeoutMs.mjs)。
@@ -163,6 +169,20 @@ let providers = [
         //僅CLI路徑可用——同模型不同路徑屬不同供應商之實例(故未增zen:對應條目)
     },
     {
+        id: 'oc:opencode/union-alpha',
+        model: 'opencode/union-alpha',
+        kind: 'opencode',
+        provider: 'opencode',
+        config: {
+            permission: { edit: 'deny', write: 'deny', bash: 'deny' },
+        },
+        //Union Alpha Free(官方文件: 限時免費之stealth模型, 端點/messages)。2026-09-17實測(opencode CLI 1.18.31):
+        //刻意不帶envVar——不注入金鑰時opencode走自身免費存取, 實測6.8s成功; OPENCODE_KEYS之第1把金鑰
+        //所屬工作區未開此模型(回Model is disabled), 第2把雖可用但該工作區會預設開啟新模型(可能非免費), 不採用。
+        //前提是本機opencode未登入(無auth.json); 若日後以金鑰登入, 須於該工作區開啟此模型。
+        //REST不收zen:版: /messages對免費模型回403 FreeTierError(free tier can only be used from within OpenCode)
+    },
+    {
         id: 'oc:opencode/deepseek-v4-flash-free',
         model: 'opencode/deepseek-v4-flash-free',
         kind: 'opencode',
@@ -198,6 +218,17 @@ let providers = [
     },
 
     //api版
+    {
+        id: 'typesafe:jev-latest',
+        model: 'jev-latest',
+        kind: 'api-typesafe-systemone',
+        envVar: 'TYPESAFE_KEYS',
+        //TypeSafe之jev為決策模型(非文字生成): prompt為被評估之state, 呼叫時須給questions, 回型別化答案。
+        //2026-09-17實測0.3~1.0s(實際版本jev-1.13.0); 官方無CLI故僅此API條目。用法: 以pick單獨取出,
+        //questions置dispatchAiFallback呼叫層(詳dispatchApiTypesafeSystemone.mjs檔頭)。
+        //混入文字遞補鏈(全取)時: 因無questions而以params錯誤0ms失敗(逐把金鑰各一次)後換下一家, 不影響他家(2026-09-17實測);
+        //刻意不放清單末端——前面全敗時fallback回傳最後一筆失敗, 放末端會以「questions必填」掩蓋真正原因
+    },
     //zen:系為2026-08-21快照(檔頭聲明), 各條註記當日以「請只回覆兩個字：完成」實測之結果
     {
         id: 'agnes:agnes-3.0-flash',
