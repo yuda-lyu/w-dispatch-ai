@@ -82,6 +82,31 @@ describe('dispatchOpencode', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('useStoredAuth為false且未注入金鑰時注入空憑證\'{}\'(不讀auth.json); 非false一律不注入; 旗標不進命令列', async function() {
+        let t1 = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', useStoredAuth: false })
+        let t2 = await dispatchOpencode('abc', { exe: fake.exe, useStoredAuth: false })
+        let t3 = await dispatchOpencode('abc', { exe: fake.exe, useStoredAuth: true })
+        let t4 = await dispatchOpencode('abc', { exe: fake.exe, useStoredAuth: 'false' })
+        let r = [
+            JSON.parse(t1.stdout).env.OPENCODE_AUTH_CONTENT,
+            JSON.parse(t2.stdout).env.OPENCODE_AUTH_CONTENT,
+            JSON.parse(t3.stdout).env.OPENCODE_AUTH_CONTENT,
+            JSON.parse(t4.stdout).env.OPENCODE_AUTH_CONTENT,
+            JSON.parse(t1.stdout).args,
+        ]
+        let rr = ['{}', '{}', '', '', ['run', '--agent', 'build']]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('useStoredAuth為false但同時給key與provider時以金鑰注入為準; 亦覆寫呼叫端env內之同名變數', async function() {
+        let t1 = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc123', useStoredAuth: false })
+        let t2 = await dispatchOpencode('abc', { exe: fake.exe, useStoredAuth: false, env: { OPENCODE_AUTH_CONTENT: '', FAKE_ENV: 'x' } })
+        let o2 = JSON.parse(t2.stdout)
+        let r = [JSON.parse(JSON.parse(t1.stdout).env.OPENCODE_AUTH_CONTENT), o2.env.OPENCODE_AUTH_CONTENT, o2.env.FAKE_ENV]
+        let rr = [{ opencode: { type: 'api', key: 'sk-abc123' } }, '{}', 'x']
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('金鑰注入僅作用於當次子進程, 不影響本進程之process.env', async function() {
         let before = process.env.OPENCODE_AUTH_CONTENT
         let t = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc123' })

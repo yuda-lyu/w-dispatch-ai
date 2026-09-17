@@ -229,6 +229,7 @@ await test()
 | --- | --- | --- | --- |
 | `key` | String | `''` | 該provider之API key，須與`provider`同時給予才會以`OPENCODE_AUTH_CONTENT`注入 |
 | `provider` | String | `''` | `key`所屬provider名稱，須與`model`為同一組 |
+| `useStoredAuth` | Boolean | `true` | 未注入金鑰時是否沿用本機`auth.json`之登入。`false`代表以空憑證（`OPENCODE_AUTH_CONTENT='{}'`）匿名存取，用於opencode免費模型，避免結果隨本機登入帳號而異（登入帳號之工作區未開該模型時會回`Model is disabled`）；已同時給`key`與`provider`時不作用 |
 | `config` | Object\|String | `null` | opencode設定內容，將以`OPENCODE_CONFIG_CONTENT`注入，供補上第三方provider之定義 |
 | `agent` | String | `'build'` | opencode代理名稱 |
 

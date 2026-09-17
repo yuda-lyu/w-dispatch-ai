@@ -173,13 +173,16 @@ let providers = [
         model: 'opencode/union-alpha',
         kind: 'opencode',
         provider: 'opencode',
+        useStoredAuth: false,
         config: {
             permission: { edit: 'deny', write: 'deny', bash: 'deny' },
         },
         //Union Alpha Free(官方文件: 限時免費之stealth模型, 端點/messages)。2026-09-17實測(opencode CLI 1.18.31):
-        //刻意不帶envVar——不注入金鑰時opencode走自身免費存取, 實測6.8s成功; OPENCODE_KEYS之第1把金鑰
-        //所屬工作區未開此模型(回Model is disabled), 第2把雖可用但該工作區會預設開啟新模型(可能非免費), 不採用。
-        //前提是本機opencode未登入(無auth.json); 若日後以金鑰登入, 須於該工作區開啟此模型。
+        //刻意不帶envVar且useStoredAuth:false——以匿名免費存取呼叫, 不隨本機登入帳號而異。
+        //OPENCODE_KEYS之第1把金鑰所屬工作區未開此模型(回Model is disabled), 第2把雖可用但該工作區
+        //會預設開啟新模型(可能非免費), 皆不採用。原先只「不帶envVar」, 但未注入金鑰時opencode會沿用
+        //本機auth.json之登入: 登入帳號之工作區未開此模型的機器即回Model is disabled(使用端回報並經本機以
+        //XDG_DATA_HOME暫存auth.json重現), 故加useStoredAuth:false令本次不讀auth.json(實測7.0s成功)。
         //REST不收zen:版: /messages對免費模型回403 FreeTierError(free tier can only be used from within OpenCode)
     },
     {

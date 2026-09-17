@@ -57,6 +57,13 @@ describe('providers', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('opencode條目不帶envVar者必設useStoredAuth:false(否則會沿用本機auth.json, 結果隨執行機器之登入帳號而異)', function() {
+        let noKey = providers.filter((p) => p.kind === 'opencode' && p.envVar === undefined)
+        let r = noKey.map((p) => [p.id, p.useStoredAuth])
+        let rr = noKey.map((p) => [p.id, false])
+        assert.strict.deepEqual([noKey.length > 0, r], [true, rr])
+    })
+
     it('決策型條目(api-typesafe-systemone)不位於清單末端, 免得全取遞補全敗時以「questions必填」掩蓋真正錯誤', function() {
         let idx = providers.map((p, i) => p.kind === 'api-typesafe-systemone' ? i : -1).filter((i) => i >= 0)
         let r = [idx.length > 0, idx.every((i) => i < providers.length - 1)]

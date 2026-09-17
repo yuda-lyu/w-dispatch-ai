@@ -18,6 +18,19 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   帶入真實key → 正常回應。以env傳入「不會改寫」auth.json(實測md5前後一致)，
 //   屬process層級，可與同時執行的其他專案並行而互不干擾。
 //   註：OPENCODE_API_KEY在auth.json已有憑證時不生效，故一律走OPENCODE_AUTH_CONTENT。
+//   原始碼依據(anomalyco/opencode dev, packages/opencode/src/auth/index.ts之Auth.all):
+//   `if (process.env.OPENCODE_AUTH_CONTENT) return JSON.parse(...)`, 解析成功即整份取代, 不與auth.json合併;
+//   空字串為falsy、非法JSON會落回讀auth.json。auth.json位於<XDG_DATA_HOME|~/.local/share>/opencode/。
+//
+// 【不讀auth.json之匿名呼叫: useStoredAuth:false(2026-09-17實測後新增)】
+//   未注入金鑰時opencode會自動沿用auth.json之登入; 該帳號工作區若未開某免費模型(如union-alpha),
+//   就回`Error: Model is disabled`, 而同一模型在「無auth.json」之機器上匿名可用——結果隨執行機器而異。
+//   useStoredAuth:false時注入OPENCODE_AUTH_CONTENT='{}'(空憑證), 令本次不讀auth.json而以匿名免費存取。
+//   實測(以XDG_DATA_HOME指向內含opencode金鑰之暫存auth.json): 不帶key→Model is disabled;
+//   加'{}'→7.0s成功; 改注入''→仍Model is disabled(空字串無效, 故不可讓呼叫端自填); auth.json前後md5一致。
+//   同時給key與provider時金鑰注入本就整份取代auth.json, 此旗標不再作用。
+//   風險備忘: 原始碼Auth.set會以Auth.all()(即注入內容)為底寫回auth.json, 僅於OAuth權杖刷新等寫入時發生;
+//   api型金鑰與空憑證皆無刷新, 實測未觸發。
 //
 // 【provider與model必須配對】不同provider的金鑰不可互換：
 //   實測把agnes-ai的金鑰用於opencode/...模型 → `Invalid API key`。
@@ -38,7 +51,7 @@ let DEFAULT_AGENT = 'build'
 
 
 //本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli
-let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'agent', 'config', 'extraArgs', 'input', 'env']
+let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'config', 'extraArgs', 'input', 'env']
 
 
 /**
@@ -49,7 +62,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'agent', 'config', 'extraArgs
  * 而opencode run未帶位置message時即從stdin讀取；
  * 同時給予key與provider時，以OPENCODE_AUTH_CONTENT環境變數逐次注入金鑰，
  * 該注入僅作用於當次子進程且不改寫auth.json，故可多把金鑰輪替並與其他程序並行；
- * 未給key或provider時沿用CLI既有登入狀態；
+ * 未給key或provider時沿用CLI既有登入狀態(auth.json)，useStoredAuth為false則改以匿名存取；
  * 使用opencode未內建之第三方provider時，須另以config給予其provider定義；
  * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
  *
@@ -59,6 +72,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'agent', 'config', 'extraArgs
  * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/deepseek-v4-flash-free'，預設''代表不帶`-m`旗標
  * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，預設''代表沿用CLI既有登入狀態
  * @param {String} [opt.provider=''] 輸入key所屬provider名稱字串，須與key同時給予才會注入，且須與model為同一組，預設''
+ * @param {Boolean} [opt.useStoredAuth=true] 輸入未注入金鑰時是否沿用本機auth.json之登入布林值，false代表注入空憑證令本次以匿名存取(適用opencode之免費模型，避免結果隨本機登入帳號而異)；已同時給key與provider時不作用，預設true
  * @param {Object|String} [opt.config=null] 輸入opencode設定內容物件或其JSON字串，將以OPENCODE_CONFIG_CONTENT逐次注入，供補上第三方provider之定義，預設null代表沿用使用者既有設定檔
  * @param {String} [opt.agent='build'] 輸入opencode代理名稱字串，預設'build'
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
@@ -166,13 +180,21 @@ async function dispatchOpencode(prompt, opt = {}) {
         }
     }
 
-    //key與provider皆有效才注入, 否則沿用auth.json既有登入狀態(單金鑰時即為原有行為)
+    //key與provider皆有效才注入, 否則沿用auth.json既有登入狀態(單金鑰時即為原有行為);
+    //useStoredAuth為false且未注入金鑰時, 注入'{}'令opencode本次不讀auth.json(匿名, 見檔頭)
     let key = get(opt, 'key', null)
     let provider = get(opt, 'provider', null)
+    let useStoredAuth = get(opt, 'useStoredAuth', null) !== false
     if (isestr(key) && isestr(provider)) {
         env = {
             ...env,
             OPENCODE_AUTH_CONTENT: JSON.stringify({ [provider]: { type: 'api', key } }),
+        }
+    }
+    else if (!useStoredAuth) {
+        env = {
+            ...env,
+            OPENCODE_AUTH_CONTENT: '{}',
         }
     }
 
