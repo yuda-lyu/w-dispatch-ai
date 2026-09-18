@@ -54,7 +54,9 @@
 //     HTTP 429  → 閘道容量型限流(FreeUsageLimitError), 與金鑰無關(換金鑰照樣429), 暫時性。
 //     HTTP 403 FreeTierError(free tier can only be used from within OpenCode)
 //               → 該免費模型只開放opencode客戶端, REST直呼被刻意擋下(2026-09-17 union-alpha實測), 屬政策非故障,
-//                 只能收oc:版。另401 Model is disabled＝該金鑰所屬工作區未開此模型, 換工作區或於後台開啟。
+//                 只能收oc:版。另401 Model is disabled＝該金鑰所屬工作區未開此模型, 換工作區或於後台開啟
+//                 (未注入金鑰時opencode會沿用本機auth.json之登入, 故此症亦見於「不帶key」之呼叫;
+//                  要以匿名免費存取呼叫, 於條目加useStoredAuth:false, 見dispatchOpencode.mjs檔頭)。
 //     HTTP 401/400 → 額度/促銷結束或模型暫時下架(訊息如Free promotion has ended、
 //                 Upstream request failed: Model is unavailable), 屬服務端狀態非設定錯誤。
 //     任一碼皆非「條目寫錯」之證據——model id寫錯時閘道回的是其他4xx且訊息明指model。
@@ -76,6 +78,13 @@
 //   與ling-3.0-flash-fin-free(已收錄, 上游時斷時續詳見該條); zen:x-preview-f-free與zen:hy3-free已自本檔移除——兩者同時滿足
 //   「不在/models清單」與「實測回401」兩條件, 屬服務端已下架而非暫時限流(對照deepseek為
 //   仍在清單之401/400故保留), 留著只會讓全取者每輪空耗兩次快速失敗。
+//   2026-09-17~18之漂移(union-alpha, 收錄後隔日即移除, 記此以免下次又走一遍):
+//     17日官方文件列Union Alpha Free(限時免費之stealth模型, 端點/messages), opencode CLI清單有
+//     opencode/union-alpha, 以匿名免費存取實測6.8~7.0s成功, 故收oc:版(REST因403 FreeTierError不收);
+//     18日該模型揭曉為Pareto 26.9並提前結束免費測試、轉付費接入, 同日複查: zen /models與
+//     `opencode models opencode --refresh`皆已無此id, 匿名呼叫連3次回UnknownError(Unexpected server error),
+//     同時滿足「不在清單」與「實測失敗」兩條件(同x-preview-f-free/hy3-free之先例), 故自本檔移除。
+//     日後若要接其付費版, 須另備付費金鑰並確認端點(/messages為本套件尚無之kind)。
 //   註: zen:deepseek-v4-flash-free與zen:laguna-s-2.1-free未列於官方文件端點表
 //   (文件僅列付費版deepseek-v4-flash/pro, laguna全無), 屬未文件化之免費變體,
 //   端點種類係沿用實測結果(/chat/completions), 日後若失效須優先懷疑其端點已變。
@@ -167,23 +176,6 @@ let providers = [
         },
         //2026-09-03實測6.1s(opencode CLI 1.18.27)。註: 同日同模型走zen REST回HTTP 500,
         //僅CLI路徑可用——同模型不同路徑屬不同供應商之實例(故未增zen:對應條目)
-    },
-    {
-        id: 'oc:opencode/union-alpha',
-        model: 'opencode/union-alpha',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: { edit: 'deny', write: 'deny', bash: 'deny' },
-        },
-        //Union Alpha Free(官方文件: 限時免費之stealth模型, 端點/messages)。2026-09-17實測(opencode CLI 1.18.31):
-        //刻意不帶envVar且useStoredAuth:false——以匿名免費存取呼叫, 不隨本機登入帳號而異。
-        //OPENCODE_KEYS之第1把金鑰所屬工作區未開此模型(回Model is disabled), 第2把雖可用但該工作區
-        //會預設開啟新模型(可能非免費), 皆不採用。原先只「不帶envVar」, 但未注入金鑰時opencode會沿用
-        //本機auth.json之登入: 登入帳號之工作區未開此模型的機器即回Model is disabled(使用端回報並經本機以
-        //XDG_DATA_HOME暫存auth.json重現), 故加useStoredAuth:false令本次不讀auth.json(實測7.0s成功)。
-        //REST不收zen:版: /messages對免費模型回403 FreeTierError(free tier can only be used from within OpenCode)
     },
     {
         id: 'oc:opencode/deepseek-v4-flash-free',

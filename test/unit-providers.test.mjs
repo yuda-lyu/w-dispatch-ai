@@ -58,10 +58,11 @@ describe('providers', function() {
     })
 
     it('opencode條目不帶envVar者必設useStoredAuth:false(否則會沿用本機auth.json, 結果隨執行機器之登入帳號而異)', function() {
+        //現行清單可能無此類條目(2026-09-18移除union-alpha後即無), 此時本檢核為空集合而自動通過, 規則仍對日後新增者生效
         let noKey = providers.filter((p) => p.kind === 'opencode' && p.envVar === undefined)
         let r = noKey.map((p) => [p.id, p.useStoredAuth])
         let rr = noKey.map((p) => [p.id, false])
-        assert.strict.deepEqual([noKey.length > 0, r], [true, rr])
+        assert.strict.deepEqual(r, rr)
     })
 
     it('決策型條目(api-typesafe-systemone)不位於清單末端, 免得全取遞補全敗時以「questions必填」掩蓋真正錯誤', function() {
