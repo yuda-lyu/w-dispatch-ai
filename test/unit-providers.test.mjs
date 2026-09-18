@@ -83,8 +83,10 @@ describe('providers', function() {
         //照內建清單原樣使用時canary實測要求建檔會真的落地(2026-08-15使用端回報+本機復測)
         let hasLock = (p) => {
             if (p.kind === 'opencode') {
+                //edit deny擋write/edit/patch; bash為ask而非deny——deny會把bash自工具清單移除, 觸發Zen免費層
+                //「非opencode」閘門(2026-09-18實測403 FreeTierError); 非互動run下ask自動拒絕, 金絲雀實測未落地
                 let perm = p.config && p.config.permission
-                return !!perm && perm.edit === 'deny' && perm.write === 'deny' && perm.bash === 'deny'
+                return !!perm && perm.edit === 'deny' && perm.bash === 'ask'
             }
             if (p.kind === 'claude') {
                 return Array.isArray(p.extraArgs) && p.extraArgs.includes('--disallowedTools')

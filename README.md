@@ -662,7 +662,7 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 
 | kind | 條目防寫欄位 | 機制 | 實測依據 |
 | --- | --- | --- | --- |
-| `opencode` | `config.permission: { edit/write/bash: 'deny' }` | opencode設定層拒絕編輯/寫檔/執行指令 | 2026-08 實測 |
+| `opencode` | `config.permission: { edit: 'deny', bash: 'ask' }` | `edit` deny 涵蓋 write/edit/patch；`bash` 用 `ask` 而非 `deny`——`opencode run` 為非互動，`ask` 一律自動拒絕（stderr：`The user rejected permission`）。**不可改成 `bash: 'deny'`**：Zen 免費層閘門以「工具清單含不含 bash」判定是否為 opencode 本體，deny 會被判非 opencode 而回 403 FreeTierError；呼叫端也勿另傳 `--auto` | 2026-09-18 金絲雀實測（寫檔與 shell 建檔皆未落地） |
 | `claude` | `extraArgs: ['--disallowedTools', 'Write,Edit,NotebookEdit,Bash']` | CLI停用寫入類工具 | 2026-08 實測 |
 | `codex` | `sandbox: 'read-only'` | Codex沙箱唯讀模式 | 2026-08-26 於 Codex 0.149.0 實測可執行唯讀命令；前提是 Windows elevated 沙箱之一次性設定已完成，否則所有命令 `blocked by policy`（診斷見「Options only for dispatchCodex」） |
 | `antigravity` | `skipPermissions: false` | 保留agy權限閘門（不送`--dangerously-skip-permissions`） | 2026-08-15 canary實測：無此鎖時要求建檔**會真的落地**；`false`之下寫入被擋且**不卡逾時**（6.4s正常返回）、唯讀工具照常 |
