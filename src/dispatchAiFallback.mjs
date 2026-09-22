@@ -259,18 +259,17 @@ function isKeyIndependentFail(r) {
  *         providers: [
  *             {
  *                 //id區分到模型且帶路徑: 同一模型經REST與CLI取得屬兩個供應商
- *                 id: 'zen:deepseek-v4-flash-free',
+ *                 id: 'agnes:agnes-3.0-flash',
  *                 kind: 'api-openai-compat',
- *                 baseURL: 'https://opencode.ai/zen/v1',
- *                 model: 'deepseek-v4-flash-free',
+ *                 baseURL: 'https://apihub.agnes-ai.com/v1',
+ *                 model: 'agnes-3.0-flash',
  *                 keys: ['sk-aaa', 'sk-bbb'], //多把金鑰, 某把失敗自動換下一把
  *             },
  *             {
- *                 id: 'oc:opencode/deepseek-v4-flash-free', //同一模型之CLI版(有工具, 較慢)
+ *                 id: 'oc:opencode/muse-spark-1.3-contributor-free', //CLI版(有工具, 較慢)
  *                 kind: 'opencode',
- *                 model: 'opencode/deepseek-v4-flash-free',
- *                 provider: 'opencode',
- *                 keys: ['sk-aaa', 'sk-bbb'],
+ *                 model: 'opencode/muse-spark-1.3-contributor-free',
+ *                 useStoredAuth: false, //opencode自家免費模型以匿名存取, 不沿用本機auth.json之登入
  *                 timeoutMs: 180000,
  *             },
  *             { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' }, //以上全敗時遞補
@@ -280,7 +279,7 @@ function isKeyIndependentFail(r) {
  *         onEvent: (ev) => console.log(ev.type, ev.providerId, ev.keyIndex),
  *     })
  *     console.log(r.ok, r.providerId, r.keyIndex, r.tried.length)
- *     // => true 'zen:deepseek-v4-flash-free' 0 1
+ *     // => true 'agnes:agnes-3.0-flash' 0 1
  *
  * }
  * await test()

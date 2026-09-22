@@ -23,7 +23,7 @@ Note:
 - `dispatchCodex` needs [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) in system PATH, and uses its existing login state.
 - `dispatchOpencode` needs [opencode CLI](https://opencode.ai/) (`opencode`) in system PATH. Unlike the other two, it accepts a per-call `key`+`provider`, injected through `OPENCODE_AUTH_CONTENT`, so multiple api keys can be rotated without rewriting `auth.json`.
 - `dispatchAntigravity` needs [Google Antigravity CLI](https://antigravity.google/) (`agy`, not `antigravity`) in system PATH, and uses its existing OAuth login state (first login requires an interactive desktop session). Unlike the other three, agy takes the prompt via the `--print` flag instead of stdin, so the prompt is capped at 30000 chars (Windows command line limit); longer prompts return an error result.
-- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `deepseek-v4-flash-free`) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-2.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
+- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead**) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
 - Each cli adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
 - For the other three adapters the prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
 - All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object.
@@ -61,12 +61,11 @@ Note:
 import wdi from 'w-dispatch-ai'
 
 
-//由.env載入金鑰, OPENCODE_KEYS與AGNES_KEYS各以逗號分隔多把, 未提供時沿用各CLI既有登入狀態
+//由.env載入金鑰, AGNES_KEYS等以逗號分隔多把; opencode自家免費模型免金鑰(以useStoredAuth:false匿名存取)
 try {
     process.loadEnvFile('./.env')
 }
 catch {}
-let opencodeKeys = (process.env.OPENCODE_KEYS || '').split(',').filter(Boolean)
 let agnesKeys = (process.env.AGNES_KEYS || '').split(',').filter(Boolean)
 
 
@@ -101,8 +100,9 @@ let test = async () => {
     console.log('codex:', r2.ok, r2.stdout.trim())
     // => codex: true 完成
 
-    //以opencode CLI呼叫, 未給key與provider即沿用CLI既有登入狀態
-    let r3 = await wdi.dispatchOpencode(prompt, { model: 'opencode/deepseek-v4-flash-free', timeoutMs: 180000 })
+    //以opencode CLI呼叫, 未給key與provider即沿用CLI既有登入狀態(auth.json);
+    //opencode自家免費模型另建議帶useStoredAuth:false以匿名存取, 免得結果隨本機登入帳號之工作區設定而異
+    let r3 = await wdi.dispatchOpencode(prompt, { model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false, timeoutMs: 180000 })
     console.log('opencode:', r3.ok, r3.stdout.trim())
     // => opencode: true 完成
 
@@ -125,8 +125,8 @@ let test = async () => {
     let items = [
         { kind: 'claude', model: 'sonnet' },
         { kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
-        { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', key: opencodeKeys[0], timeoutMs: 180000 },
-        { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', key: opencodeKeys[1], timeoutMs: 180000 },
+        { kind: 'opencode', model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false, timeoutMs: 180000 },
+        { kind: 'opencode', model: 'opencode/big-pickle', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: agnesKeys[0], config: configAgnes, timeoutMs: 180000 },
         { kind: 'antigravity', model: 'gemini-3.6-flash-low' },
     ]
@@ -135,8 +135,8 @@ let test = async () => {
         console.log('dispatchAi ' + item.model + ':', r.ok, r.stdout.trim())
         // => dispatchAi sonnet: true 完成
         // => dispatchAi gpt-5.6-luna: true 完成
-        // => dispatchAi opencode/deepseek-v4-flash-free: true 完成
-        // => dispatchAi opencode/deepseek-v4-flash-free: true 完成
+        // => dispatchAi opencode/muse-spark-1.3-contributor-free: true 完成
+        // => dispatchAi opencode/big-pickle: true 完成
         // => dispatchAi agnes-ai/agnes-2.0-flash: true 完成
         // => dispatchAi gemini-3.6-flash-low: true 完成
     }
@@ -284,6 +284,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | --- | --- | --- |
 | `/v1/chat/completions` | `api-openai-compat` | deepseek／glm／kimi／minimax／nemotron／ling／mimo 等 |
 | `/v1/responses` | `api-openai-responses` | muse-spark 系、GPT 系、Grok 系 |
+| `/v1/systemone` | `api-typesafe-systemone` | jev 系（TypeSafe System One 決策模型，須給 `questions`） |
 | `/v1/messages` | 本套件無（改用 `opencode` CLI kind） | Claude 系、Qwen 系 |
 | `/v1/models/<id>` | 本套件無（改用 `opencode` CLI kind） | Gemini 系 |
 
@@ -373,6 +374,8 @@ let { providers: jev } = wdi.resolveProviders(wdi.providers, { env, pick: ['type
 let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 ```
 
+- **同一個 jev 有兩條路**：TypeSafe 官方端點（`typesafe:jev-latest`，用 `TYPESAFE_KEYS`）與 OpenCode Zen 轉售（`zen:jev-1.13-free`，端點 `/zen/v1/systemone`，用 `OPENCODE_KEYS`；不帶金鑰亦可）。兩者用同一個 kind，答案一致（2026-09-22 實測同題 `choice` 相同、`noul` 差 0.01），額度池與故障域各自獨立，可互為遞補。Zen 對話型免費模型的 403 閘門**不套用**於 `/systemone`。
+
 - **經工作流 `callAi` 呼叫時務必傳 `promptPrefix: ''`**：預設的防寫檔前綴會被當成 state 的一部分送去評估。
 
 #### Options for dispatchAiFallback:
@@ -423,7 +426,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 {
     ok: true,
     stdout: '完成\r\n',
-    stderr: '\x1b[0m\r\n> build · deepseek-v4-flash-free\r\n\x1b[0m\r\n',
+    stderr: '\x1b[0m\r\n> build · muse-spark-1.3-contributor-free\r\n\x1b[0m\r\n',
     code: 0,
     error: '',
     durationMs: 11742,
@@ -435,7 +438,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 {
     ok: false,
     stdout: '',
-    stderr: '\x1b[0m\r\n> build · deepseek-v4-flash-free\r\n\x1b[0m\r\n\x1b[91m\x1b[1mError: \x1b[0mInvalid API key.\r\n',
+    stderr: '\x1b[0m\r\n> build · muse-spark-1.3-contributor-free\r\n\x1b[0m\r\n\x1b[91m\x1b[1mError: \x1b[0mInvalid API key.\r\n',
     code: 1,
     error: 'Exit code 1',
     durationMs: 3049,
@@ -477,7 +480,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 ```alias
 let wkf = wdi.dispatchAiWkf({
     providers: {
-        'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: [...] },
+        'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: [...] },
         'claude:sonnet': { kind: 'claude', model: 'sonnet' },
         'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
     },
@@ -485,11 +488,11 @@ let wkf = wdi.dispatchAiWkf({
 })
 
 //單一名額: 主模型＋自帶遞補鏈
-let r1 = await wkf.callAi('...prompt...', { spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] }, check: (j) => !!j.essence })
+let r1 = await wkf.callAi('...prompt...', { spec: { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] }, check: (j) => !!j.essence })
 
 //Fanout: 並行多開執行 → 單點整合收斂(候選未達minCandidates時以首位候選為成果不硬整合)
 //check為共用預設; 名額規格與integrate可各自帶check(候選與終稿判準常不同, 如終稿須含固定段落)
-let r2 = await wkf.runFanout({ task, agents: [{ use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] }, { use: 'claude:sonnet' }], integrate: { use: 'codex:gpt-5.6-luna' }, check })
+let r2 = await wkf.runFanout({ task, agents: [{ use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] }, { use: 'claude:sonnet' }], integrate: { use: 'codex:gpt-5.6-luna' }, check })
 
 //RolePipeline: 多角色串行鏈, 各階段可自帶AI/遞補/檢核, prompt收ctx={input,prev,results,index}
 let r3 = await wkf.runRolePipeline({ input, stages: [{ id: 'draft', use: 'claude:sonnet', prompt: (ctx) => `...` }, { id: 'audit', use: 'codex:gpt-5.6-luna', prompt: (ctx) => `...${JSON.stringify(ctx.prev)}` }] })

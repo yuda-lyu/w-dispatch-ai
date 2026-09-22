@@ -22,6 +22,17 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   `if (process.env.OPENCODE_AUTH_CONTENT) return JSON.parse(...)`, 解析成功即整份取代, 不與auth.json合併;
 //   空字串為falsy、非法JSON會落回讀auth.json。auth.json位於<XDG_DATA_HOME|~/.local/share>/opencode/。
 //
+// 【本轉接器只驗證過opencode v1(實測至1.18.31), v2尚未支援(2026-09-22查證)】
+//   opencode已另發布v2(當時2.0.6, npm套件@opencode/cli, 文件自成一棵樹 https://opencode.ai/v2/docs),
+//   官方〈Migrate from V1〉明載「OpenCode 1 and OpenCode 2 both use the opencode command and are no longer
+//   installed side by side by default... the V2 curl installer replaces the V1 binary」——即升級v2會取代同名執行檔。
+//   v2仍有`opencode run`(文件列為自動化用途)與`--agent`, 但至少三處與本轉接器之假設不同, 升級前須逐一實測:
+//     ① 模型旗標: v2文件一律寫`--model provider/model`, 本轉接器用`-m`(v2是否保留為別名未驗證);
+//     ② provider設定形狀: v2改為`providers.<id>.package: "@opencode/ai/providers/openai-compatible"`,
+//        與本轉接器經OPENCODE_CONFIG_CONTENT注入之v1形狀(provider.<id>.npm)不同;
+//     ③ 金鑰注入: v2憑證走/connect與新憑證庫, OPENCODE_AUTH_CONTENT是否仍被讀取未驗證。
+//   故本機若升v2, 請先以單一呼叫實測上述三項再調整本檔; 條目端可先以exe指定v1執行檔路徑過渡。
+//
 // 【Zen免費層閘門與config注入(2026-09-18實測)】opencode自2026-09-17起限制免費模型只准在opencode本體內使用
 //   (403 FreeTierError: free tier can only be used from within OpenCode)。CLI本身可通, 但經OPENCODE_CONFIG_CONTENT
 //   注入之設定若把bash工具deny掉(permission.bash:'deny'、tools.bash:false、agent覆寫deny), 請求之工具清單
@@ -75,7 +86,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析，預設'opencode'
- * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/deepseek-v4-flash-free'，預設''代表不帶`-m`旗標
+ * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/muse-spark-1.3-contributor-free'，預設''代表不帶`-m`旗標
  * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，預設''代表沿用CLI既有登入狀態
  * @param {String} [opt.provider=''] 輸入key所屬provider名稱字串，須與key同時給予才會注入，且須與model為同一組，預設''
  * @param {Boolean} [opt.useStoredAuth=true] 輸入未注入金鑰時是否沿用本機auth.json之登入布林值，false代表注入空憑證令本次以匿名存取(適用opencode之免費模型，避免結果隨本機登入帳號而異)；已同時給key與provider時不作用，預設true
@@ -95,16 +106,15 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  *
  * let test = async () => {
  *
- *     //沿用CLI既有登入狀態
- *     let r1 = await dispatchOpencode('請只回覆兩個字：完成', { model: 'opencode/deepseek-v4-flash-free' })
+ *     //沿用CLI既有登入狀態(auth.json)
+ *     let r1 = await dispatchOpencode('請只回覆兩個字：完成', { model: 'opencode/muse-spark-1.3-contributor-free' })
  *     console.log(r1.ok, r1.stdout.includes('完成'))
  *     // => true true
  *
- *     //逐次注入金鑰, key與provider與model須為同一組
+ *     //不沿用本機登入之匿名存取(opencode自家免費模型建議如此, 見檔頭【Zen免費層閘門】)
  *     let r2 = await dispatchOpencode('請只回覆兩個字：完成', {
- *         model: 'opencode/deepseek-v4-flash-free',
- *         provider: 'opencode',
- *         key: 'sk-xxxxxx',
+ *         model: 'opencode/muse-spark-1.3-contributor-free',
+ *         useStoredAuth: false,
  *     })
  *     console.log(r2.ok)
  *     // => true

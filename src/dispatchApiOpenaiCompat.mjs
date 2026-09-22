@@ -14,7 +14,7 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 // dispatchApiOpenaiCompat.mjs — 以fetch直呼OpenAI相容API(chat/completions)
 //
-// 【為何需要】opencode CLI調用的deepseek(OpenCode Zen閘道)與agnes-ai本體都是
+// 【為何需要】opencode CLI調用的Zen閘道模型與agnes-ai本體都是
 //   OpenAI相容REST API, 直呼即可免安裝CLI、免預先登入(2026-08-11於本機實測):
 //     OpenCode Zen — https://opencode.ai/zen/v1 (金鑰同auth.json之sk-..., 模型名去掉opencode/前綴)
 //     Agnes — https://apihub.agnes-ai.com/v1
@@ -212,7 +212,7 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
  * @param {String} prompt 輸入提示詞字串，作為user訊息置於HTTP body
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} opt.baseURL 輸入API基底網址字串，例如'https://opencode.ai/zen/v1'、'https://apihub.agnes-ai.com/v1'，將於尾端接上/chat/completions
- * @param {String} opt.model 輸入模型ID字串，例如'deepseek-v4-flash-free'(Zen之模型名不帶opencode/前綴)、'agnes-2.0-flash'
+ * @param {String} opt.model 輸入模型ID字串，例如'agnes-3.0-flash'、'kimi-k2.7-code'(Zen之模型名不帶opencode/前綴)
  * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
  * @param {String} [opt.system=''] 輸入system提示詞字串，將以system角色置於messages首位，預設''代表不帶
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如temperature、max_tokens、response_format)，將併入預設body(同名鍵以此為準)，預設{}。注意本轉接器不支援工具，帶入tools而模型回tool_calls時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
@@ -229,25 +229,26 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
  *
  * let test = async () => {
  *
- *     //OpenCode Zen(即opencode CLI之自家閘道), 模型名不帶opencode/前綴
+ *     //Agnes
  *     let r1 = await dispatchApiOpenaiCompat('請只回覆兩個字：完成', {
- *         baseURL: 'https://opencode.ai/zen/v1',
+ *         baseURL: 'https://apihub.agnes-ai.com/v1',
  *         key: 'sk-xxxxxx',
- *         model: 'deepseek-v4-flash-free',
+ *         model: 'agnes-3.0-flash',
  *     })
  *     console.log(r1.ok, r1.stdout.trim())
  *     // => true 完成
  *
- *     //Agnes
+ *     //OpenCode Zen(即opencode CLI之自家閘道), 模型名不帶opencode/前綴; 走此端點者見providers.mjs檔頭之端點表
+ *     //注意Zen之免費模型自2026-09-17起禁止REST直呼(403 FreeTierError), 該類模型須改走opencode CLI(kind:'opencode')
  *     let r2 = await dispatchApiOpenaiCompat('請只回覆兩個字：完成', {
- *         baseURL: 'https://apihub.agnes-ai.com/v1',
+ *         baseURL: 'https://opencode.ai/zen/v1',
  *         key: 'sk-xxxxxx',
- *         model: 'agnes-2.0-flash',
+ *         model: 'kimi-k2.7-code', //付費模型不受免費層限制
  *     })
  *     console.log(r2.ok, r2.stdout.trim())
  *     // => true 完成
  *
- *     let re = await dispatchApiOpenaiCompat('abc', { baseURL: 'https://opencode.ai/zen/v1', key: 'sk-bad', model: 'deepseek-v4-flash-free' })
+ *     let re = await dispatchApiOpenaiCompat('abc', { baseURL: 'https://apihub.agnes-ai.com/v1', key: 'sk-bad', model: 'agnes-3.0-flash' })
  *     console.log(re.ok, re.code, re.error)
  *     // => false 401 HTTP 401
  *

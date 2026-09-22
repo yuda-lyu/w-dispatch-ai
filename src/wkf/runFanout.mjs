@@ -63,7 +63,7 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  * import runFanout from './src/wkf/runFanout.mjs'
  *
  * let providers = {
- *     'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+ *     'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: ['sk-xxx'] },
  *     'claude:sonnet': { kind: 'claude', model: 'sonnet' },
  * }
  *
@@ -73,7 +73,7 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  *         providers,
  *         task: '分析並只回覆JSON: {"essence":"..."}',
  *         agents: [
- *             { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+ *             { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] },
  *             { use: 'claude:sonnet' },
  *         ],
  *         integrate: { use: 'claude:sonnet' },

@@ -1508,7 +1508,7 @@ import callAiWithFallback from './src/wkf/callAiWithFallback.mjs'
 
 //鍵名須區分到模型並帶上路徑, 詳見dispatchAiFallback.mjs檔頭之id設計規則
 let providers = {
-    'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+    'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: ['sk-xxx'] },
     'claude:sonnet': { kind: 'claude', model: 'sonnet' },
 }
 
@@ -1516,11 +1516,11 @@ let test = async () => {
 
     let r = await callAiWithFallback('只回覆JSON: {"a":1}', {
         providers,
-        spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+        spec: { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] },
         check: (j) => j.a === 1,
     })
     console.log(r.ok, r.json, r.providerId)
-    // => true { a: 1 } 'zen:deepseek-v4-flash-free'
+    // => true { a: 1 } 'agnes:agnes-3.0-flash'
 
 }
 await test()
@@ -5142,7 +5142,7 @@ providers陣列順序即優先序，排前面的先用；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line292">line 292</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line291">line 291</a>
     </li></ul></dd>
     
 
@@ -5199,18 +5199,17 @@ let test = async () => {
         providers: [
             {
                 //id區分到模型且帶路徑: 同一模型經REST與CLI取得屬兩個供應商
-                id: 'zen:deepseek-v4-flash-free',
+                id: 'agnes:agnes-3.0-flash',
                 kind: 'api-openai-compat',
-                baseURL: 'https://opencode.ai/zen/v1',
-                model: 'deepseek-v4-flash-free',
+                baseURL: 'https://apihub.agnes-ai.com/v1',
+                model: 'agnes-3.0-flash',
                 keys: ['sk-aaa', 'sk-bbb'], //多把金鑰, 某把失敗自動換下一把
             },
             {
-                id: 'oc:opencode/deepseek-v4-flash-free', //同一模型之CLI版(有工具, 較慢)
+                id: 'oc:opencode/muse-spark-1.3-contributor-free', //CLI版(有工具, 較慢)
                 kind: 'opencode',
-                model: 'opencode/deepseek-v4-flash-free',
-                provider: 'opencode',
-                keys: ['sk-aaa', 'sk-bbb'],
+                model: 'opencode/muse-spark-1.3-contributor-free',
+                useStoredAuth: false, //opencode自家免費模型以匿名存取, 不沿用本機auth.json之登入
                 timeoutMs: 180000,
             },
             { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' }, //以上全敗時遞補
@@ -5220,7 +5219,7 @@ let test = async () => {
         onEvent: (ev) => console.log(ev.type, ev.providerId, ev.keyIndex),
     })
     console.log(r.ok, r.providerId, r.keyIndex, r.tried.length)
-    // => true 'zen:deepseek-v4-flash-free' 0 1
+    // => true 'agnes:agnes-3.0-flash' 0 1
 
 }
 await test()
@@ -6110,8 +6109,8 @@ import dispatchAiWkf from './src/dispatchAiWkf.mjs'
 //同一模型經不同路徑取得時須帶上路徑(REST與CLI屬兩個供應商, 能力與速度皆不同)
 let wkf = dispatchAiWkf({
     providers: {
-        'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
-        'oc:opencode/deepseek-v4-flash-free': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
+        'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: ['sk-xxx'] },
+        'oc:opencode/muse-spark-1.3-contributor-free': { kind: 'opencode', model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false },
         'claude:sonnet': { kind: 'claude', model: 'sonnet' },
         'claude:opus': { kind: 'claude', model: 'opus' },
         'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
@@ -6122,7 +6121,7 @@ let wkf = dispatchAiWkf({
 let test = async () => {
 
     //單一名額: 主模型＋遞補鏈
-    let r1 = await wkf.callAi('只回覆JSON: {"a":1}', { spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] }, check: (j) => j.a === 1 })
+    let r1 = await wkf.callAi('只回覆JSON: {"a":1}', { spec: { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] }, check: (j) => j.a === 1 })
     console.log(r1.ok, r1.json)
     // => true { a: 1 }
 
@@ -6131,7 +6130,7 @@ let test = async () => {
     let r2 = await wkf.runFanout({
         task: '分析並只回覆JSON: {"essence":"..."}',
         agents: [
-            { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+            { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] },
             { use: 'claude:sonnet' },
         ],
         integrate: { use: 'codex:gpt-5.6-luna' },
@@ -7097,7 +7096,7 @@ prompt走HTTP body，無命令列長度限制；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line261">line 261</a>
+        <a href="dispatchApiOpenaiCompat.mjs.html">dispatchApiOpenaiCompat.mjs</a>, <a href="dispatchApiOpenaiCompat.mjs.html#line262">line 262</a>
     </li></ul></dd>
     
 
@@ -7150,25 +7149,26 @@ import dispatchApiOpenaiCompat from './src/dispatchApiOpenaiCompat.mjs'
 
 let test = async () => {
 
-    //OpenCode Zen(即opencode CLI之自家閘道), 模型名不帶opencode/前綴
+    //Agnes
     let r1 = await dispatchApiOpenaiCompat('請只回覆兩個字：完成', {
-        baseURL: 'https://opencode.ai/zen/v1',
+        baseURL: 'https://apihub.agnes-ai.com/v1',
         key: 'sk-xxxxxx',
-        model: 'deepseek-v4-flash-free',
+        model: 'agnes-3.0-flash',
     })
     console.log(r1.ok, r1.stdout.trim())
     // => true 完成
 
-    //Agnes
+    //OpenCode Zen(即opencode CLI之自家閘道), 模型名不帶opencode/前綴; 走此端點者見providers.mjs檔頭之端點表
+    //注意Zen之免費模型自2026-09-17起禁止REST直呼(403 FreeTierError), 該類模型須改走opencode CLI(kind:'opencode')
     let r2 = await dispatchApiOpenaiCompat('請只回覆兩個字：完成', {
-        baseURL: 'https://apihub.agnes-ai.com/v1',
+        baseURL: 'https://opencode.ai/zen/v1',
         key: 'sk-xxxxxx',
-        model: 'agnes-2.0-flash',
+        model: 'kimi-k2.7-code', //付費模型不受免費層限制
     })
     console.log(r2.ok, r2.stdout.trim())
     // => true 完成
 
-    let re = await dispatchApiOpenaiCompat('abc', { baseURL: 'https://opencode.ai/zen/v1', key: 'sk-bad', model: 'deepseek-v4-flash-free' })
+    let re = await dispatchApiOpenaiCompat('abc', { baseURL: 'https://apihub.agnes-ai.com/v1', key: 'sk-bad', model: 'agnes-3.0-flash' })
     console.log(re.ok, re.code, re.error)
     // => false 401 HTTP 401
 
@@ -7374,7 +7374,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入模型ID字串，例如'deepseek-v4-flash-free'(Zen之模型名不帶opencode/前綴)、'agnes-2.0-flash'</p></td>
+            <td class="description last"><p>輸入模型ID字串，例如'agnes-3.0-flash'、'kimi-k2.7-code'(Zen之模型名不帶opencode/前綴)</p></td>
         </tr>
 
     
@@ -10328,7 +10328,7 @@ prompt一律走stdin而非位置參數，因摘要內文可達數萬字，當命
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchOpencode.mjs.html">dispatchOpencode.mjs</a>, <a href="dispatchOpencode.mjs.html#line138">line 138</a>
+        <a href="dispatchOpencode.mjs.html">dispatchOpencode.mjs</a>, <a href="dispatchOpencode.mjs.html#line148">line 148</a>
     </li></ul></dd>
     
 
@@ -10381,16 +10381,15 @@ import dispatchOpencode from './src/dispatchOpencode.mjs'
 
 let test = async () => {
 
-    //沿用CLI既有登入狀態
-    let r1 = await dispatchOpencode('請只回覆兩個字：完成', { model: 'opencode/deepseek-v4-flash-free' })
+    //沿用CLI既有登入狀態(auth.json)
+    let r1 = await dispatchOpencode('請只回覆兩個字：完成', { model: 'opencode/muse-spark-1.3-contributor-free' })
     console.log(r1.ok, r1.stdout.includes('完成'))
     // => true true
 
-    //逐次注入金鑰, key與provider與model須為同一組
+    //不沿用本機登入之匿名存取(opencode自家免費模型建議如此, 見檔頭【Zen免費層閘門】)
     let r2 = await dispatchOpencode('請只回覆兩個字：完成', {
-        model: 'opencode/deepseek-v4-flash-free',
-        provider: 'opencode',
-        key: 'sk-xxxxxx',
+        model: 'opencode/muse-spark-1.3-contributor-free',
+        useStoredAuth: false,
     })
     console.log(r2.ok)
     // => true
@@ -10624,7 +10623,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入模型ID字串，例如'opencode/deepseek-v4-flash-free'，預設''代表不帶<code>-m</code>旗標</p></td>
+            <td class="description last"><p>輸入模型ID字串，例如'opencode/muse-spark-1.3-contributor-free'，預設''代表不帶<code>-m</code>旗標</p></td>
         </tr>
 
     
@@ -17588,7 +17587,7 @@ providers與table同源產出故必然一致；
 import runFanout from './src/wkf/runFanout.mjs'
 
 let providers = {
-    'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+    'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: ['sk-xxx'] },
     'claude:sonnet': { kind: 'claude', model: 'sonnet' },
 }
 
@@ -17598,7 +17597,7 @@ let test = async () => {
         providers,
         task: '分析並只回覆JSON: {"essence":"..."}',
         agents: [
-            { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+            { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] },
             { use: 'claude:sonnet' },
         ],
         integrate: { use: 'claude:sonnet' },
@@ -21418,7 +21417,7 @@ console.log(w.label, w.remainingPercent)
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Sep 18 2026 17:01:56 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Tue Sep 22 2026 12:18:20 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

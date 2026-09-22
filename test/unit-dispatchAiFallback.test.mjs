@@ -495,7 +495,7 @@ describe('dispatchAiFallback', function() {
     })
 
     it('四層情境: 組內輪替與跨組遞補複合', async function() {
-        //deepseek兩把全敗(額度型) → agnes第1把敗換第2把成功
+        //第1組兩把全敗(額度型) → 第2組第1把敗換第2把成功
         let t = await dispatchAiFallback('abc', {
             providers: [
                 {

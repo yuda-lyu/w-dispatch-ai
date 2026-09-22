@@ -1,6 +1,6 @@
 {
   "name": "w-dispatch-ai",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "main": "dist/w-dispatch-ai.umd.js",
   "dependencies": {
     "wsemi": "^1.9.1"

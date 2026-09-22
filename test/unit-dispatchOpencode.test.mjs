@@ -43,10 +43,10 @@ describe('dispatchOpencode', function() {
     })
 
     it('有給model時帶-m旗標', async function() {
-        let t = await dispatchOpencode('abc', { exe: fake.exe, model: 'opencode/deepseek-v4-flash-free' })
+        let t = await dispatchOpencode('abc', { exe: fake.exe, model: 'opencode/muse-spark-1.3-contributor-free' })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['run', '--agent', 'build', '-m', 'opencode/deepseek-v4-flash-free']
+        let rr = ['run', '--agent', 'build', '-m', 'opencode/muse-spark-1.3-contributor-free']
         assert.strict.deepEqual(r, rr)
     })
 

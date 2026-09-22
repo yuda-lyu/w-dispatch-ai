@@ -66,8 +66,8 @@ import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
  * //同一模型經不同路徑取得時須帶上路徑(REST與CLI屬兩個供應商, 能力與速度皆不同)
  * let wkf = dispatchAiWkf({
  *     providers: {
- *         'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
- *         'oc:opencode/deepseek-v4-flash-free': { kind: 'opencode', model: 'opencode/deepseek-v4-flash-free', provider: 'opencode', keys: ['sk-xxx'] },
+ *         'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: ['sk-xxx'] },
+ *         'oc:opencode/muse-spark-1.3-contributor-free': { kind: 'opencode', model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false },
  *         'claude:sonnet': { kind: 'claude', model: 'sonnet' },
  *         'claude:opus': { kind: 'claude', model: 'opus' },
  *         'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
@@ -78,7 +78,7 @@ import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
  * let test = async () => {
  *
  *     //單一名額: 主模型＋遞補鏈
- *     let r1 = await wkf.callAi('只回覆JSON: {"a":1}', { spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] }, check: (j) => j.a === 1 })
+ *     let r1 = await wkf.callAi('只回覆JSON: {"a":1}', { spec: { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] }, check: (j) => j.a === 1 })
  *     console.log(r1.ok, r1.json)
  *     // => true { a: 1 }
  *
@@ -87,7 +87,7 @@ import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
  *     let r2 = await wkf.runFanout({
  *         task: '分析並只回覆JSON: {"essence":"..."}',
  *         agents: [
- *             { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+ *             { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] },
  *             { use: 'claude:sonnet' },
  *         ],
  *         integrate: { use: 'codex:gpt-5.6-luna' },

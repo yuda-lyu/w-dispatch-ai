@@ -12,7 +12,7 @@ import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
 
 // callAiWithFallback.mjs — 工作流的最小呼叫單元: 一個「AI名額」＝主模型＋自帶遞補鏈
 //
-// 【設計】呼叫端以名稱宣告主模型與遞補(use:'deepseek', fallback:['agnes-ai','sonnet']),
+// 【設計】呼叫端以名稱宣告主模型與遞補(use:'agnes', fallback:['muse-spark','sonnet']),
 //   本函數依providers定義表把名稱展開成dispatchAiFallback的providers陣列
 //   (順序即優先序), 故「各AI名額可各自指定fallback」天然成立。
 //   名稱查無定義時視為設定錯誤直接回報(fail fast), 不靜默略過——
@@ -107,7 +107,7 @@ function buildChain(providers, spec) {
  *
  * //鍵名須區分到模型並帶上路徑, 詳見dispatchAiFallback.mjs檔頭之id設計規則
  * let providers = {
- *     'zen:deepseek-v4-flash-free': { kind: 'api-openai-compat', baseURL: 'https://opencode.ai/zen/v1', model: 'deepseek-v4-flash-free', keys: ['sk-xxx'] },
+ *     'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: ['sk-xxx'] },
  *     'claude:sonnet': { kind: 'claude', model: 'sonnet' },
  * }
  *
@@ -115,11 +115,11 @@ function buildChain(providers, spec) {
  *
  *     let r = await callAiWithFallback('只回覆JSON: {"a":1}', {
  *         providers,
- *         spec: { use: 'zen:deepseek-v4-flash-free', fallback: ['claude:sonnet'] },
+ *         spec: { use: 'agnes:agnes-3.0-flash', fallback: ['claude:sonnet'] },
  *         check: (j) => j.a === 1,
  *     })
  *     console.log(r.ok, r.json, r.providerId)
- *     // => true { a: 1 } 'zen:deepseek-v4-flash-free'
+ *     // => true { a: 1 } 'agnes:agnes-3.0-flash'
  *
  * }
  * await test()
