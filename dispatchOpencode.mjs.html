@@ -45,7 +45,8 @@
     
     <section>
         <article>
-            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+            <pre class="prettyprint source linenums"><code>import path from 'path'
+import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
@@ -69,22 +70,44 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   `if (process.env.OPENCODE_AUTH_CONTENT) return JSON.parse(...)`, 解析成功即整份取代, 不與auth.json合併;
 //   空字串為falsy、非法JSON會落回讀auth.json。auth.json位於&lt;XDG_DATA_HOME|~/.local/share>/opencode/。
 //
-// 【本轉接器只驗證過opencode v1(實測至1.18.31), v2尚未支援(2026-09-22查證)】
-//   opencode已另發布v2(當時2.0.6, npm套件@opencode/cli, 文件自成一棵樹 https://opencode.ai/v2/docs),
-//   官方〈Migrate from V1〉明載「OpenCode 1 and OpenCode 2 both use the opencode command and are no longer
-//   installed side by side by default... the V2 curl installer replaces the V1 binary」——即升級v2會取代同名執行檔。
-//   v2仍有`opencode run`(文件列為自動化用途)與`--agent`, 但至少三處與本轉接器之假設不同, 升級前須逐一實測:
+// 【本轉接器只驗證過opencode v1(實測至1.18.32), v2尚未支援(2026-09-22查證, 2026-09-23補④)】
+//   opencode已另發布v2(2026-09-23已至2.0.15, npm套件@opencode/cli, bin另含opencode2; 文件自成一棵樹
+//   https://opencode.ai/v2/docs), 官方〈Migrate from V1〉明載「OpenCode 1 and OpenCode 2 both use the opencode
+//   command and are no longer installed side by side by default... the V2 curl installer replaces the V1 binary」
+//   ——即升級v2會取代同名執行檔。v1之npm套件opencode-ai(1.18.32)仍為latest且未標deprecated。
+//   v2仍有`opencode run`(文件列為自動化用途)與`--agent`, 但至少四處與本轉接器之假設不同, 升級前須逐一實測:
 //     ① 模型旗標: v2文件一律寫`--model provider/model`, 本轉接器用`-m`(v2是否保留為別名未驗證);
-//     ② provider設定形狀: v2改為`providers.&lt;id>.package: "@opencode/ai/providers/openai-compatible"`,
+//     ② provider設定形狀: v2改為`providers.&lt;id>.package`(單數provider→providers, npm→package並加aisdk:前綴),
 //        與本轉接器經OPENCODE_CONFIG_CONTENT注入之v1形狀(provider.&lt;id>.npm)不同;
-//     ③ 金鑰注入: v2憑證走/connect與新憑證庫, OPENCODE_AUTH_CONTENT是否仍被讀取未驗證。
-//   故本機若升v2, 請先以單一呼叫實測上述三項再調整本檔; 條目端可先以exe指定v1執行檔路徑過渡。
+//     ③ 金鑰注入: v2憑證走/connect與新憑證庫, OPENCODE_AUTH_CONTENT是否仍被讀取未驗證;
+//     ④ 權限設定形狀: v2改為單一有序`permissions`陣列, 動作亦改名(bash→shell、task→subagent、write/patch→edit),
+//        providers.mjs之OC_READONLY({edit:'deny', bash:'ask'})為v1形狀, 在v2不會被認得——唯讀鎖等同失效,
+//        升v2前須以金絲雀(要求寫檔, 驗未落地)重驗防寫, 不可假設仍有效。
+//   故本機若升v2, 請先以單一呼叫實測上述四項再調整本檔; 條目端可先以exe指定v1執行檔路徑過渡。
+//
+// 【cwd須同步PWD環境變數(2026-09-23實測後新增)】opencode run決定session目錄之原始碼為
+//   `const root = Filesystem.resolve(process.env.PWD ?? process.cwd())`(packages/opencode/src/cli/cmd/run.ts),
+//   即「繼承來的PWD優先於子進程真實cwd」。Git Bash與Linux/macOS之shell皆會設PWD, 故呼叫端給opt.cwd而
+//   父進程PWD指向他處時, opencode會在父進程目錄作業: 讀相對路徑落空(回NOTFOUND且ok:true, 靜默失敗),
+//   允許寫檔時檔案落在父進程目錄(本專案曾因此於根目錄留下金絲雀孤兒檔, 當時誤判為「以git根目錄為準」)。
+//   實測(cwd指向探針目錄, 父PWD=專案根): 不處理→working directory為專案根、讀MARKER.txt失敗;
+//   注入PWD=cwd→正確; 帶--dir亦正確。採注入PWD: 不動命令列(與--attach等extraArgs無衝突), 語意即shell
+//   於該目錄啟動程式時之環境; 且以本函數之值蓋過opt.env之PWD(呼叫端常整份展開process.env, 若讓其覆寫
+//   則缺陷靜默回歸)。claude與codex以同組探針實測皆遵循spawn cwd, 不受影響, 故只在本轉接器處理。
 //
 // 【Zen免費層閘門與config注入(2026-09-18實測)】opencode自2026-09-17起限制免費模型只准在opencode本體內使用
 //   (403 FreeTierError: free tier can only be used from within OpenCode)。CLI本身可通, 但經OPENCODE_CONFIG_CONTENT
 //   注入之設定若把bash工具deny掉(permission.bash:'deny'、tools.bash:false、agent覆寫deny), 請求之工具清單
 //   少了bash即被判非opencode而403; 改permission.bash:'ask'則通過, 且非互動run下ask自動拒絕, 仍為機械防寫。
 //   詳見providers.mjs檔頭【Zen免費層閘門】與OC_READONLY常數。
+//
+// 【Zen免費層429限流時run不會結束(2026-09-23實測, 1.18.32)】REST探測0.7s即回429 FreeUsageLimitError
+//   (Rate limit exceeded), 但`opencode run`收到同一錯誤後不退出: 預設stderr只有session標頭, 直到呼叫端逾時;
+//   帶--print-logs --log-level DEBUG可見`stream error ... AI_APICallError: Rate limit exceeded`, 其後再無輸出。
+//   不經本套件直接跑原始CLI亦同, 非本轉接器所致。對本套件之意義: 此情形以TIMEOUT回報(errorType 'timeout'),
+//   dispatchAiFallback內建之TIMEOUT冷卻觸發可涵蓋, 但每次嘗試都耗滿timeoutMs——免費oc:條目宜以
+//   resolveProviders之patch給較短timeoutMs; 需在stderr看到字樣(供coolDetect)時於extraArgs加
+//   --print-logs --log-level ERROR。
 //
 // 【不讀auth.json之匿名呼叫: useStoredAuth:false(2026-09-17實測後新增)】
 //   未注入金鑰時opencode會自動沿用auth.json之登入; 該帳號工作區若未開某免費模型(如union-alpha),
@@ -142,7 +165,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
  * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
- * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
+ * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()；其絕對路徑並同步注入環境變數PWD(opencode以繼承之PWD優先於真實cwd決定session目錄，見檔頭)，呼叫端env內之PWD會被覆寫
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
@@ -261,6 +284,15 @@ async function dispatchOpencode(prompt, opt = {}) {
         }
     }
 
+    //PWD同步為有效cwd之絕對路徑(有給cwd則解析之, 否則process.cwd(), 與execCli之spawn cwd同源),
+    //以本值蓋過呼叫端env之PWD——opencode以繼承之PWD優先於真實cwd決定session目錄(見檔頭【cwd須同步PWD】)
+    let cwdEff = get(opt, 'cwd', null)
+    cwdEff = isestr(cwdEff) ? path.resolve(cwdEff) : process.cwd()
+    env = {
+        ...env,
+        PWD: cwdEff,
+    }
+
     //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
     let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs)
 
@@ -293,7 +325,7 @@ export default dispatchOpencode
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Sep 23 2026 14:35:11 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Sep 23 2026 18:02:52 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
