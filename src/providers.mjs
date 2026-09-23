@@ -169,6 +169,19 @@
 let OC_READONLY = { edit: 'deny', bash: 'ask' }
 
 
+//claude條目共用之機械防寫(單一來源): 白名單而非黑名單。
+//  原為黑名單['--disallowedTools','Write,Edit,NotebookEdit,Bash'], 2026-09-23金絲雀實測已失效——
+//  Windows版Claude Code(2.1.280)另有PowerShell工具不在黑名單內, opus-5.5與sonnet皆改用
+//  PowerShell之Set-Content寫檔落地(以--output-format stream-json之tool_use確認); 此外工具清單尚含
+//  Workflow/Task/Cron/SendMessage/Artifact等35項及claude.ai連接器之MCP工具(含create/update/delete,
+//  可寫入外部服務)。黑名單每逢CLI新增工具即破, 故改白名單:
+//  --tools Read,Glob,Grep  只開放讀檔三工具(內建工具之白名單);
+//  --strict-mcp-config     排除所有MCP工具(--tools不管MCP, 單用時claude.ai Docs之寫入工具仍在)。
+//  同日實測: 工具清單恰為Glob,Grep,Read; 要求寫檔(含指明可用PowerShell)未落地; 讀檔正常作答。
+//  代價: 失去WebFetch/WebSearch等網路讀取工具; 需要時於條目覆寫extraArgs自行加入。
+let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
+
+
 let providers = [
 
     //cli版
@@ -271,17 +284,38 @@ let providers = [
         //工作流層無害(空回覆過不了validate而自動遞補); 需要寫入能力請於條目覆寫為true
         skipPermissions: false,
     },
+    //claude/codex各兩條: 在前者為預設(全取遞補時先試), 在後者為較強之新模型(2026-09-23使用者指示)
     {
         id: 'claude:sonnet',
         model: 'sonnet',
         kind: 'claude',
-        extraArgs: ['--disallowedTools', 'Write,Edit,NotebookEdit,Bash'],
+        extraArgs: CLAUDE_READONLY,
+    },
+    {
+        id: 'claude:opus-5.5',
+        model: 'claude-opus-5-5',
+        kind: 'claude',
+        extraArgs: CLAUDE_READONLY,
+        //2026-09-23新增Opus 5.5(官方2026-09-22發布, API id claude-opus-5-5): Claude Code 2.1.280實測4.9~5.1s,
+        //以--output-format json之modelUsage確認實際服務模型為claude-opus-5-5。
+        //刻意寫全名而非別名'opus': 別名當下雖同樣指向5.5(同日實測), 但日後新版Opus發布時會無聲切換,
+        //全名可令條目行為固定。註: 走訂閱登入態, Opus之單次耗用額度高於Sonnet, 故排在sonnet之後
     },
     {
         id: 'codex:gpt-5.6-luna',
         model: 'gpt-5.6-luna',
         kind: 'codex',
         sandbox: 'read-only',
+    },
+    {
+        id: 'codex:gpt-6-sol',
+        model: 'gpt-6-sol',
+        kind: 'codex',
+        sandbox: 'read-only',
+        //2026-09-23新增GPT-6 Sol(官方定位複雜程式與agentic工作): Codex CLI 0.156.1(穩定版)實測6.3~6.9s,
+        //該帳號之app-server model/list已列gpt-6-sol/gpt-6-luna/gpt-6-astra; 金絲雀實測唯讀沙箱擋下寫檔。
+        //openai/codex issue #47420稱「僅alpha版可用」係0.154.0使用者之回報, 0.156.1已不成立;
+        //若本機為較舊之codex而清單無此模型, 先執行`codex update`。推理強度沿用使用者config(實測為high)
     },
 
     //api版

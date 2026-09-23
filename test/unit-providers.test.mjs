@@ -89,7 +89,12 @@ describe('providers', function() {
                 return !!perm && perm.edit === 'deny' && perm.bash === 'ask'
             }
             if (p.kind === 'claude') {
-                return Array.isArray(p.extraArgs) && p.extraArgs.includes('--disallowedTools')
+                //白名單: 僅開放讀檔三工具且排除MCP; 黑名單(--disallowedTools)於2026-09-23實測已被
+                //Windows之PowerShell工具繞過而寫檔落地, 故不接受僅有黑名單之條目
+                let a = Array.isArray(p.extraArgs) ? p.extraArgs : []
+                let i = a.indexOf('--tools')
+                let allow = i >= 0 ? String(a[i + 1] || '').split(',').map((s) => s.trim()).sort().join(',') : ''
+                return allow === 'Glob,Grep,Read' && a.includes('--strict-mcp-config')
             }
             if (p.kind === 'codex') {
                 return p.sandbox === 'read-only'

@@ -54,7 +54,7 @@ let OWN_KEYS = ['exe', 'model', 'sandbox', 'extraArgs', 'input']
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='codex'] 輸入codex執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析，預設'codex'
- * @param {String} [opt.model=''] 輸入模型ID字串，例如'gpt-5.6-luna'，預設''代表不帶`-m`旗標
+ * @param {String} [opt.model=''] 輸入模型ID字串，例如'gpt-5.6-luna'、'gpt-6-sol'，預設''代表不帶`-m`旗標
  * @param {String} [opt.sandbox='workspace-write'] 輸入沙箱模式字串，例如'read-only'、'workspace-write'、'danger-full-access'，預設'workspace-write'
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，例如['--config', 'model_reasoning_effort="max"']，將接於固定旗標之後，預設[]
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000

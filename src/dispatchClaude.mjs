@@ -44,7 +44,7 @@ let OWN_KEYS = ['exe', 'model', 'skipPermissions', 'extraArgs', 'input']
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='claude'] 輸入claude執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析，預設'claude'
- * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'sonnet'、'opus'，預設''代表不帶`--model`旗標
+ * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'claude-opus-5-5'(全名, 固定版本)、'opus'或'sonnet'(別名, 隨CLI指向最新版)，預設''代表不帶`--model`旗標
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000

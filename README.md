@@ -144,7 +144,7 @@ let test = async () => {
     //未知供應商回傳error結果物件, 不會reject
     let r4 = await wdi.dispatchAi('gemini', prompt)
     console.log('invalid kind:', r4.ok, r4.error)
-    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat)
+    // => invalid kind: false unknown ai kind: "gemini" (available: opencode, claude, codex, antigravity, api-openai-compat, api-openai-responses, api-typesafe-systemone)
 
     //prompt非有效字串亦回傳error結果物件
     let r5 = await wdi.dispatchClaude('')
@@ -666,7 +666,7 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 | kind | 條目防寫欄位 | 機制 | 實測依據 |
 | --- | --- | --- | --- |
 | `opencode` | `config.permission: { edit: 'deny', bash: 'ask' }` | `edit` deny 涵蓋 write/edit/patch；`bash` 用 `ask` 而非 `deny`——`opencode run` 為非互動，`ask` 一律自動拒絕（stderr：`The user rejected permission`）。**不可改成 `bash: 'deny'`**：Zen 免費層閘門以「工具清單含不含 bash」判定是否為 opencode 本體，deny 會被判非 opencode 而回 403 FreeTierError；呼叫端也勿另傳 `--auto` | 2026-09-18 金絲雀實測（寫檔與 shell 建檔皆未落地） |
-| `claude` | `extraArgs: ['--disallowedTools', 'Write,Edit,NotebookEdit,Bash']` | CLI停用寫入類工具 | 2026-08 實測 |
+| `claude` | `extraArgs: ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']` | **白名單**：只開放讀檔三工具，並排除所有 MCP 工具。原本的黑名單 `--disallowedTools Write,Edit,NotebookEdit,Bash` **已失效**：Windows 版 Claude Code 另有 `PowerShell` 工具不在黑名單內，模型改用它寫檔；工具清單另含 Workflow、Cron、SendMessage 等及 claude.ai 連接器之 MCP 寫入工具。只用 `--tools` 不夠，MCP 工具須再加 `--strict-mcp-config` 才會排除。代價是沒有 WebFetch／WebSearch，需要時於條目覆寫 | 2026-09-23 金絲雀實測（Claude Code 2.1.280：黑名單下 opus-5.5 與 sonnet 皆經 PowerShell 寫檔落地；白名單下工具清單恰為 Glob/Grep/Read、寫檔未落地、讀檔正常） |
 | `codex` | `sandbox: 'read-only'` | Codex沙箱唯讀模式 | 2026-08-26 於 Codex 0.149.0 實測可執行唯讀命令；前提是 Windows elevated 沙箱之一次性設定已完成，否則所有命令 `blocked by policy`（診斷見「Options only for dispatchCodex」） |
 | `antigravity` | `skipPermissions: false` | 保留agy權限閘門（不送`--dangerously-skip-permissions`） | 2026-08-15 canary實測：無此鎖時要求建檔**會真的落地**；`false`之下寫入被擋且**不卡逾時**（6.4s正常返回）、唯讀工具照常 |
 
