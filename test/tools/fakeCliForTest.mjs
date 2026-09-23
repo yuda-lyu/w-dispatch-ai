@@ -61,6 +61,7 @@ process.stdin.on('end', () => {
             OPENCODE_AUTH_CONTENT: process.env.OPENCODE_AUTH_CONTENT || '',
             OPENCODE_CONFIG_CONTENT: process.env.OPENCODE_CONFIG_CONTENT || '',
             FAKE_ENV: process.env.FAKE_ENV || '',
+            PWD: process.env.PWD || '',
         },
     }
     let end = () => {

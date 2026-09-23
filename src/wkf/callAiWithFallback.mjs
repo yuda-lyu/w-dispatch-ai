@@ -23,7 +23,7 @@ import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
 //   與金鑰無關之失敗而「整組跳過換下一家」(不換組內金鑰——同模型換金鑰仍是
 //   同樣的產出習慣); 端點不穩而偶發空回的模型, 以maxRetries調高令同鍵重試。
 //
-// 【防寫檔前綴】agentic CLI對cwd隔離免疫(會自行解析專案根目錄寫檔),
+// 【防寫檔前綴】agentic CLI之cwd不是隔離邊界(可用絕對路徑寫到cwd外),
 //   故預設在prompt前掛「禁止建檔」約束(實測有效); 不需要時傳promptPrefix:''關閉。
 //   措辭已移至獨立模組wkf/noSideEffectPrefix.mjs(單一來源)——不經本層、
 //   直接呼叫dispatchAiFallback的呼叫端亦應引用同一份, 措辭修正時全體同步;

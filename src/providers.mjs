@@ -164,7 +164,8 @@
 //  bash:'ask'  而非'deny'——2026-09-18實測: Zen免費層閘門以「bash工具是否存在」判定是否為opencode本體,
 //              deny會把bash自工具清單移除而被判非opencode(403 FreeTierError), ask則工具仍在;
 //              而`opencode run`為非互動, ask一律自動拒絕(stderr: The user rejected permission),
-//              金絲雀實測寫檔與shell建檔皆未落地, 故仍為機械鎖。注意呼叫端勿另傳--auto(會把ask放行)。
+//              金絲雀實測寫檔與shell建檔皆未落地, 故仍為機械鎖(2026-09-23於1.18.32重驗仍自動拒絕)。
+//              注意呼叫端勿另傳--auto(2026-09-23實測: 帶上即放行ask, 模型以node寫檔落地)。
 //  agnes/poolside走opencode但非Zen免費層, 不受閘門影響, 為對稱亦用同一鎖(bash:ask之拒絕行為相同)。
 let OC_READONLY = { edit: 'deny', bash: 'ask' }
 
@@ -179,6 +180,10 @@ let OC_READONLY = { edit: 'deny', bash: 'ask' }
 //  --strict-mcp-config     排除所有MCP工具(--tools不管MCP, 單用時claude.ai Docs之寫入工具仍在)。
 //  同日實測: 工具清單恰為Glob,Grep,Read; 要求寫檔(含指明可用PowerShell)未落地; 讀檔正常作答。
 //  代價: 失去WebFetch/WebSearch等網路讀取工具; 需要時於條目覆寫extraArgs自行加入。
+//  邊界(2026-09-23查官方permissions文件): 此鎖只管模型可用之工具; 資料夾未受信任時-p仍會執行該專案
+//  .claude/settings.json之hooks與env(官方列為「Used」)。於不信任之目錄派工可於條目另加
+//  '--setting-sources user'(同日實測可與本鎖及skip並用); 更嚴之'--restricted'須搭配skipPermissions:false
+//  (restricted拒絕bypassPermissions, 同日實測帶skip即報錯)。勿帶--bare(不讀OAuth登入, 見dispatchClaude檔頭)。
 let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 
 

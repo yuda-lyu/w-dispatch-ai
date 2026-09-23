@@ -218,7 +218,7 @@ await test()
 | `model` | String | `''` | 模型ID，未給予則不帶模型旗標，由CLI自行決定 |
 | `extraArgs` | Array | `[]` | 額外命令列旗標字串陣列，接於固定旗標之後 |
 | `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時將強制關閉子進程及其子孫程序；**全套件統一預設**(所有轉接器與各層一致，單一來源`dfTimeoutMs.mjs`)，由opt傳入即可覆寫 |
-| `cwd` | String | `process.cwd()` | 子進程工作目錄 |
+| `cwd` | String | `process.cwd()` | 子進程工作目錄。**`dispatchOpencode` 另會把其絕對路徑同步注入環境變數 `PWD`**（覆寫呼叫端 `env` 內之同名變數）：opencode 以**繼承之 `PWD`** 優先於子進程真實 cwd 決定 session 目錄（原始碼 `run.ts`：`process.env.PWD ?? process.cwd()`），而 Git Bash 與 Linux/macOS 的 shell 都會設 `PWD`；2026-09-23 實測未同步時 opencode 會在父程序目錄讀寫（讀相對路徑回 NOTFOUND 且 `ok: true`，允許寫檔時檔案落在父程序目錄）。claude／codex 同組探針遵循 cwd，不受影響 |
 | `validate` | String\|Function | `undefined` | `stdout`驗證規則，可用`'nonempty'`、`'json'`、`'min:100'`，多規則以逗號串接，亦可給予`(stdout)=>Boolean` |
 | `maxRetries` | Integer | `0` | 失敗後最大重試次數，遇`ENOENT`或exit code 2視為不可重試而立即中止 |
 
@@ -236,7 +236,7 @@ await test()
 #### Options only for dispatchClaude:
 | key | type | default | description |
 | --- | --- | --- | --- |
-| `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標，`false`代表保留CLI權限閘門（見上方Security說明） |
+| `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標，`false`代表保留CLI權限閘門（見上方Security說明）。`extraArgs` **勿帶 `--bare`**：bare 模式不讀 OAuth 登入會直接認證失敗，且官方預告 `--bare` 將成為 `-p` 之預設（屆時訂閱條目會一併失效，見 `dispatchClaude.mjs` 檔頭）；帶 `--restricted` 時本欄須為 `false`（restricted 拒絕 bypassPermissions，2026-09-23 實測同時帶即報錯） |
 
 #### Options only for dispatchCodex:
 | key | type | default | description |
@@ -248,7 +248,7 @@ await test()
 Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandboxOffline`/`CodexSandboxOnline`＋WFP 網路過濾＋家目錄 read ACL），**需一次性管理員設定**；設定未完成時 execpolicy 會在 spawn 前拒絕**所有** shell 命令（含 `Get-Content`、`rg` 等唯讀命令），錯誤形如 `CreateProcess { message: "Rejected(\"... blocked by policy\")" }`——Codex 讀檔即是執行 shell，等同完全不能讀檔。
 
 - **判別**：`~/.codex/.sandbox/setup_marker.json` 不存在、且 `~/.codex/.sandbox/sandbox.<日期>.log` 只有 `START` 沒有 `SUCCESS` ＝ 設定未完成。
-- **正解**：以互動模式跑一次 `codex` 完成設定（會要求 UAC 提權），完成後 `setup_marker.json` 出現，`read-only`／`workspace-write` 皆可正常執行命令（2026-08-26 於 Codex 0.149.0＋Windows 11 26200 實測：設定完成前全擋、完成後五種設定全通）。
+- **正解**：以互動模式跑一次 `codex` 完成設定（會要求 UAC 提權），完成後 `setup_marker.json` 出現，`read-only`／`workspace-write` 皆可正常執行命令（2026-08-26 於 Codex 0.149.0＋Windows 11 26200 實測：設定完成前全擋、完成後五種設定全通）。2026-09-23 補：`windows.sandbox` 於 0.156.1 之官方 config reference 仍為 `unelevated | elevated`；新版 Windows sandbox 文件另載明 elevated 設定失敗時 Codex 會改用 unelevated（「Codex switched me to the unelevated sandbox」），「全擋」為 0.149 之觀察、未於未設定之機器以新版重測。
 - **臨時繞道**：`extraArgs: ['--config', 'windows.sandbox="unelevated"']`——跳過管理員設定即可執行，但**隔離較弱**（無專用使用者與網路過濾）；本套件**刻意不**將此設為 Windows 預設，避免在已完成設定的機器上默默降級沙箱。
 - **靜默失敗警語**：被擋時 Codex 常回「請貼上檔案內容」之合法字串，會通過 `validate: 'nonempty'` 被當成功。凡需 Codex 讀檔的任務，`validate`／工作流 `check` 應要求回覆**引用指定行原文**，不要只驗非空；派長任務前先以「讀一個檔並引用第 N 行」做最小探測。
 
@@ -389,7 +389,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
 | `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用）；假定單行程序列調用。跨行程持久化可直接用`createFileStore`；自行實作時**務必整包原封存還**，白名單式挑欄位會在套件擴充state時靜默丟棄新欄位 |
 | `cooldownMs` | Integer | `0`不啟用 | 供應商冷卻視窗：條目（限有明給id者）遭遇**限流(HTTP 429，僅api類可偵測)或逾時(TIMEOUT)**後，於視窗內之後續呼叫中被**移至鏈尾（只降序不移除）**——前面全敗時仍會被嘗試、任一次成功立即解除，故不存在把已恢復服務冰住的問題。多階段工作流可大幅省去逐階段重踩已失效供應商的成本（使用端實測107s→15s）。注意啟用時providers順序會被暫時重排，此即機制目的 |
-| `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流埋在stderr且各家字樣不同、隨版本漂移，**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調拋出例外視同`false` |
+| `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流字樣各家不同、隨版本漂移，且不一定在stderr（Claude Code之執行期失敗以result印在stdout，官方headless文件），**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`（注意：opencode 1.18.32 遇 Zen 免費層 429 時 `run` **不會結束**、stderr 只有 session 標頭，直到逾時才以 `TIMEOUT` 回報——內建 TIMEOUT 觸發已涵蓋；要讓字樣出現在 stderr 須於 `extraArgs` 加 `--print-logs --log-level ERROR`，2026-09-23 實測 DEBUG log 內為 `AI_APICallError: Rate limit exceeded`；不經本套件的原始 CLI 亦同）；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調拋出例外視同`false` |
 | `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調拋出例外視同`false` |
 | `meta` | any | 無 | 保留鍵，同`providers[].meta`，永不轉傳 |
 | `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外不影響主流程 |
@@ -665,8 +665,8 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 
 | kind | 條目防寫欄位 | 機制 | 實測依據 |
 | --- | --- | --- | --- |
-| `opencode` | `config.permission: { edit: 'deny', bash: 'ask' }` | `edit` deny 涵蓋 write/edit/patch；`bash` 用 `ask` 而非 `deny`——`opencode run` 為非互動，`ask` 一律自動拒絕（stderr：`The user rejected permission`）。**不可改成 `bash: 'deny'`**：Zen 免費層閘門以「工具清單含不含 bash」判定是否為 opencode 本體，deny 會被判非 opencode 而回 403 FreeTierError；呼叫端也勿另傳 `--auto` | 2026-09-18 金絲雀實測（寫檔與 shell 建檔皆未落地） |
-| `claude` | `extraArgs: ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']` | **白名單**：只開放讀檔三工具，並排除所有 MCP 工具。原本的黑名單 `--disallowedTools Write,Edit,NotebookEdit,Bash` **已失效**：Windows 版 Claude Code 另有 `PowerShell` 工具不在黑名單內，模型改用它寫檔；工具清單另含 Workflow、Cron、SendMessage 等及 claude.ai 連接器之 MCP 寫入工具。只用 `--tools` 不夠，MCP 工具須再加 `--strict-mcp-config` 才會排除。代價是沒有 WebFetch／WebSearch，需要時於條目覆寫 | 2026-09-23 金絲雀實測（Claude Code 2.1.280：黑名單下 opus-5.5 與 sonnet 皆經 PowerShell 寫檔落地；白名單下工具清單恰為 Glob/Grep/Read、寫檔未落地、讀檔正常） |
+| `opencode` | `config.permission: { edit: 'deny', bash: 'ask' }` | `edit` deny 涵蓋 write/edit/patch；`bash` 用 `ask` 而非 `deny`——`opencode run` 為非互動，`ask` 一律自動拒絕（stderr：`The user rejected permission`）。**不可改成 `bash: 'deny'`**：Zen 免費層閘門以「工具清單含不含 bash」判定是否為 opencode 本體，deny 會被判非 opencode 而回 403 FreeTierError；呼叫端也勿另傳 `--auto`（2026-09-23 實測：帶上即自動核准 bash，模型以 node 寫檔落地） | 2026-09-18 金絲雀實測（寫檔與 shell 建檔皆未落地）；2026-09-23 於 1.18.32 重驗仍自動拒絕 |
+| `claude` | `extraArgs: ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']` | **白名單**：只開放讀檔三工具，並排除所有 MCP 工具。原本的黑名單 `--disallowedTools Write,Edit,NotebookEdit,Bash` **已失效**：Windows 版 Claude Code 另有 `PowerShell` 工具不在黑名單內，模型改用它寫檔；工具清單另含 Workflow、Cron、SendMessage 等及 claude.ai 連接器之 MCP 寫入工具。只用 `--tools` 不夠，MCP 工具須再加 `--strict-mcp-config` 才會排除。代價是沒有 WebFetch／WebSearch，需要時於條目覆寫。**邊界**：此鎖只管模型可用之工具；資料夾未受信任時 `-p` 仍會執行該專案 `.claude/settings.json` 的 hooks 與 `env`（官方 permissions 文件列為「Used」），在不信任的目錄派工可於條目另加 `--setting-sources user`（2026-09-23 實測可與本鎖及 skip 並用） | 2026-09-23 金絲雀實測（Claude Code 2.1.280：黑名單下 opus-5.5 與 sonnet 皆經 PowerShell 寫檔落地；白名單下工具清單恰為 Glob/Grep/Read、寫檔未落地、讀檔正常） |
 | `codex` | `sandbox: 'read-only'` | Codex沙箱唯讀模式 | 2026-08-26 於 Codex 0.149.0 實測可執行唯讀命令；前提是 Windows elevated 沙箱之一次性設定已完成，否則所有命令 `blocked by policy`（診斷見「Options only for dispatchCodex」） |
 | `antigravity` | `skipPermissions: false` | 保留agy權限閘門（不送`--dangerously-skip-permissions`） | 2026-08-15 canary實測：無此鎖時要求建檔**會真的落地**；`false`之下寫入被擋且**不卡逾時**（6.4s正常返回）、唯讀工具照常 |
 
@@ -677,7 +677,7 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 - `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。
 - `dispatchAiFallback`為單向單輪：全數群組試畢即回傳最後一筆失敗結果與`tried`歷程，不回頭重試已敗的組。跨次執行僅記憶游標，不設金鑰停用清單（理由見上方失敗分流說明）；需跨次跳過特定金鑰時，由呼叫端依`tried`／`onEvent`內之`error`與`stderr`自行決策。
 - `shouldStop`**只在嘗試邊界檢查，不中止進行中之嘗試**（不殺子進程、不斷開HTTP請求）：進行中嘗試之強制中止需侵入execCli層與各轉接器，屬已知設計取捨——最小版已把斷線後的損失從「整條鏈」縮成「至多再耗當前這一家」；如有實測場景證明不足再議完整版。
-- CLI類限流簽章**不進套件**：各家stderr字樣不同且隨CLI版本漂移，套件維護簽章表等同養一個自己驗證不了的分類器（與否決金鑰停用清單同一理由）。偵測經`coolDetect`依賴注入，由觀察到字樣的呼叫端維護。
+- CLI類限流簽章**不進套件**：各家字樣（stdout或stderr）不同且隨CLI版本漂移，套件維護簽章表等同養一個自己驗證不了的分類器（與否決金鑰停用清單同一理由）。偵測經`coolDetect`依賴注入，由觀察到字樣的呼叫端維護。
 - `dispatchOpencode`之`key`與`provider`須同時給予才會注入金鑰；只給其一（或範例中`.env`缺鍵導致`key`為`undefined`）時不會報錯，而是靜默沿用CLI既有登入狀態。
 - 範例中之`process.loadEnvFile`需Node.js >= 20.12，僅範例使用，套件本身無此限制。
 - `config`以`OPENCODE_CONFIG_CONTENT`注入後，與使用者既有`opencode.jsonc`為覆蓋或合併關係未經實測確認；建議`config`內含該次調用所需之完整provider定義，不依賴與既有設定檔之合併行為。

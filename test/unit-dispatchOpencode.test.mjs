@@ -1,4 +1,5 @@
 import assert from 'assert'
+import path from 'path'
 import dispatchOpencode from '../src/dispatchOpencode.mjs'
 import createFakeCli from './tools/fakeCliForTest.mjs'
 
@@ -179,6 +180,26 @@ describe('dispatchOpencode', function() {
         let o = JSON.parse(t.stdout)
         let r = [o.env.FAKE_ENV, JSON.parse(o.env.OPENCODE_AUTH_CONTENT).opencode.key]
         let rr = ['hello', 'sk-abc123']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('PWD同步為有效cwd之絕對路徑: 有給cwd(絕對或相對)即解析之且等於子進程真實cwd, 未給則為process.cwd()', async function() {
+        let t1 = await dispatchOpencode('abc', { exe: fake.exe, cwd: fake.fd })
+        let t2 = await dispatchOpencode('abc', { exe: fake.exe, cwd: path.relative(process.cwd(), fake.fd) })
+        let t3 = await dispatchOpencode('abc', { exe: fake.exe })
+        let o1 = JSON.parse(t1.stdout)
+        let o2 = JSON.parse(t2.stdout)
+        let o3 = JSON.parse(t3.stdout)
+        let r = [o1.env.PWD, o1.env.PWD === o1.cwd, o2.env.PWD, o3.env.PWD, o3.env.PWD === o3.cwd]
+        let rr = [path.resolve(fake.fd), true, path.resolve(fake.fd), process.cwd(), true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('呼叫端env內之PWD(含整份展開process.env之寫法)被有效cwd覆寫, 其餘變數保留', async function() {
+        let t = await dispatchOpencode('abc', { exe: fake.exe, cwd: fake.fd, env: { ...process.env, PWD: 'C:/somewhere/else', FAKE_ENV: 'x' } })
+        let o = JSON.parse(t.stdout)
+        let r = [o.env.PWD, o.env.FAKE_ENV]
+        let rr = [path.resolve(fake.fd), 'x']
         assert.strict.deepEqual(r, rr)
     })
 
