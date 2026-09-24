@@ -4,8 +4,11 @@ import isearr from 'wsemi/src/isearr.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
+import isbol from 'wsemi/src/isbol.mjs'
 import dispatchAiFallback from '../dispatchAiFallback.mjs'
 import dfTimeoutMs from '../dfTimeoutMs.mjs'
+import buildValidator from '../buildValidator.mjs'
+import { safeValidate } from '../checkTruncation.mjs'
 import extractJsonLoose from './extractJsonLoose.mjs'
 import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
 
@@ -19,9 +22,18 @@ import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
 //   否則fallback名稱打錯字只會讓遞補鏈無感知地短一截, 事後無從察覺。
 //
 // 【JSON驗證接進遞補層】parse＋check包成dispatchAiFallback的validate:
-//   回覆非法(空回、截斷、缺欄位)時為OUTPUT_VALIDATION_FAILED, 遞補層視為
+//   回覆非法(空回、缺欄位)時為OUTPUT_VALIDATION_FAILED, 遞補層視為
 //   與金鑰無關之失敗而「整組跳過換下一家」(不換組內金鑰——同模型換金鑰仍是
 //   同樣的產出習慣); 端點不穩而偶發空回的模型, 以maxRetries調高令同鍵重試。
+//   parse或check拋錯視同非法(不reject); 條目自帶validate時與本層validate取交集(兩者皆過才算過)——
+//   遞補層之「條目覆寫共用預設」會讓條目validate取代本層validate, 曾致非法回覆通過轉接器、
+//   本層重解析失敗而回ok:false且error為空(不再遞補), 2026-09-24由複審指出後修正。
+//
+// 【截斷(2026-09-24起)】REST文字類轉接器於validate之前判定截斷, 預設回INCOMPLETE_RESPONSE(errorType
+//   incomplete, 遞補層整組跳過且不重試), 不再經驗證失敗路徑。本層之acceptTruncated預設為「有自訂parse且非
+//   rawText」: README明文之策略②(組成自訂parse注入搶救截斷前段, 見salvageTruncatedArray.mjs)本身即同意訊號,
+//   既有使用者不必改任何東西; 預設parse(extractJsonLoose)與rawText遇截斷一律判失敗換家。可顯式覆寫。
+//   CLI類轉接器拿不到終止訊號, 截斷不可判(已知限制)。
 //
 // 【防寫檔前綴】agentic CLI之cwd不是隔離邊界(可用絕對路徑寫到cwd外),
 //   故預設在prompt前掛「禁止建檔」約束(實測有效); 不需要時傳promptPrefix:''關閉。
@@ -90,16 +102,17 @@ function buildChain(providers, spec) {
  * @param {Function} [opt.check=null] 輸入結果檢核函數(json)=>Boolean，預設null代表只要能解析出JSON即通過
  * @param {Function} [opt.parse=extractJsonLoose] 輸入回覆解析函數(stdout)=>Object|null，預設寬鬆JSON抽取
  * @param {Boolean} [opt.rawText=false] 輸入是否以純文字模式運作布林值，true代表不解析JSON(json欄位為修剪後文字、check收文字)，預設false
+ * @param {Boolean} [opt.acceptTruncated] 輸入是否接受REST文字類轉接器回報之截斷內容(交parse＋check裁決)布林值，預設為「有給自訂parse且非rawText」(自訂parse即搶救策略之同意訊號，見salvageTruncatedArray.mjs)，其餘情況截斷一律判失敗換家
  * @param {String} [opt.promptPrefix=防寫檔約束] 輸入prompt前綴字串，預設為防寫檔約束(見wkf/noSideEffectPrefix.mjs)，傳''關閉
  * @param {Number} [opt.timeoutMs=300000] 輸入單次嘗試逾時毫秒正整數，全套件統一預設300000
  * @param {Number} [opt.budgetMs=null] 輸入整條遞補鏈之時間預算毫秒正整數，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入搭配budgetMs之開工門檻毫秒正整數，剩餘預算低於此值即不再開工，預設20000
- * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試)
+ * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試；截斷不重試)
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
  * @param {Object} [opt.store=null] 輸入游標持久化物件{get,set}，預設null代表用行程內記憶體
  * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳下層，預設undefined
  * @param {Function} [opt.onEvent=null] 輸入遞補層事件回調函數，預設null。除上列外之其餘鍵(retryDelayMs、maxBuffer、shouldStop、coolDetect、cooldownMs等)亦一律原樣轉傳dispatchAiFallback
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、usage(api類之token用量原樣透傳，CLI類為null)、error(錯誤訊息字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(解析後物件，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、usage(api類之token用量原樣透傳，CLI類為null)、finishReason(REST文字類之正規化終止原因字串，CLI類為'')、truncated(是否為截斷內容布林值，接受搶救時ok亦可能為true)、error(錯誤訊息字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)，本函數不會reject
  * @example
  * //need cli in system PATH
  *
@@ -152,7 +165,8 @@ async function callAiWithFallback(prompt, opt = {}) {
 
     let rawText = get(opt, 'rawText', false) === true
     let parse = get(opt, 'parse', null)
-    if (!isfun(parse)) {
+    let parseGiven = isfun(parse)
+    if (!parseGiven) {
         parse = extractJsonLoose
     }
     let check = get(opt, 'check', null)
@@ -160,44 +174,71 @@ async function callAiWithFallback(prompt, opt = {}) {
         check = null
     }
 
+    //acceptTruncated, 顯式布林值優先; 預設「有自訂parse且非rawText」——自訂parse即搶救策略之同意訊號(見檔頭【截斷】)
+    let acceptTruncated = get(opt, 'acceptTruncated', null)
+    if (!isbol(acceptTruncated)) {
+        acceptTruncated = parseGiven && !rawText
+    }
+
     let promptPrefix = get(opt, 'promptPrefix', null)
     if (!isestr(promptPrefix)) {
         promptPrefix = (promptPrefix === '') ? '' : NO_SIDE_EFFECT
     }
 
-    //validate接進遞補層: 非法回覆＝這一家失敗, 遞補層換下一家
+    //validate接進遞補層: 非法回覆＝這一家失敗, 遞補層換下一家; parse/check拋錯視同非法(不reject)
     let validate = (stdout) => {
-        if (rawText) {
-            let s = String(stdout || '').trim()
-            if (s === '') {
+        try {
+            if (rawText) {
+                let s = String(stdout || '').trim()
+                if (s === '') {
+                    return false
+                }
+                return check ? check(s) === true : true
+            }
+            let j = parse(stdout)
+            if (j === null) {
                 return false
             }
-            return check ? check(s) === true : true
+            return check ? check(j) === true : true
         }
-        let j = parse(stdout)
-        if (j === null) {
+        catch {
             return false
         }
-        return check ? check(j) === true : true
     }
 
-    //剔除本層自用鍵後原樣轉傳(含minAttemptMs/retryDelayMs/maxBuffer等), providers與validate由本層給定
+    //條目自帶validate時與本層validate取交集(兩者皆過才算過), 免遞補層之條目覆寫令本層驗證被繞過(見檔頭)
+    chain = chain.map((e) => {
+        let ev = buildValidator(get(e, 'validate', null))
+        if (ev === null) {
+            return e
+        }
+        return { ...e, validate: (s) => safeValidate(ev, s).pass && validate(s) }
+    })
+
+    //剔除本層自用鍵後原樣轉傳(含minAttemptMs/retryDelayMs/maxBuffer等), providers、validate與acceptTruncated由本層給定
     let r = await dispatchAiFallback(promptPrefix + prompt, {
         ...omit(opt, OWN_KEYS),
         providers: chain,
         validate,
+        acceptTruncated,
         timeoutMs: get(opt, 'timeoutMs', null) || dfTimeoutMs, //全套件統一預設300000
     })
 
-    //result, 已過validate故此處parse必然成功(同一解析器), 重解析僅為取出物件
+    //result, 已過validate故此處parse必然成功(同一解析器), 重解析僅為取出物件; 防禦性接住拋錯
     let result = null
     if (r.ok) {
-        result = rawText ? String(r.stdout || '').trim() : parse(r.stdout)
+        try {
+            result = rawText ? String(r.stdout || '').trim() : parse(r.stdout)
+        }
+        catch {
+            result = null
+        }
     }
+    let ok = r.ok && result !== null
     let providerId = get(r, 'providerId', null)
     let keyIndex = get(r, 'keyIndex', null)
     return {
-        ok: r.ok && result !== null,
+        ok,
         json: result, //rawText模式下此欄為文字
         providerId,
         keyIndex,
@@ -205,8 +246,10 @@ async function callAiWithFallback(prompt, opt = {}) {
         ms: Date.now() - t0,
         tried: get(r, 'tried', []),
         usage: get(r, 'usage', null), //api類轉接器之token用量原樣透傳, CLI類為null(無可靠來源)
-        error: r.ok ? '' : get(r, 'error', 'unknown error'),
-        ...(r.ok ? {} : { errorType: get(r, 'errorType', 'exec') }), //機器可讀錯誤類別, 僅失敗時
+        finishReason: get(r, 'finishReason', ''), //REST文字類之正規化終止原因, CLI類為''
+        truncated: get(r, 'truncated', false) === true, //接受搶救之截斷內容時ok亦可能為true
+        error: ok ? '' : (r.ok ? 'OUTPUT_VALIDATION_FAILED' : get(r, 'error', 'unknown error')),
+        ...(ok ? {} : { errorType: r.ok ? 'validation' : get(r, 'errorType', 'exec') }), //機器可讀錯誤類別, 僅失敗時
     }
 }
 

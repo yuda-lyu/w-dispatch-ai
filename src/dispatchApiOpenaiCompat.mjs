@@ -10,6 +10,7 @@ import buildValidator from './buildValidator.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
+import { TRUNCATION_REASONS, normalizeFinishReason, safeValidate, judgeTruncated } from './checkTruncation.mjs'
 
 
 // dispatchApiOpenaiCompat.mjs — 以fetch直呼OpenAI相容API(chat/completions)
@@ -39,17 +40,32 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   故呼叫端若於body帶入tools, 本函數一律以TOOL_CALLS_UNSUPPORTED回報失敗而不假裝成功
 //   (實測Agnes於tool_calls時content為"\n\n"而非null, 不特別處理會靜默回傳空白內容)。
 //
-// 【重試語意對齊execCli】4xx(429除外)為客戶端錯誤不可重試而立即中止;
+// 【預設帶Accept-Encoding: identity(2026-09-24起, 三個REST轉接器同步)】Node內建fetch(undici)只在回應
+//   帶Content-Encoding時才自動解壓; 伺服器若壓縮了本體卻漏標此標頭, fetch原樣交出壓縮位元組,
+//   JSON.parse失敗而回INVALID_RESPONSE(使用端回報Zen之space-bunny-free即此症: 手動brotli解壓得完整答案,
+//   改帶identity即得正常JSON)。本機以假伺服器重現該機制; 惟同日對Zen取樣7次皆正確標示br(未重現漏標),
+//   故屬防禦: identity請伺服器勿壓縮, 從源頭消除「壓縮處理不一致」一類失敗(不論成因在伺服器、代理或執行環境)。
+//   代價僅傳輸量變大(實測Zen回應約5~8KB→20~65KB)。呼叫端可以opt.headers之'Accept-Encoding'覆寫。
+//
+// 【截斷(finish_reason為length或content_filter)預設失敗(2026-09-24起, 規則單一來源見checkTruncation.mjs)】
+//   舊版不看finish_reason, 實測Zen之space-bunny-free於max_tokens:600時推理即耗盡而回content:""、
+//   本轉接器卻回ok:true(靜默成功)。現於null檢查與validate之前裁定: 預設回INCOMPLETE_RESPONSE
+//   (errorType incomplete, 結果帶truncated:true), 不論validate為何——「validate接受」不代表內容完整。
+//   呼叫端明示acceptTruncated:true才放行length之截斷(交validate裁決, 通過者仍標truncated:true);
+//   content_filter與可見輸出為空者一律失敗。finish_reason為stop/null/未知值者照舊(不可誤殺)。
+//
+// 【重試語意對齊execCli】4xx(429除外)為客戶端錯誤不可重試而立即中止; 截斷亦不重試(同一請求必然再截斷);
 //   429/5xx/網路錯誤/逾時依maxRetries線性退避重試(間隔retryDelayMs*次數, 上限15000ms)。
 //
 // 【結果結構對齊execCli】{ ok, stdout, stderr, code, error, durationMs, attempts, usage },
 //   usage為原始回應之token用量原樣透傳(無則null; 驗證失敗等已耗token之失敗亦帶出),
 //   CLI類轉接器無可靠來源故無此欄——呼叫端可據此把「真實用量」與「只能估算」分開處理。
+//   取得並解析回應後之結果另帶finishReason(正規化終止原因, 缺值為'')與truncated(是否截斷)。
 //   失敗結果另帶機器可讀之errorType(timeout/fetch/http/tool-unsupported/invalid-response/
-//   validation/params, 一覽見getErrorType.mjs檔頭), error字串保留不動, 兩者並存。
+//   incomplete/validation/params, 一覽見getErrorType.mjs檔頭), error字串保留不動, 兩者並存。
 //   stdout為回覆內容、code為HTTP狀態碼(網路錯誤與逾時為null)、逾時error以TIMEOUT開頭、
-//   驗證失敗error為OUTPUT_VALIDATION_FAILED——故dispatchAiFallback之失敗分流
-//   (TIMEOUT/驗證失敗跳組, 其餘換金鑰)對本轉接器同樣成立, 無須任何修改。
+//   驗證失敗error為OUTPUT_VALIDATION_FAILED(validate拋錯亦同, 拋錯訊息置stderr)——
+//   dispatchAiFallback據此分流: 逾時/驗證失敗/截斷/工具不支援整組跳過, 其餘換金鑰。
 
 
 //預設值
@@ -72,9 +88,10 @@ let optTruncate = {
  * @param {Object} body 輸入請求本體物件
  * @param {Number} timeoutMs 輸入逾時毫秒
  * @param {Function|null} validator 輸入驗證函式
+ * @param {Boolean} acceptTruncated 輸入是否明示接受截斷內容
  * @returns {Promise} 回傳Promise，resolve回傳結果物件
  */
-async function callOnce(url, headers, body, timeoutMs, validator) {
+async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncated) {
 
     let t0 = Date.now()
 
@@ -134,13 +151,13 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
 
     //取出choices[0]與usage(token用量, 原樣透傳; 失敗回應亦可能已耗token, 一併帶出)
     let content = null
-    let finishReason = ''
+    let finishReasonRaw = null
     let toolCalls = null
     let usage = null
     try {
         let j = JSON.parse(txt)
         content = get(j, 'choices.0.message.content', null)
-        finishReason = get(j, 'choices.0.finish_reason', '')
+        finishReasonRaw = get(j, 'choices.0.finish_reason', null)
         toolCalls = get(j, 'choices.0.message.tool_calls', null)
         usage = get(j, 'usage', null)
         if (!isobj(usage)) {
@@ -148,6 +165,10 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
         }
     }
     catch {}
+
+    //fin, 自此起之每個結果皆外顯正規化終止原因與是否截斷(規則見checkTruncation.mjs)
+    let finishReason = normalizeFinishReason(finishReasonRaw)
+    let fin = { finishReason, truncated: TRUNCATION_REASONS.includes(finishReason) }
 
     //tool_calls, 本轉接器不支援工具迴圈(見檔頭), 明確回報而不假裝成功
     //(Agnes於tool_calls時content為"\n\n"非null, 不攔截會靜默回傳空白內容)
@@ -158,31 +179,67 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
             error: 'TOOL_CALLS_UNSUPPORTED: use a cli kind (opencode/claude/codex/antigravity) when tools are needed',
             errorType: 'tool-unsupported',
             usage,
+            ...fin,
         })
     }
 
-    if (content === null || content === undefined) {
+    //content字串化(少數閘道回array形態); null/undefined一律視為無內容
+    if (content === undefined) {
+        content = null
+    }
+    if (content !== null && typeof content !== 'string') {
+        content = JSON.stringify(content)
+    }
+
+    //截斷, 於null檢查與validate之前裁定: 預設失敗, 明示acceptTruncated才交validate放行(見檔頭)
+    if (fin.truncated) {
+        let d = judgeTruncated({
+            finishReason,
+            content,
+            acceptTruncated,
+            validator,
+            reasoningTokens: get(usage, 'completion_tokens_details.reasoning_tokens', null),
+            label: `finish_reason=${finishReason}`,
+        })
+        if (!d.accept) {
+            return mkResult({
+                stdout: strTruncate(content || '', 500, optTruncate),
+                stderr: strTruncate((d.threw ? `validate threw: ${d.threw}\n` : '') + txt, 500, optTruncate),
+                code: res.status,
+                error: d.error,
+                errorType: 'incomplete',
+                usage,
+                ...fin,
+            })
+        }
+        return mkResult({ ok: true, stdout: content, code: res.status, usage, ...fin })
+    }
+
+    if (content === null) {
         return mkResult({
             stderr: strTruncate(txt, 500, optTruncate),
             code: res.status,
             error: 'INVALID_RESPONSE: missing choices[0].message.content',
             errorType: 'invalid-response',
             usage,
+            ...fin,
         })
-    }
-    if (typeof content !== 'string') {
-        content = JSON.stringify(content) //少數閘道回array形態
     }
 
-    //validator, error與execCli一致令dispatchAiFallback可統一分流
-    if (validator && !validator(content)) {
-        return mkResult({
-            stdout: strTruncate(content, 500, optTruncate),
-            code: res.status,
-            error: 'OUTPUT_VALIDATION_FAILED',
-            errorType: 'validation',
-            usage,
-        })
+    //validator, error與execCli一致令dispatchAiFallback可統一分流; 拋錯視同拒絕(不reject), 訊息置stderr
+    if (validator) {
+        let v = safeValidate(validator, content)
+        if (!v.pass) {
+            return mkResult({
+                stdout: strTruncate(content, 500, optTruncate),
+                stderr: v.threw ? `validate threw: ${v.threw}` : '',
+                code: res.status,
+                error: 'OUTPUT_VALIDATION_FAILED',
+                errorType: 'validation',
+                usage,
+                ...fin,
+            })
+        }
     }
 
     return mkResult({
@@ -190,6 +247,7 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
         stdout: content,
         code: res.status,
         usage,
+        ...fin,
     })
 }
 
@@ -216,12 +274,13 @@ async function callOnce(url, headers, body, timeoutMs, validator) {
  * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
  * @param {String} [opt.system=''] 輸入system提示詞字串，將以system角色置於messages首位，預設''代表不帶
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如temperature、max_tokens、response_format)，將併入預設body(同名鍵以此為準)，預設{}。注意本轉接器不支援工具，帶入tools而模型回tool_calls時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
- * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，預設{}
+ * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，要改回允許壓縮可給{'Accept-Encoding':'gzip, deflate, br'}，預設{}
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，全套件統一預設300000
- * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
+ * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數拋錯視同驗證失敗，預設undefined代表不驗證
+ * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(finish_reason為length)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；content_filter與可見輸出為空者一律失敗，預設false代表截斷一律失敗(errorType incomplete)
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)與截斷不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，無則null)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，無則null)、finishReason(已取得回應時之正規化終止原因字串，缺值為'')、truncated(已取得回應時是否被截斷布林值)，本函數不會reject
  * @example
  * //need network, no cli required
  *
@@ -315,6 +374,9 @@ async function dispatchApiOpenaiCompat(prompt, opt = {}) {
     //validator
     let validator = buildValidator(get(opt, 'validate', null))
 
+    //acceptTruncated, 僅明示true才放行截斷內容(見檔頭)
+    let acceptTruncated = get(opt, 'acceptTruncated', null) === true
+
     //url, baseURL尾端斜線正規化後接上端點
     let url = baseURL.replace(/\/+$/, '') + '/chat/completions'
 
@@ -328,8 +390,8 @@ async function dispatchApiOpenaiCompat(prompt, opt = {}) {
     //body, 額外鍵以bodyExtra為準(可覆寫temperature等, 覆寫messages屬進階用法)
     let body = { model, messages, ...bodyExtra }
 
-    //headers
-    let headers = { 'Content-Type': 'application/json', ...headersExtra }
+    //headers, Accept-Encoding預設identity(防伺服器壓縮卻漏標Content-Encoding, 見檔頭), headersExtra同名鍵可覆寫
+    let headers = { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity', ...headersExtra }
     if (isestr(key)) {
         headers['Authorization'] = `Bearer ${key}`
     }
@@ -344,12 +406,17 @@ async function dispatchApiOpenaiCompat(prompt, opt = {}) {
             await delay(Math.min(retryDelayMs * attempt, MAX_RETRY_DELAY_MS))
         }
 
-        lastResult = await callOnce(url, headers, body, timeoutMs, validator)
+        lastResult = await callOnce(url, headers, body, timeoutMs, validator, acceptTruncated)
         totalAttempts = attempt + 1
 
         if (lastResult.ok) {
             lastResult.attempts = totalAttempts
             return lastResult
+        }
+
+        //不可重試: 截斷為決定性(同一請求必然再截斷, 重試只會再燒一次輸出上限)
+        if (lastResult.truncated === true) {
+            break
         }
 
         //不可重試: 4xx(429除外)為客戶端錯誤, 重試無意義

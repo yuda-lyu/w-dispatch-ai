@@ -1,4 +1,5 @@
 import http from 'http'
+import zlib from 'zlib'
 
 
 // fakeServerForApiTest.mjs — 測試用的OpenAI相容假伺服器
@@ -20,6 +21,9 @@ import http from 'http'
 //   no-choices     — 200但無choices(畸形回應路徑用)
 //   not-json       — 200但本體非JSON(畸形回應路徑用)
 //   tool-calls     — 200但finish_reason為tool_calls(工具不支援路徑用)
+//   br-noheader    — 200, 請求之Accept-Encoding恰為identity才回原文; 否則回brotli壓縮本體且刻意不帶
+//                    Content-Encoding(模擬2026-09-24使用端回報之伺服器: 壓縮卻漏標, Node fetch因而不解壓)
+//   TRUNC_ROUTES   — 200, 依表回指定之finish_reason與content(截斷處理之規格測試用, 見下方常數)
 //   其他           — 404
 // 【responses之行為路由(依body.model)】
 //   echo           — 200, message之output_text為JSON字串{ auth, body }
@@ -30,17 +34,38 @@ import http from 'http'
 //   reasoning-only — 200且completed但output僅reasoning無message(結構不合規)
 //   tool-calls     — 200但output含function_call元素
 //   no-output      — 200但缺output陣列
-//   not-json/slow/err-500/flaky-429 — 同chat/completions之對應行為
+//   incomplete-partial — 200, status為incomplete(max_output_tokens)但已有部分文字(可搶救之截斷陣列)
+//   incomplete-filter  — 200, status為incomplete(content_filter)且有部分文字
+//   no-status      — 200, 缺status欄但有文字(非截斷之不合規狀態)
+//   not-json/slow/err-500/flaky-429/br-noheader — 同chat/completions之對應行為
 //   其他           — 401(同Zen實測: 未知model回401非404)
 // 【systemone之行為路由(POST /v1/systemone, 依body.model; 形狀取自2026-09-17 TypeSafe實測)】
 //   echo / jev-latest — 200, 每題回{type:'noul', noul:0.5, echoAuth, echoBody}, 供斷言請求組成
 //   missing-answer    — 200但answers缺最後一題
 //   no-answers        — 200但無answers
 //   bad-question      — 422 {detail:[{type:'union_tag_invalid',...}]}
-//   not-json/slow/err-500/flaky-429 — 同chat/completions之對應行為
+//   not-json/slow/err-500/flaky-429/br-noheader — 同chat/completions之對應行為
 //   其他              — 400 {detail:{error_type:'api_usage_error', message:'Unknown model: X'}}
 // 【金鑰規則】Authorization含'sk-bad'一律401(優先於model路由), 模擬無效金鑰;
 //   systemone路由之401本體採TypeSafe形狀{detail:{error_type:'authentication_error'}}。
+
+
+//TRUNC_ROUTES, chat/completions之截斷與終止原因情境(2026-09-24截斷處理之規格測試):
+//fr為finish_reason原值(含大小寫與null), content為message.content原值(含null與純空白)
+let TRUNC_ROUTES = {
+    'trunc-empty': { fr: 'length', content: '', usage: { prompt_tokens: 181, completion_tokens: 600, total_tokens: 781, completion_tokens_details: { reasoning_tokens: 600 } } }, //推理耗盡(Zen實測形態)
+    'trunc-null': { fr: 'length', content: null },
+    'trunc-space': { fr: 'length', content: '\n\n' },
+    'trunc-array': { fr: 'length', content: '[{"a":1},{"b":2},{"c":' }, //可搶救前段
+    'trunc-text': { fr: 'length', content: '第一段說明，第二' },
+    'trunc-tail': { fr: 'length', content: '{"a":1}\n\n說明：因為' }, //完整載荷+截尾(寬鬆解析可過)
+    'trunc-upper': { fr: 'LENGTH', content: '[{"a":1},{"b":' }, //大小寫不同
+    'filtered': { fr: 'content_filter', content: '部分內容' },
+    'finish-stop': { fr: 'stop', content: '完成' },
+    'finish-null': { fr: null, content: '完成' },
+    'finish-other': { fr: 'eos', content: '完成' }, //未知值, 不可誤殺
+    'plain-content': { fr: 'stop', content: 'hello world' }, //非JSON純文字
+}
 
 
 /**
@@ -72,6 +97,14 @@ async function fakeServerForApiTest() {
         req.on('end', () => {
 
             let auth = req.headers['authorization'] || ''
+
+            //sendUndeclaredBr, br-noheader路由用: 客戶端明示identity才回原文, 否則回brotli本體且刻意不帶Content-Encoding
+            let ae = String(req.headers['accept-encoding'] || '').trim().toLowerCase()
+            let sendUndeclaredBr = (obj) => {
+                let buf = Buffer.from(JSON.stringify(obj))
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(ae === 'identity' ? buf : zlib.brotliCompressSync(buf))
+            }
 
             //body非JSON → 400
             let body = null
@@ -128,6 +161,13 @@ async function fakeServerForApiTest() {
                 }
                 else if (model === 'bad-question') {
                     send(422, { detail: [{ type: 'union_tag_invalid', loc: ['body', 'questions', ids[0]], msg: 'Input tag does not match any of the expected tags' }] })
+                }
+                else if (model === 'br-noheader') {
+                    let answers = {}
+                    for (let id of ids) {
+                        answers[id] = { type: 'noul', noul: 0.5 }
+                    }
+                    sendUndeclaredBr({ model: 'jev-1.13.0', answers, usage })
                 }
                 else if (model === 'not-json') {
                     res.writeHead(200, { 'Content-Type': 'text/plain' })
@@ -217,6 +257,32 @@ async function fakeServerForApiTest() {
                 else if (model === 'no-output') { //缺output陣列
                     send(200, { status: 'completed', model, id: 'resp_y' })
                 }
+                else if (model === 'incomplete-partial') { //max_output_tokens耗盡但已有部分文字
+                    send(200, {
+                        status: 'incomplete',
+                        model,
+                        error: null,
+                        incomplete_details: { reason: 'max_output_tokens' },
+                        output: [{ type: 'message', content: [{ type: 'output_text', text: '[{"a":1},{"b":2},{"c":' }] }],
+                        usage: { ...usage, output_tokens_details: { reasoning_tokens: 9 } },
+                    })
+                }
+                else if (model === 'incomplete-filter') {
+                    send(200, { status: 'incomplete', model, error: null, incomplete_details: { reason: 'content_filter' }, output: [{ type: 'message', content: [{ type: 'output_text', text: '部分' }] }], usage })
+                }
+                else if (model === 'no-status') {
+                    send(200, { model, error: null, incomplete_details: null, output: [{ type: 'message', content: [{ type: 'output_text', text: 'x' }] }], usage })
+                }
+                else if (model === 'br-noheader') {
+                    sendUndeclaredBr({
+                        status: 'completed',
+                        model,
+                        error: null,
+                        incomplete_details: null,
+                        output: [{ type: 'message', content: [{ type: 'output_text', text: '完成' }] }],
+                        usage,
+                    })
+                }
                 else if (model === 'not-json') {
                     res.writeHead(200, { 'Content-Type': 'text/plain' })
                     res.end('plain text body')
@@ -289,6 +355,17 @@ async function fakeServerForApiTest() {
             else if (model === 'no-choices') {
                 res.writeHead(200, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ id: 'x', object: 'chat.completion' }))
+            }
+            else if (model === 'br-noheader') {
+                sendUndeclaredBr({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '完成' } }] })
+            }
+            else if (TRUNC_ROUTES[model] !== undefined) {
+                let t = TRUNC_ROUTES[model]
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({
+                    choices: [{ finish_reason: t.fr, message: { role: 'assistant', content: t.content } }],
+                    usage: t.usage || { prompt_tokens: 3, completion_tokens: 7, total_tokens: 10 },
+                }))
             }
             else if (model === 'not-json') {
                 res.writeHead(200, { 'Content-Type': 'text/plain' })

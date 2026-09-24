@@ -3,6 +3,7 @@ import dispatchApiOpenaiResponses, { extractOutputText } from '../src/dispatchAp
 import dispatchAi from '../src/dispatchAi.mjs'
 import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
 import dispatchAiWkf from '../src/dispatchAiWkf.mjs'
+import salvageTruncatedArray from '../src/wkf/salvageTruncatedArray.mjs'
 import fakeServerForApiTest from './tools/fakeServerForApiTest.mjs'
 
 
@@ -77,17 +78,74 @@ describe('dispatchApiOpenaiResponses', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('status非completed一律失敗不回半截內容: incomplete與failed', async function() {
+    it('預設帶Accept-Encoding: identity——伺服器壓縮卻漏標Content-Encoding時仍可正確解析(同dispatchApiOpenaiCompat)', async function() {
+        let t = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'br-noheader' })
+        let r = [t.ok, t.code, t.stdout, t.error]
+        let rr = [true, 200, '完成', '']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('status非completed預設失敗不回半截內容: incomplete(截斷, 無可見輸出另附說明)與failed(非截斷)', async function() {
         let t1 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'incomplete' })
         let t2 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'failed' })
         let r = [
-            [t1.ok, t1.errorType, t1.error],
-            [t2.ok, t2.errorType, t2.error],
+            [t1.ok, t1.errorType, t1.error, t1.truncated, t1.finishReason],
+            [t2.ok, t2.errorType, t2.error, t2.truncated],
         ]
         let rr = [
-            [false, 'incomplete', 'INCOMPLETE_RESPONSE: status=incomplete (max_output_tokens)'],
-            [false, 'incomplete', 'INCOMPLETE_RESPONSE: status=failed (upstream blew up)'],
+            [false, 'incomplete', 'INCOMPLETE_RESPONSE: status=incomplete (max_output_tokens); no visible output (reasoning may have used up the output token limit)', true, 'length'],
+            [false, 'incomplete', 'INCOMPLETE_RESPONSE: status=failed (upstream blew up)', false],
         ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('截斷(incomplete)帶部分文字預設失敗; acceptTruncated:true且validate通過則ok帶truncated; content_filter一律失敗; 重試遇截斷不重打', async function() {
+        let salvage = (s) => salvageTruncatedArray(s) !== null
+        let t1 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'incomplete-partial' })
+        let t2 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'incomplete-partial', acceptTruncated: true, validate: salvage })
+        let t3 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'incomplete-filter', acceptTruncated: true })
+        let t4 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'incomplete-partial', maxRetries: 2, retryDelayMs: 10 })
+        let r = [
+            [t1.ok, t1.errorType, t1.truncated, t1.finishReason, t1.error],
+            [t2.ok, t2.stdout, t2.truncated, t2.finishReason],
+            [t3.ok, t3.errorType, t3.truncated, t3.finishReason],
+            t4.attempts,
+        ]
+        let rr = [
+            [false, 'incomplete', true, 'length', 'INCOMPLETE_RESPONSE: status=incomplete (max_output_tokens)'],
+            [true, '[{"a":1},{"b":2},{"c":', true, 'length'],
+            [false, 'incomplete', true, 'content_filter'],
+            1,
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('failed與缺status非截斷(truncated為false), 遞補鏈照舊逐把換金鑰; 完成時finishReason為stop', async function() {
+        let t1 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'no-status' })
+        let t2 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo' })
+        let tf = await dispatchAiFallback('abc', {
+            providers: [{ id: 'g-failed', kind: 'api-openai-responses', baseURL: svr.url, model: 'failed', keys: ['sk-f0', 'sk-f1'] }],
+        })
+        let r = [
+            [t1.ok, t1.errorType, t1.truncated, t1.error],
+            [t2.ok, t2.truncated, t2.finishReason],
+            tf.tried.map((x) => [x.keyId, x.outcome]),
+        ]
+        let rr = [
+            [false, 'incomplete', false, 'INCOMPLETE_RESPONSE: status=missing (unknown)'],
+            [true, false, 'stop'],
+            [['g-failed#0', 'next-key'], ['g-failed#1', 'next-key']],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('validate拋錯視同驗證失敗, Promise照常resolve不reject', async function() {
+        let boom = () => {
+            throw new Error('boom-validate')
+        }
+        let t = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo', validate: boom })
+        let r = [t.ok, t.errorType, t.error, t.stderr.includes('boom-validate')]
+        let rr = [false, 'validation', 'OUTPUT_VALIDATION_FAILED', true]
         assert.strict.deepEqual(r, rr)
     })
 

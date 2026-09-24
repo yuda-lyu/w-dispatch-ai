@@ -17,8 +17,12 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 // 【兩層策略】群組之間依providers宣告順序(優先序), 群組之內(keys多把)以游標輪替(額度均攤)。
 //
 // 【失敗分流】只分兩路:
-//   與金鑰無關之失敗(TIMEOUT/ENOENT/參數錯誤/驗證失敗/未知kind) → 整組跳過——
+//   與金鑰無關之失敗(TIMEOUT/ENOENT/參數錯誤/驗證失敗/未知kind/截斷/工具不支援) → 整組跳過——
 //   同組各金鑰共用同一exe與model, 換金鑰必然再敗一次, 純屬空耗;
+//   截斷(結果之truncated為true, 僅REST文字類可判, 見checkTruncation.mjs)與工具不支援(TOOL_CALLS_UNSUPPORTED)
+//   皆屬模型對同一請求之產出性質, 2026-09-24起納入(前者由複審指出同模型換金鑰再截斷一次;
+//   後者之既有測試標題即寫「不逐把空耗」而斷言卻為逐把換金鑰, 一併更正);
+//   REST之status=failed(服務回錯)不屬截斷, 維持換金鑰;
 //   其餘失敗(含額度上限/金鑰無效/服務回錯等一切未分類者) → 換組內下一把, 不記憶、不停用。
 //   不可把正確性建立在「錯誤分類器必須窮盡」之上——實測各家額度/金鑰錯誤訊息
 //   含中文(无效的令牌)與無特徵字串(UnknownError), 正則涵蓋不了; 而額度視窗有5小時滾動、
@@ -175,6 +179,17 @@ function reorderByCooling(providers, state, cooldownMs, saveState) {
 
 
 /**
+ * 取結果之截斷資訊供tried各項記錄(REST文字類轉接器才帶, 其餘kind回空物件)
+ *
+ * @param {Object} r 輸入dispatchAi結果物件
+ * @returns {Object} 回傳物件，含truncated與finishReason，或空物件
+ */
+function finOf(r) {
+    return (get(r, 'truncated', undefined) !== undefined) ? { truncated: r.truncated, finishReason: r.finishReason } : {}
+}
+
+
+/**
  * 判斷失敗結果是否與「哪一把金鑰」無關(換組內金鑰必然再敗, 應整組跳過)
  *
  * @param {Object} r 輸入dispatchAi失敗結果物件
@@ -209,6 +224,16 @@ function isKeyIndependentFail(r) {
         return true
     }
 
+    //截斷, 同模型同請求換金鑰必然再截斷(依機械旗標truncated判定, 不依errorType——REST之status=failed亦為incomplete但非截斷)
+    if (get(r, 'truncated', false) === true) {
+        return true
+    }
+
+    //模型回工具呼叫而api類不支援, 屬模型對同一請求之產出性質, 換金鑰仍是同樣產出
+    if (error.indexOf('TOOL_CALLS_UNSUPPORTED') === 0) {
+        return true
+    }
+
     //kind無效, 屬條目設定錯誤
     if (error.indexOf('unknown ai kind') === 0) {
         return true
@@ -225,7 +250,7 @@ function isKeyIndependentFail(r) {
  * providers陣列順序即優先序，排前面的先用；
  * 條目本身即該次調用之opt(除id與keys外原樣透傳對應轉接器)，與dispatchAi「條目直接當opt」同一約定；
  * 條目給予keys(多把金鑰)時以游標輪替，某把失敗自動換下一把，全數失敗才遞補下一組；
- * 與金鑰無關之失敗(逾時/執行檔不存在/參數錯誤/輸出未過驗證/未知kind)直接整組跳過，不逐把空耗；
+ * 與金鑰無關之失敗(逾時/執行檔不存在/參數錯誤/輸出未過驗證/未知kind/截斷/工具不支援)直接整組跳過，不逐把空耗；
  * 跨次執行僅記憶游標(經store注入持久化)，不設金鑰停用清單——額度視窗形態多樣(5小時滾動/逐時/逐日)，
  * 停用會把已恢復的金鑰閒置，而重探的代價僅一次快速失敗；
  * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
@@ -247,7 +272,7 @@ function isKeyIndependentFail(r) {
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則，條目可覆寫，預設undefined
  * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；REST文字類轉接器另帶finishReason與truncated(是否截斷)，同樣流出於結果與tried各項；本函數不會reject
  * @example
  * //need opencode, claude, codex cli in system PATH
  *
@@ -443,7 +468,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
                     saveState()
                 }
                 emit({ type: 'ok', providerId: id, keyIndex, keyId, durationMs: r.durationMs })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'ok', durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}) })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'ok', durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
                 return { ...r, providerId: id, keyIndex, kind, model, tried }
             }
 
@@ -474,14 +499,14 @@ async function dispatchAiFallback(prompt, opt = {}) {
 
                 //與金鑰無關, 整組跳過
                 emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}) })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
                 skipGroup = true
             }
             else {
 
                 //其餘(含額度上限/金鑰無效/未分類), 換組內下一把, 不記憶不停用
                 emit({ type: 'next-key', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}) })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
             }
 
         }

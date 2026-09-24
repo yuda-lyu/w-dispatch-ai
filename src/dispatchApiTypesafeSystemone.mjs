@@ -11,6 +11,7 @@ import castPintOr from './castPintOr.mjs'
 import buildValidator from './buildValidator.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
+import { safeValidate } from './checkTruncation.mjs'
 
 
 // dispatchApiTypesafeSystemone.mjs — 以fetch直呼TypeSafe AI之System One API(POST /v1/systemone)
@@ -40,6 +41,9 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 // 【錯誤(實測)】壞金鑰401 {detail:{error_type:'authentication_error'}}; 未知model 400
 //   {detail:{error_type:'api_usage_error', message:'Unknown model: X'}}; 題型不合規或questions為空422
 //   {detail:[{type,loc,msg,...}]}。皆以HTTP <code>回報、原始本體置stderr; 4xx(429除外)不重試。
+//
+// 【預設帶Accept-Encoding: identity(2026-09-24起)】防伺服器壓縮卻漏標Content-Encoding而令fetch不解壓、
+//   JSON.parse失敗; 與dispatchApiOpenaiCompat同一決策與依據(見該檔檔頭; 本kind亦經Zen之/systemone), opt.headers可覆寫。
 //
 // 【混用注意】
 //   1. 答案形狀與文字模型完全不同, 不可與文字生成條目混在同一條dispatchAiFallback鏈中遞補;
@@ -180,16 +184,20 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
     //content, answers序列化為stdout(令遞補層與工作流層之parse/check通用)
     let content = JSON.stringify(answers)
 
-    //validator, error與execCli一致令dispatchAiFallback可統一分流
-    if (validator && !validator(content)) {
-        return mkResult({
-            stdout: strTruncate(content, 500, optTruncate),
-            code: res.status,
-            error: 'OUTPUT_VALIDATION_FAILED',
-            errorType: 'validation',
-            usage,
-            modelResolved,
-        })
+    //validator, error與execCli一致令dispatchAiFallback可統一分流; 拋錯視同拒絕(不reject), 訊息置stderr
+    if (validator) {
+        let v = safeValidate(validator, content)
+        if (!v.pass) {
+            return mkResult({
+                stdout: strTruncate(content, 500, optTruncate),
+                stderr: v.threw ? `validate threw: ${v.threw}` : '',
+                code: res.status,
+                error: 'OUTPUT_VALIDATION_FAILED',
+                errorType: 'validation',
+                usage,
+                modelResolved,
+            })
+        }
     }
 
     return mkResult({
@@ -225,9 +233,9 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
  * @param {String} [opt.model='jev-latest'] 輸入模型名稱字串，預設'jev-latest'(另有'jev-preview')
  * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
  * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}
- * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，預設{}
+ * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，預設{}
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求，全套件統一預設300000
- * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數拋錯視同驗證失敗，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(answers之JSON字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，欄位名為input_tokens/output_tokens，無則null)、answers(成功時為已解析之答案物件，否則null)、modelResolved(回應所載之實際模型版本字串，如'jev-1.13.0'，無則'')，本函數不會reject
@@ -335,7 +343,7 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     let ids = Object.keys(isobj(body.questions) ? body.questions : questions)
 
     //headers
-    let headers = { 'Content-Type': 'application/json', ...headersExtra }
+    let headers = { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity', ...headersExtra } //Accept-Encoding預設identity, 見檔頭
     if (isestr(key)) {
         headers['Authorization'] = `Bearer ${key}`
     }

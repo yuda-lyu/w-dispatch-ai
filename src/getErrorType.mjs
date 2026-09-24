@@ -24,8 +24,10 @@ import isestr from 'wsemi/src/isestr.mjs'
 //   'tool-unsupported' 模型回tool_calls而本轉接器不支援工具(僅api類)
 //   'invalid-response' 回應結構不合規(缺choices[0].message.content、缺output陣列,
 //                      或api-typesafe-systemone缺answers物件/缺所請求題目之答案, 僅api類)
-//   'incomplete'       Responses API之status非completed(如max_output_tokens耗盡而截斷,
-//                      僅api-openai-responses; 半截內容不當成功回傳, 見該轉接器檔頭)
+//   'incomplete'       回應未完整: 截斷(chat/completions之finish_reason為length/content_filter、
+//                      Responses API之status為incomplete; 結果另帶truncated:true, 規則見checkTruncation.mjs)
+//                      與Responses API之其餘非completed狀態(如failed; truncated:false)。僅api類;
+//                      半截內容預設不當成功回傳, 呼叫端明示acceptTruncated才可放行(2026-09-24起兩轉接器同規則)
 //   'aborted'          shouldStop中止(僅dispatchAiFallback)
 //   'budget'           時間預算用盡(僅dispatchAiFallback)
 

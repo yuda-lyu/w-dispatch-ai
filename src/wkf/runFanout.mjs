@@ -19,6 +19,8 @@ import callAiWithFallback from './callAiWithFallback.mjs'
 //
 // 【實測依據(2026-08-10評比)】整合者是本流程的單點故障——端點不穩的模型
 //   (如偶發靜默空回者)當整合者時, 靠spec.fallback遞補或maxRetries調高才能保住整條鏈。
+//   注意推理模型之空回常是推理耗盡輸出上限(REST類以截斷回報且不重試, 見checkTruncation.mjs),
+//   該調的是max_tokens而非maxRetries。
 
 
 /**

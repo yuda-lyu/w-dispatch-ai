@@ -58,6 +58,23 @@ describe('dispatchApiTypesafeSystemone', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('預設帶Accept-Encoding: identity——伺服器壓縮卻漏標Content-Encoding時仍可正確解析(同dispatchApiOpenaiCompat)', async function() {
+        let t = await dispatchApiTypesafeSystemone('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'br-noheader', questions: Q })
+        let r = [t.ok, t.code, Object.keys(t.answers || {}), t.error]
+        let rr = [true, 200, ['category', 'urgent'], '']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('validate拋錯視同驗證失敗, Promise照常resolve不reject(同dispatchApiOpenaiCompat)', async function() {
+        let boom = () => {
+            throw new Error('boom-validate')
+        }
+        let t = await dispatchApiTypesafeSystemone('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo', questions: Q, validate: boom })
+        let r = [t.ok, t.errorType, t.error, t.stderr.includes('boom-validate')]
+        let rr = [false, 'validation', 'OUTPUT_VALIDATION_FAILED', true]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('成功: stdout為answers之JSON字串且與answers一致, 追加modelResolved, usage原樣透傳', async function() {
         let t = await dispatchApiTypesafeSystemone('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo', questions: Q })
         let r = [t.ok, t.error, JSON.parse(t.stdout), Object.keys(t.answers), t.modelResolved, t.usage]

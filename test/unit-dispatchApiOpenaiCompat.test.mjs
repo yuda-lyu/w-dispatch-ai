@@ -3,6 +3,8 @@ import dispatchApiOpenaiCompat from '../src/dispatchApiOpenaiCompat.mjs'
 import dispatchAi from '../src/dispatchAi.mjs'
 import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
 import dispatchAiWkf from '../src/dispatchAiWkf.mjs'
+import extractJsonLoose from '../src/wkf/extractJsonLoose.mjs'
+import salvageTruncatedArray from '../src/wkf/salvageTruncatedArray.mjs'
 import fakeServerForApiTest from './tools/fakeServerForApiTest.mjs'
 
 
@@ -161,6 +163,20 @@ describe('dispatchApiOpenaiCompat', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('預設帶Accept-Encoding: identity——伺服器壓縮卻漏標Content-Encoding時仍可正確解析(2026-09-24使用端回報)', async function() {
+        let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'br-noheader' })
+        let r = [t.ok, t.code, t.stdout, t.error]
+        let rr = [true, 200, '完成', '']
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('呼叫端headers可覆寫Accept-Encoding: 改回允許壓縮時, 遇漏標之壓縮本體即解析失敗(invalid-response)', async function() {
+        let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'br-noheader', headers: { 'Accept-Encoding': 'gzip, deflate' } })
+        let r = [t.ok, t.code, t.errorType, t.error]
+        let rr = [false, 200, 'invalid-response', 'INVALID_RESPONSE: missing choices[0].message.content']
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('validate字串規則與自訂函數皆可用, 失敗回傳OUTPUT_VALIDATION_FAILED', async function() {
         let t1 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'empty-content', validate: 'nonempty' })
         let t2 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo', validate: 'nonempty,json' })
@@ -205,7 +221,159 @@ describe('dispatchApiOpenaiCompat', function() {
             ],
         })
         let r = [t.ok, t.providerId, t.tried.map((x) => [x.keyId, x.outcome])]
-        let rr = [true, 'g-text', [['g-tool#0', 'next-key'], ['g-tool#1', 'next-key'], ['g-text#0', 'ok']]]
+        let rr = [true, 'g-text', [['g-tool#0', 'skip-group'], ['g-text#0', 'ok']]]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('截斷預設失敗: finish_reason為length且可見輸出為空(空字串/null/純空白)一律incomplete, 訊息標明無可見輸出並附reasoning_tokens', async function() {
+        let r = []
+        for (let model of ['trunc-empty', 'trunc-null', 'trunc-space']) {
+            let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model })
+            r.push([t.ok, t.errorType, t.truncated, t.finishReason, t.error.indexOf('INCOMPLETE_RESPONSE: finish_reason=length') === 0, t.error.includes('no visible output')])
+        }
+        let t0 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'trunc-empty' })
+        r.push(t0.error.includes('reasoning_tokens=600'))
+        let rr = [
+            [false, 'incomplete', true, 'length', true, true],
+            [false, 'incomplete', true, 'length', true, true],
+            [false, 'incomplete', true, 'length', true, true],
+            true,
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('截斷預設失敗且與validate無關: 截斷陣列/截斷文字/完整載荷加截尾 × {無, nonempty, json, 搶救函數}皆incomplete', async function() {
+        let salvage = (s) => salvageTruncatedArray(s) !== null
+        let r = []
+        for (let model of ['trunc-array', 'trunc-text', 'trunc-tail']) {
+            for (let validate of [undefined, 'nonempty', 'json', salvage]) {
+                let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model, validate })
+                r.push([model, t.ok, t.errorType, t.truncated])
+            }
+        }
+        let rr = []
+        for (let model of ['trunc-array', 'trunc-text', 'trunc-tail']) {
+            for (let i = 0; i < 4; i++) {
+                rr.push([model, false, 'incomplete', true])
+            }
+        }
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('acceptTruncated:true才放行: length且內容非空交validate(通過ok帶truncated、不過incomplete、無validate亦ok); 空內容與content_filter仍失敗', async function() {
+        let salvage = (s) => salvageTruncatedArray(s) !== null
+        let a1 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'trunc-array', acceptTruncated: true, validate: salvage })
+        let a2 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'trunc-text', acceptTruncated: true, validate: 'json' })
+        let a3 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'trunc-text', acceptTruncated: true })
+        let a4 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'trunc-empty', acceptTruncated: true })
+        let a5 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'filtered', acceptTruncated: true })
+        let r = [
+            [a1.ok, a1.stdout, a1.truncated, a1.finishReason],
+            [a2.ok, a2.errorType, a2.truncated, a2.error.includes('rejected by validate')],
+            [a3.ok, a3.stdout, a3.truncated],
+            [a4.ok, a4.errorType],
+            [a5.ok, a5.errorType, a5.truncated, a5.finishReason],
+        ]
+        let rr = [
+            [true, '[{"a":1},{"b":2},{"c":', true, 'length'],
+            [false, 'incomplete', true, true],
+            [true, '第一段說明，第二', true],
+            [false, 'incomplete'],
+            [false, 'incomplete', true, 'content_filter'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('防誤殺: finish_reason為stop、null、未知值時照常成功且truncated為false; 截斷判定不分大小寫', async function() {
+        let r = []
+        for (let model of ['finish-stop', 'finish-null', 'finish-other']) {
+            let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model })
+            r.push([model, t.ok, t.stdout, t.truncated, t.finishReason])
+        }
+        let tu = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'trunc-upper' })
+        r.push(['trunc-upper', tu.ok, tu.errorType, tu.finishReason])
+        let rr = [
+            ['finish-stop', true, '完成', false, 'stop'],
+            ['finish-null', true, '完成', false, ''],
+            ['finish-other', true, '完成', false, 'eos'],
+            ['trunc-upper', false, 'incomplete', 'length'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('截斷與金鑰無關: 遞補鏈只試一把即整組跳過且tried帶truncated; 轉接器重試遇截斷不重打', async function() {
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'g-trunc', kind: 'api-openai-compat', baseURL: svr.url, model: 'trunc-text', keys: ['sk-a0', 'sk-a1'] },
+                { id: 'g-ok', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-b0'] },
+            ],
+        })
+        let t2 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'trunc-text', maxRetries: 2, retryDelayMs: 10 })
+        let r = [t.ok, t.providerId, t.tried.map((x) => [x.keyId, x.outcome, x.truncated === true]), t2.attempts]
+        let rr = [true, 'g-ok', [['g-trunc#0', 'skip-group', true], ['g-ok#0', 'ok', false]], 1]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('validate拋錯視同驗證失敗, Promise照常resolve不reject', async function() {
+        let boom = () => {
+            throw new Error('boom-validate')
+        }
+        let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'echo', validate: boom })
+        let r = [t.ok, t.errorType, t.error, t.stderr.includes('boom-validate')]
+        let rr = [false, 'validation', 'OUTPUT_VALIDATION_FAILED', true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('工作流: 自訂搶救parse遇截斷即視為同意→ok且json為前段、truncated可見; 預設parse、rawText、明示acceptTruncated:false遇截斷→失敗', async function() {
+        let wkf = dispatchAiWkf({
+            providers: {
+                'p-trunc': { kind: 'api-openai-compat', baseURL: svr.url, model: 'trunc-array', keys: ['sk-w1'] },
+                'p-trunc-text': { kind: 'api-openai-compat', baseURL: svr.url, model: 'trunc-text', keys: ['sk-w2'] },
+            },
+            defaults: { promptPrefix: '' },
+        })
+        let parseSalvage = (s) => extractJsonLoose(s) || salvageTruncatedArray(s)
+        let t1 = await wkf.callAi('abc', { spec: { use: 'p-trunc' }, parse: parseSalvage })
+        let t2 = await wkf.callAi('abc', { spec: { use: 'p-trunc' } })
+        let t3 = await wkf.callAi('abc', { spec: { use: 'p-trunc-text' }, rawText: true })
+        let t4 = await wkf.callAi('abc', { spec: { use: 'p-trunc' }, parse: parseSalvage, acceptTruncated: false })
+        let r = [
+            [t1.ok, t1.json, t1.truncated, t1.finishReason],
+            [t2.ok, t2.errorType, t2.truncated, t2.tried.map((x) => x.outcome)],
+            [t3.ok, t3.errorType],
+            [t4.ok, t4.errorType],
+        ]
+        let rr = [
+            [true, [{ a: 1 }, { b: 2 }], true, 'length'],
+            [false, 'incomplete', true, ['skip-group']],
+            [false, 'incomplete'],
+            [false, 'incomplete'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('工作流: 條目自帶validate不再繞過工作流驗證(兩者取交集), 不過即遞補下一家', async function() {
+        let wkf = dispatchAiWkf({
+            providers: {
+                'p-plain': { kind: 'api-openai-compat', baseURL: svr.url, model: 'plain-content', keys: ['sk-v1'], validate: 'nonempty' },
+                'p-echo': { kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-v2'] },
+            },
+            defaults: { promptPrefix: '' },
+        })
+        let t = await wkf.callAi('abc', { spec: { use: 'p-plain', fallback: ['p-echo'] } })
+        let r = [t.ok, t.providerId, t.tried.map((x) => [x.providerId, x.outcome, x.error || null])]
+        let rr = [true, 'p-echo', [['p-plain', 'skip-group', 'OUTPUT_VALIDATION_FAILED'], ['p-echo', 'ok', null]]]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('工作流: check拋錯視同驗證失敗, callAi照常resolve不reject', async function() {
+        let wkf = dispatchAiWkf({
+            providers: { 'p-e1': { kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-c1'] } },
+            defaults: { promptPrefix: '' },
+        })
+        let t = await wkf.callAi('abc', { spec: { use: 'p-e1' }, check: (j) => j.nope.deep === 1 })
+        let r = [t.ok, t.errorType, t.error]
+        let rr = [false, 'validation', 'OUTPUT_VALIDATION_FAILED']
         assert.strict.deepEqual(r, rr)
     })
 

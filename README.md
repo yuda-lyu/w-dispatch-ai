@@ -298,9 +298,10 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `key` | String | `''` | API key，以`Bearer`置於`Authorization`標頭，省略代表不帶認證 |
 | `system` | String | `''` | system提示詞，置於messages首位 |
 | `body` | Object | `{}` | 額外請求本體（`temperature`、`max_tokens`、`response_format`等），同名鍵覆寫預設 |
-| `headers` | Object | `{}` | 額外請求標頭 |
+| `headers` | Object | `{}` | 額外請求標頭，同名鍵覆寫預設。**預設帶 `Accept-Encoding: identity`**：伺服器若壓縮了回應卻漏標 `Content-Encoding`，Node 內建 fetch 不會解壓，本轉接器只拿到亂碼而回 `INVALID_RESPONSE`（2026-09-24 使用端回報於 Zen；三個 REST 轉接器同步）。要改回允許壓縮可給 `{ 'Accept-Encoding': 'gzip, deflate, br' }` |
 | `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時中止請求（含回應串流讀取）；全套件統一預設 |
-| `maxRetries` | Integer | `0` | 失敗重試次數；**4xx(429除外)為客戶端錯誤不重試**，429/5xx/網路錯誤/逾時線性退避重試 |
+| `maxRetries` | Integer | `0` | 失敗重試次數；**4xx(429除外)為客戶端錯誤不重試**，截斷（見`acceptTruncated`）亦不重試（同一請求必然再截斷），429/5xx/網路錯誤/逾時線性退避重試 |
+| `acceptTruncated` | Boolean | `false` | **截斷預設失敗**：`finish_reason`為`length`或`content_filter`時，於`validate`之前回`errorType: 'incomplete'`（結果帶`truncated: true`，遞補層整組跳過）。`true`才放行`length`之截斷：有`validate`交其裁決、無則直接接受，結果仍標`truncated: true`；`content_filter`與可見輸出為空者一律失敗（空輸出之訊息附`reasoning_tokens`，常見於推理耗盡`max_tokens`）。`dispatchApiOpenaiResponses`同規則（`status: 'incomplete'`即截斷；`failed`不屬截斷）。工作流層`callAi`之預設見`salvageTruncatedArray`列 |
 | `retryDelayMs` | Integer | `5000` | 重試間隔，實際為`retryDelayMs`×次數且上限15000ms |
 
 結果結構對齊execCli：`stdout`為回覆內容、`code`為HTTP狀態碼（網路錯誤/逾時為`null`）、逾時`error`以`TIMEOUT`開頭、驗證失敗為`OUTPUT_VALIDATION_FAILED`——故可直接作為`dispatchAiFallback`條目（`kind: 'api-openai-compat'`，`keys`多金鑰輪替同樣適用）與工作流provider。
@@ -320,6 +321,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `fetch` | 網路層錯誤（DNS／連線拒絕） | api類 |
 | `tool-unsupported` | 模型回tool_calls而api類不支援工具 | api類 |
 | `invalid-response` | 回應結構不合規（缺`choices[0].message.content`、缺`output`陣列，或 systemone 缺`answers`／缺所請求題目之答案） | api類 |
+| `incomplete` | 回應未完整：截斷（`finish_reason`為`length`／`content_filter`、Responses API 之`status: 'incomplete'`；結果帶`truncated: true`）或 Responses API 之其餘非完成狀態（如`failed`，`truncated: false`）。截斷判定只適用 REST 文字類；CLI 類拿不到終止訊號，截斷無從判別（已知限制） | api類 |
 | `aborted` | `shouldStop`中止 | fallback層 |
 | `budget` | 時間預算用盡 | fallback層 |
 
@@ -334,7 +336,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `baseURL` | String | `'https://api.typesafe.ai/v1'` | 將於尾端接上`/systemone` |
 | `model` | String | `'jev-latest'` | 另有`'jev-preview'`；回應之實際版本見結果之`modelResolved`（如`'jev-1.13.0'`） |
 | `key` | String | `''` | API key（`.env` 慣用 `TYPESAFE_KEYS`），以`Bearer`置於`Authorization`標頭 |
-| `body`／`headers` | Object | `{}` | 額外請求本體／標頭，同名鍵覆寫預設 |
+| `body`／`headers` | Object | `{}` | 額外請求本體／標頭，同名鍵覆寫預設（標頭預設同 `dispatchApiOpenaiCompat` 帶 `Accept-Encoding: identity`） |
 | `timeoutMs`／`validate`／`maxRetries`／`retryDelayMs` | | | 同 `dispatchApiOpenaiCompat`（4xx 除 429 外不重試） |
 
 | 題型 `type` | `criteria` | 答案欄位 |
@@ -415,6 +417,8 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | 執行檔不存在 | `error`含`ENOENT` | 整組跳過 |
 | 參數錯誤 | `code === 2` | 整組跳過 |
 | 輸出未過驗證 | `error === 'OUTPUT_VALIDATION_FAILED'` | 整組跳過 |
+| 截斷（REST 文字類） | `truncated === true` | 整組跳過（同模型同請求換金鑰必然再截斷；`status: 'failed'`不屬此列，照「其餘」換下一把） |
+| 模型回工具呼叫而 api 類不支援 | `error`以`TOOL_CALLS_UNSUPPORTED`開頭 | 整組跳過 |
 | kind無效 | `error`以`unknown ai kind`開頭 | 整組跳過 |
 | 其餘（含額度上限、金鑰無效、服務回錯） | — | 換組內下一把 |
 
@@ -467,7 +471,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
     keyIndex: 1,                        //實際使用之金鑰索引, 無keys時為null
     kind: 'api-openai-compat',
     model: 'agnes-2.0-flash',
-    tried: [                   //完整嘗試歷程, 成功時亦回傳; 失敗項另含stdout(被拒回覆)與stderr(錯誤輸出, 皆已截斷)供診斷
+    tried: [                   //完整嘗試歷程, 成功時亦回傳; 失敗項另含stdout(被拒回覆)與stderr(錯誤輸出, 皆已截斷)供診斷; REST文字類各項另帶truncated與finishReason
         { providerId: 'agnes:agnes-2.0-flash', keyIndex: 0, keyId: 'agnes:agnes-2.0-flash#0', outcome: 'next-key', error: 'HTTP 401', durationMs: 105 },
         { providerId: 'agnes:agnes-2.0-flash', keyIndex: 1, keyId: 'agnes:agnes-2.0-flash#1', outcome: 'ok', durationMs: 1161 },
     ],
@@ -606,7 +610,7 @@ let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)),
 let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```
 
-**推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷，而 `api-openai-compat` 遇截斷仍回 `ok`（內容殘缺或為空）；內建之 `zen:space-bunny-free` 即用 32768。
+**推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；內建之 `zen:space-bunny-free` 即用 32768。
 
 **警語：動「輸入」、不要動「回傳」**——把條目 push 進回傳的 `providers` 陣列不會同步進 `table`，兩者當場分歧；合併輸入再呼叫則兩種輸出同源產出、必然一致。另同 id 重複條目屬設定錯誤（共用游標、日誌無法區分），合併時務必如上例先濾再接。
 
@@ -617,7 +621,7 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 | `createFileStore({ dir })` | `dispatchAiFallback`之`store`的檔案持久化——排程任務每次執行都是新行程，記憶體游標/冷卻每次歸零；本實作採**排除式passthrough**（state原封存還，僅剔自用欄位`at`），日後套件擴充state欄位自動相容（殷鑑：白名單store曾把1.0.7新增的`cooling`靜默丟棄） |
 | `createUsageCounter({ dir })` | 逐日逐鍵用量計帳，`onEvent`直接掛進dispatch即於`try`事件記帳；**純觀測絕不據以節流**（額度視窗形態多樣，臆測門檻擋自己的呼叫等同拿猜測當事實）；排程環境務必注入`getDate`錨定時區 |
 | `budgetFor(chain)` | 遞補鏈走滿全鏈之時間預算（Σ各條目`timeoutMs`，未帶者以統一預設300000計）；與外部排程硬上限取小者交`budgetMs` |
-| `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可 |
+| `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可。REST 文字類截斷預設失敗，但工作流`callAi`之`acceptTruncated`預設為「有自訂`parse`且非`rawText`」，故注入自訂`parse`即同意接受截斷內容、既有用法不必改；結果之`truncated: true`可辨識救回的是半批；直接呼叫轉接器時須自行給`acceptTruncated: true`。限制：只救頂層元素為物件之陣列，從第一個`[`起算（外包物件如`{"items":[…`會救回內層陣列、前言含`[`會失效） |
 | `NO_SIDE_EFFECT` | 防副作用prompt前綴之單一來源（措辭含唯讀查閱豁免——codex以shell讀檔，一律禁指令等同禁讀檔）；工作流`callAi`預設自動掛上，直呼`dispatchAiFallback`者自行前綴 |
 
 #### 訂閱額度查詢(quota)：`getQuotaClaude`／`getQuotaCodex`／`getQuotaAntigravity`
