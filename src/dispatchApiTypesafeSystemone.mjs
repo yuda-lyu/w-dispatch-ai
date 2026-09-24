@@ -12,6 +12,7 @@ import buildValidator from './buildValidator.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { safeValidate } from './checkTruncation.mjs'
+import describeNonJsonBody from './describeNonJsonBody.mjs'
 
 
 // dispatchApiTypesafeSystemone.mjs — 以fetch直呼TypeSafe AI之System One API(POST /v1/systemone)
@@ -44,6 +45,8 @@ import { safeValidate } from './checkTruncation.mjs'
 //
 // 【預設帶Accept-Encoding: identity(2026-09-24起)】防伺服器壓縮卻漏標Content-Encoding而令fetch不解壓、
 //   JSON.parse失敗; 與dispatchApiOpenaiCompat同一決策與依據(見該檔檔頭; 本kind亦經Zen之/systemone), opt.headers可覆寫。
+//   HTTP 200但本體非JSON時另報INVALID_RESPONSE: body is not JSON(附原始位元組資訊), 與「缺answers」分開
+//   (同dispatchApiOpenaiCompat, 見describeNonJsonBody.mjs)。
 //
 // 【混用注意】
 //   1. 答案形狀與文字模型完全不同, 不可與文字生成條目混在同一條dispatchAiFallback鏈中遞補;
@@ -103,7 +106,9 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
         controller.abort()
     }, timeoutMs)
 
+    //本體先取原始位元組再以UTF-8解碼(等同res.text()), 本體非JSON時才有原始位元組可供診斷(見describeNonJsonBody.mjs)
     let res = null
+    let raw = new Uint8Array(0)
     let txt = ''
     try {
         res = await fetch(url, {
@@ -112,7 +117,8 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
             body: JSON.stringify(body),
             signal: controller.signal,
         })
-        txt = await res.text()
+        raw = new Uint8Array(await res.arrayBuffer())
+        txt = new TextDecoder('utf-8').decode(raw)
     }
     catch (err) {
         clearTimeout(timer)
@@ -142,6 +148,7 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
     let answers = null
     let modelResolved = ''
     let usage = null
+    let parsed = true
     try {
         let j = JSON.parse(txt)
         answers = get(j, 'answers', null)
@@ -155,7 +162,17 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
         }
     }
     catch {
-        answers = null
+        parsed = false
+    }
+
+    //本體非JSON, 與「JSON缺answers」分開回報並附原始位元組資訊; 遞補層據前綴整組跳過(見describeNonJsonBody.mjs)
+    if (!parsed) {
+        return mkResult({
+            stderr: strTruncate(txt, 500, optTruncate),
+            code: res.status,
+            error: describeNonJsonBody(raw, res.headers),
+            errorType: 'invalid-response',
+        })
     }
     if (!isobj(answers)) {
         return mkResult({

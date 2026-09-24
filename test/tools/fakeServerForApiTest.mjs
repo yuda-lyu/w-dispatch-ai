@@ -24,6 +24,7 @@ import zlib from 'zlib'
 //   br-noheader    — 200, 請求之Accept-Encoding恰為identity才回原文; 否則回brotli壓縮本體且刻意不帶
 //                    Content-Encoding(模擬2026-09-24使用端回報之伺服器: 壓縮卻漏標, Node fetch因而不解壓)
 //   TRUNC_ROUTES   — 200, 依表回指定之finish_reason與content(截斷處理之規格測試用, 見下方常數)
+//   garbage-200    — 200, Content-Type為application/json但本體為8個非JSON位元組(模擬壓縮或損壞本體)
 //   其他           — 404
 // 【responses之行為路由(依body.model)】
 //   echo           — 200, message之output_text為JSON字串{ auth, body }
@@ -37,14 +38,14 @@ import zlib from 'zlib'
 //   incomplete-partial — 200, status為incomplete(max_output_tokens)但已有部分文字(可搶救之截斷陣列)
 //   incomplete-filter  — 200, status為incomplete(content_filter)且有部分文字
 //   no-status      — 200, 缺status欄但有文字(非截斷之不合規狀態)
-//   not-json/slow/err-500/flaky-429/br-noheader — 同chat/completions之對應行為
+//   not-json/slow/err-500/flaky-429/br-noheader/garbage-200 — 同chat/completions之對應行為
 //   其他           — 401(同Zen實測: 未知model回401非404)
 // 【systemone之行為路由(POST /v1/systemone, 依body.model; 形狀取自2026-09-17 TypeSafe實測)】
 //   echo / jev-latest — 200, 每題回{type:'noul', noul:0.5, echoAuth, echoBody}, 供斷言請求組成
 //   missing-answer    — 200但answers缺最後一題
 //   no-answers        — 200但無answers
 //   bad-question      — 422 {detail:[{type:'union_tag_invalid',...}]}
-//   not-json/slow/err-500/flaky-429/br-noheader — 同chat/completions之對應行為
+//   not-json/slow/err-500/flaky-429/br-noheader/garbage-200 — 同chat/completions之對應行為
 //   其他              — 400 {detail:{error_type:'api_usage_error', message:'Unknown model: X'}}
 // 【金鑰規則】Authorization含'sk-bad'一律401(優先於model路由), 模擬無效金鑰;
 //   systemone路由之401本體採TypeSafe形狀{detail:{error_type:'authentication_error'}}。
@@ -114,6 +115,13 @@ async function fakeServerForApiTest() {
             catch {
                 res.writeHead(400, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ error: { message: 'invalid json body' } }))
+                return
+            }
+
+            //garbage-200, 三種端點共用: 200且宣稱JSON, 本體卻是8個非JSON位元組(不論Accept-Encoding)
+            if (body.model === 'garbage-200') {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(Buffer.from([0x8b, 0xef, 0x02, 0x00, 0xe4, 0xff, 0x11, 0x22]))
                 return
             }
 

@@ -211,6 +211,18 @@ await test()
     })
 ```
 
+#### 行為變更紀錄（依賴方升版前請檢查）:
+**1.0.37 起**（皆為安裝方驗收時需逐一檢查之既有呼叫結果變化）：
+1. **REST 文字類截斷預設失敗**：`finish_reason`為`length`／`content_filter`（Responses API 為`status: 'incomplete'`）時，於`validate`之前回`errorType: 'incomplete'`；此前會回`ok`或交`validate`判斷（不過時為`validation`）。**直接呼叫`dispatchAiFallback`或轉接器、且`validate`內含搶救策略者，須自行給`acceptTruncated: true`**；工作流`callAi`有自訂`parse`者自動同意、不必改。
+2. 截斷與`tool-unsupported`改為**整組跳過**（此前逐把換金鑰）；截斷不重試。
+3. `validate`（及工作流之`parse`／`check`）拋錯改回驗證失敗（`validation`），不再令整條鏈 reject。
+4. 工作流層：條目自帶`validate`與工作流`validate`取交集（兩者皆過才算過）。
+5. 三個 REST 轉接器預設帶`Accept-Encoding: identity`。
+6. 依`errorType`做健康計數或監控者：截斷且驗證不過者由`validation`改為`incomplete`，須一併納入；結果另帶`finishReason`與`truncated`。
+
+**1.0.37 之後**：
+7. HTTP 200 但本體非 JSON，另報`INVALID_RESPONSE: body is not JSON (<位元組數>, first bytes <前16位元組hex>, content-encoding=…, content-type=…)`（此前與「JSON 缺欄位」同一句），並改為**整組跳過**；`errorType`仍為`invalid-response`，「JSON 缺欄位」維持換金鑰。依`errorType`計數者若要把此類整組失敗計入，須納入`invalid-response`。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -298,10 +310,10 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `key` | String | `''` | API key，以`Bearer`置於`Authorization`標頭，省略代表不帶認證 |
 | `system` | String | `''` | system提示詞，置於messages首位 |
 | `body` | Object | `{}` | 額外請求本體（`temperature`、`max_tokens`、`response_format`等），同名鍵覆寫預設 |
-| `headers` | Object | `{}` | 額外請求標頭，同名鍵覆寫預設。**預設帶 `Accept-Encoding: identity`**：伺服器若壓縮了回應卻漏標 `Content-Encoding`，Node 內建 fetch 不會解壓，本轉接器只拿到亂碼而回 `INVALID_RESPONSE`（2026-09-24 使用端回報於 Zen；三個 REST 轉接器同步）。要改回允許壓縮可給 `{ 'Accept-Encoding': 'gzip, deflate, br' }` |
+| `headers` | Object | `{}` | 額外請求標頭，同名鍵覆寫預設。**預設帶 `Accept-Encoding: identity`**：伺服器若壓縮了回應卻漏標 `Content-Encoding`，Node 內建 fetch 不會解壓，本轉接器只拿到亂碼而回 `INVALID_RESPONSE`（三個 REST 轉接器同步）。重現條件：安裝方 2026-09-24 於 Zen 長回應（約 35 秒）實測，fetch 所見標頭為 0 個、本體 9,224 bytes 為 brotli，改帶 identity 則為 22,124 bytes 之 JSON；本機同日取樣 7 次未重現，推測漏標只在特定條件（長回應）出現。要改回允許壓縮可給 `{ 'Accept-Encoding': 'gzip, deflate, br' }` |
 | `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時中止請求（含回應串流讀取）；全套件統一預設 |
 | `maxRetries` | Integer | `0` | 失敗重試次數；**4xx(429除外)為客戶端錯誤不重試**，截斷（見`acceptTruncated`）亦不重試（同一請求必然再截斷），429/5xx/網路錯誤/逾時線性退避重試 |
-| `acceptTruncated` | Boolean | `false` | **截斷預設失敗**：`finish_reason`為`length`或`content_filter`時，於`validate`之前回`errorType: 'incomplete'`（結果帶`truncated: true`，遞補層整組跳過）。`true`才放行`length`之截斷：有`validate`交其裁決、無則直接接受，結果仍標`truncated: true`；`content_filter`與可見輸出為空者一律失敗（空輸出之訊息附`reasoning_tokens`，常見於推理耗盡`max_tokens`）。`dispatchApiOpenaiResponses`同規則（`status: 'incomplete'`即截斷；`failed`不屬截斷）。工作流層`callAi`之預設見`salvageTruncatedArray`列 |
+| `acceptTruncated` | Boolean | `false` | **截斷預設失敗**：`finish_reason`為`length`或`content_filter`時，於`validate`之前回`errorType: 'incomplete'`（結果帶`truncated: true`，遞補層整組跳過）。`true`才放行`length`之截斷：有`validate`交其裁決、無則直接接受，結果仍標`truncated: true`；`content_filter`與可見輸出為空者一律失敗（空輸出之訊息附`reasoning_tokens`，常見於推理耗盡`max_tokens`）。`dispatchApiOpenaiResponses`同規則（`status: 'incomplete'`即截斷；`failed`不屬截斷）。**1.0.37 起行為改變**（此前截斷內容會交給`validate`判斷）：**直接呼叫`dispatchAiFallback`或轉接器、且`validate`內含搶救策略者，須自行給`acceptTruncated: true`**（`dispatchAiFallback`會原樣轉傳給轉接器）；工作流層`callAi`之預設見`salvageTruncatedArray`列 |
 | `retryDelayMs` | Integer | `5000` | 重試間隔，實際為`retryDelayMs`×次數且上限15000ms |
 
 結果結構對齊execCli：`stdout`為回覆內容、`code`為HTTP狀態碼（網路錯誤/逾時為`null`）、逾時`error`以`TIMEOUT`開頭、驗證失敗為`OUTPUT_VALIDATION_FAILED`——故可直接作為`dispatchAiFallback`條目（`kind: 'api-openai-compat'`，`keys`多金鑰輪替同樣適用）與工作流provider。
@@ -320,7 +332,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `http` | HTTP非2xx（`code`為狀態碼） | api類 |
 | `fetch` | 網路層錯誤（DNS／連線拒絕） | api類 |
 | `tool-unsupported` | 模型回tool_calls而api類不支援工具 | api類 |
-| `invalid-response` | 回應結構不合規（缺`choices[0].message.content`、缺`output`陣列，或 systemone 缺`answers`／缺所請求題目之答案） | api類 |
+| `invalid-response` | 回應結構不合規（缺`choices[0].message.content`、缺`output`陣列，或 systemone 缺`answers`／缺所請求題目之答案）；HTTP 200 但**本體非 JSON**時`error`另為`INVALID_RESPONSE: body is not JSON (<位元組數>, first bytes <前16位元組hex>, content-encoding=…, content-type=…)`，壓縮或損壞之本體可一眼辨識 | api類 |
 | `incomplete` | 回應未完整：截斷（`finish_reason`為`length`／`content_filter`、Responses API 之`status: 'incomplete'`；結果帶`truncated: true`）或 Responses API 之其餘非完成狀態（如`failed`，`truncated: false`）。截斷判定只適用 REST 文字類；CLI 類拿不到終止訊號，截斷無從判別（已知限制） | api類 |
 | `aborted` | `shouldStop`中止 | fallback層 |
 | `budget` | 時間預算用盡 | fallback層 |
@@ -419,6 +431,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | 輸出未過驗證 | `error === 'OUTPUT_VALIDATION_FAILED'` | 整組跳過 |
 | 截斷（REST 文字類） | `truncated === true` | 整組跳過（同模型同請求換金鑰必然再截斷；`status: 'failed'`不屬此列，照「其餘」換下一把） |
 | 模型回工具呼叫而 api 類不支援 | `error`以`TOOL_CALLS_UNSUPPORTED`開頭 | 整組跳過 |
+| HTTP 200 但本體非 JSON（api 類） | `error`以`INVALID_RESPONSE: body is not JSON`開頭 | 整組跳過（傳輸或閘道狀態；「JSON 缺欄位」不在此列，照「其餘」換下一把） |
 | kind無效 | `error`以`unknown ai kind`開頭 | 整組跳過 |
 | 其餘（含額度上限、金鑰無效、服務回錯） | — | 換組內下一把 |
 
@@ -477,6 +490,8 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
     ],
 }
 ```
+
+**全數失敗時，頂層`error`／`errorType`只反映「最後一次」嘗試**：多把金鑰或多家依序失敗時（例如第一把本體非 JSON、第二把以剩餘預算重打而逾時），只記最終錯誤會誤判歸因。記日誌或評比時請一併記下各次嘗試，例如`` r.tried.filter((t) => t.outcome !== 'ok').map((t) => `${t.keyId}:${t.errorType}`) ``。
 
 #### dispatchAiWkf (workflow factory):
 注入一次provider定義表(名稱 → `dispatchAiFallback`條目)與共用預設，之後以名稱宣告工作流；名稱查無定義即回報錯誤(fail fast)。回覆經寬鬆JSON解析(`extractJsonLoose`)＋自訂`check`驗證，非法回覆視為該家失敗而自動遞補；預設於prompt前掛「禁止建檔」約束(`promptPrefix: ''`可關閉)；措辭豁免唯讀查閱——codex以shell讀檔，一律禁指令會令其無法讀取專案檔案且靜默回拒答(2026-08-13實測)。
@@ -621,7 +636,7 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 | `createFileStore({ dir })` | `dispatchAiFallback`之`store`的檔案持久化——排程任務每次執行都是新行程，記憶體游標/冷卻每次歸零；本實作採**排除式passthrough**（state原封存還，僅剔自用欄位`at`），日後套件擴充state欄位自動相容（殷鑑：白名單store曾把1.0.7新增的`cooling`靜默丟棄） |
 | `createUsageCounter({ dir })` | 逐日逐鍵用量計帳，`onEvent`直接掛進dispatch即於`try`事件記帳；**純觀測絕不據以節流**（額度視窗形態多樣，臆測門檻擋自己的呼叫等同拿猜測當事實）；排程環境務必注入`getDate`錨定時區 |
 | `budgetFor(chain)` | 遞補鏈走滿全鏈之時間預算（Σ各條目`timeoutMs`，未帶者以統一預設300000計）；與外部排程硬上限取小者交`budgetMs` |
-| `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可。REST 文字類截斷預設失敗，但工作流`callAi`之`acceptTruncated`預設為「有自訂`parse`且非`rawText`」，故注入自訂`parse`即同意接受截斷內容、既有用法不必改；結果之`truncated: true`可辨識救回的是半批；直接呼叫轉接器時須自行給`acceptTruncated: true`。限制：只救頂層元素為物件之陣列，從第一個`[`起算（外包物件如`{"items":[…`會救回內層陣列、前言含`[`會失效） |
+| `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可。REST 文字類截斷預設失敗，但工作流`callAi`之`acceptTruncated`預設為「有自訂`parse`且非`rawText`」，故注入自訂`parse`即同意接受截斷內容、既有用法不必改；結果之`truncated: true`可辨識救回的是半批；**直接呼叫`dispatchAiFallback`或轉接器、把搶救寫在`validate`裡者，須自行給`acceptTruncated: true`**（1.0.37 起，否則截斷在`validate`之前即判失敗）。限制：只救頂層元素為物件之陣列，從第一個`[`起算（外包物件如`{"items":[…`會救回內層陣列、前言含`[`會失效） |
 | `NO_SIDE_EFFECT` | 防副作用prompt前綴之單一來源（措辭含唯讀查閱豁免——codex以shell讀檔，一律禁指令等同禁讀檔）；工作流`callAi`預設自動掛上，直呼`dispatchAiFallback`者自行前綴 |
 
 #### 訂閱額度查詢(quota)：`getQuotaClaude`／`getQuotaCodex`／`getQuotaAntigravity`

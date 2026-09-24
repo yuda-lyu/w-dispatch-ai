@@ -10,6 +10,7 @@ import dispatchAi from './dispatchAi.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
+import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
 
 
 // dispatchAiFallback.mjs — 多供應商自動遞補層
@@ -17,8 +18,10 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 // 【兩層策略】群組之間依providers宣告順序(優先序), 群組之內(keys多把)以游標輪替(額度均攤)。
 //
 // 【失敗分流】只分兩路:
-//   與金鑰無關之失敗(TIMEOUT/ENOENT/參數錯誤/驗證失敗/未知kind/截斷/工具不支援) → 整組跳過——
+//   與金鑰無關之失敗(TIMEOUT/ENOENT/參數錯誤/驗證失敗/未知kind/截斷/工具不支援/本體非JSON) → 整組跳過——
 //   同組各金鑰共用同一exe與model, 換金鑰必然再敗一次, 純屬空耗;
+//   本體非JSON(REST之HTTP 200但無法解析, 見describeNonJsonBody.mjs)屬傳輸或閘道狀態, 2026-09-24依安裝方實例納入
+//   (換第二把金鑰只是以剩餘預算重打至逾時); 「JSON缺欄位」不在此列, 仍換金鑰(部分閘道以200回帳號層級錯誤);
 //   截斷(結果之truncated為true, 僅REST文字類可判, 見checkTruncation.mjs)與工具不支援(TOOL_CALLS_UNSUPPORTED)
 //   皆屬模型對同一請求之產出性質, 2026-09-24起納入(前者由複審指出同模型換金鑰再截斷一次;
 //   後者之既有測試標題即寫「不逐把空耗」而斷言卻為逐把換金鑰, 一併更正);
@@ -234,6 +237,11 @@ function isKeyIndependentFail(r) {
         return true
     }
 
+    //HTTP 200但本體非JSON, 屬傳輸或閘道狀態, 換金鑰必然再敗(「JSON缺欄位」不在此列, 仍換金鑰; 見describeNonJsonBody.mjs)
+    if (error.indexOf(BODY_NOT_JSON) === 0) {
+        return true
+    }
+
     //kind無效, 屬條目設定錯誤
     if (error.indexOf('unknown ai kind') === 0) {
         return true
@@ -250,7 +258,7 @@ function isKeyIndependentFail(r) {
  * providers陣列順序即優先序，排前面的先用；
  * 條目本身即該次調用之opt(除id與keys外原樣透傳對應轉接器)，與dispatchAi「條目直接當opt」同一約定；
  * 條目給予keys(多把金鑰)時以游標輪替，某把失敗自動換下一把，全數失敗才遞補下一組；
- * 與金鑰無關之失敗(逾時/執行檔不存在/參數錯誤/輸出未過驗證/未知kind/截斷/工具不支援)直接整組跳過，不逐把空耗；
+ * 與金鑰無關之失敗(逾時/執行檔不存在/參數錯誤/輸出未過驗證/未知kind/截斷/工具不支援/HTTP 200但本體非JSON)直接整組跳過，不逐把空耗；
  * 跨次執行僅記憶游標(經store注入持久化)，不設金鑰停用清單——額度視窗形態多樣(5小時滾動/逐時/逐日)，
  * 停用會把已恢復的金鑰閒置，而重探的代價僅一次快速失敗；
  * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
@@ -271,6 +279,7 @@ function isKeyIndependentFail(r) {
  * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則，條目可覆寫，預設undefined
+ * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受REST文字類轉接器回報之截斷內容布林值(原樣轉傳轉接器)，1.0.37起截斷於validate之前判失敗，validate內含搶救策略者須給true，預設false
  * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；REST文字類轉接器另帶finishReason與truncated(是否截斷)，同樣流出於結果與tried各項；本函數不會reject
  * @example

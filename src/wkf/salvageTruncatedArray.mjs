@@ -16,7 +16,9 @@
 //
 // 【與REST截斷判定之銜接(2026-09-24起)】REST文字類轉接器於validate之前判定截斷且預設失敗;
 //   工作流callAi之acceptTruncated預設為「有自訂parse且非rawText」, 故以本工具組成自訂parse注入即同意
-//   接受截斷內容(既有用法不必改), 結果之truncated:true可辨識救回者為半批; 直接呼叫轉接器須自給acceptTruncated:true。
+//   接受截斷內容(既有用法不必改), 結果之truncated:true可辨識救回者為半批; 直接呼叫dispatchAiFallback或轉接器、
+//   且把本工具寫在validate裡者須自給acceptTruncated:true(1.0.37起, 否則截斷在validate之前即判失敗;
+//   安裝方實例: w-knowledge-extract 1.0.1之callJson因此失去搶救, 2026-09-24回報)。
 //   CLI類拿不到終止訊號, 其截斷只能靠本工具於解析時發現。
 //
 // 【已知限制(2026-09-24複審指出, 讀碼確認)】只記錄頂層「物件」元素之結束(`}`), 故元素非物件之陣列

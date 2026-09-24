@@ -12,6 +12,7 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidate, judgeTruncated } from './checkTruncation.mjs'
+import describeNonJsonBody from './describeNonJsonBody.mjs'
 
 
 // dispatchApiOpenaiResponses.mjs — 以fetch直呼OpenAI Responses API(/responses)
@@ -50,6 +51,8 @@ import { normalizeFinishReason, safeValidate, judgeTruncated } from './checkTrun
 //
 // 【預設帶Accept-Encoding: identity(2026-09-24起)】防伺服器壓縮卻漏標Content-Encoding而令fetch不解壓、
 //   JSON.parse失敗; 與dispatchApiOpenaiCompat同一決策與依據(見該檔檔頭), opt.headers可覆寫。
+//   HTTP 200但本體非JSON時另報INVALID_RESPONSE: body is not JSON(附原始位元組資訊), 與「缺output陣列」分開
+//   (同dispatchApiOpenaiCompat, 見describeNonJsonBody.mjs)。
 //
 // 【錯誤碼實測(Zen)】壞金鑰401(AuthError); 未知model亦回401(ModelError: Model X is not
 //   supported)而非404——故不可用狀態碼區分「金鑰錯」與「模型名錯」, 須讀stderr之訊息。
@@ -149,7 +152,9 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
         controller.abort()
     }, timeoutMs)
 
+    //本體先取原始位元組再以UTF-8解碼(等同res.text()), 本體非JSON時才有原始位元組可供診斷(見describeNonJsonBody.mjs)
     let res = null
+    let raw = new Uint8Array(0)
     let txt = ''
     try {
         res = await fetch(url, {
@@ -158,7 +163,8 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
             body: JSON.stringify(body),
             signal: controller.signal,
         })
-        txt = await res.text()
+        raw = new Uint8Array(await res.arrayBuffer())
+        txt = new TextDecoder('utf-8').decode(raw)
     }
     catch (err) {
         clearTimeout(timer)
@@ -206,13 +212,16 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
     catch {
         parsed = false
     }
+    //本體非JSON, 與「JSON缺output」分開回報並附原始位元組資訊; 遞補層據前綴整組跳過(見describeNonJsonBody.mjs)
     if (!parsed) {
         return mkResult({
             stderr: strTruncate(txt, 500, optTruncate),
             code: res.status,
-            error: 'INVALID_RESPONSE: missing output array',
+            error: describeNonJsonBody(raw, res.headers),
             errorType: 'invalid-response',
             usage,
+            finishReason: '',
+            truncated: false,
         })
     }
 

@@ -139,6 +139,17 @@ describe('dispatchApiOpenaiResponses', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('INVALID_RESPONSE分拆: HTTP 200但本體非JSON另報body is not JSON(附原始位元組資訊), JSON缺output維持原訊息', async function() {
+        let t1 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'garbage-200' })
+        let t2 = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'no-output' })
+        let r = [[t1.ok, t1.errorType, t1.error], [t2.ok, t2.errorType, t2.error]]
+        let rr = [
+            [false, 'invalid-response', 'INVALID_RESPONSE: body is not JSON (8 bytes, first bytes 8bef0200e4ff1122, content-encoding=none, content-type=application/json)'],
+            [false, 'invalid-response', 'INVALID_RESPONSE: missing output array'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('validate拋錯視同驗證失敗, Promise照常resolve不reject', async function() {
         let boom = () => {
             throw new Error('boom-validate')

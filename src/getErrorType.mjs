@@ -23,7 +23,9 @@ import isestr from 'wsemi/src/isestr.mjs'
 //   'fetch'            網路層錯誤(DNS/連線拒絕, 僅api類)
 //   'tool-unsupported' 模型回tool_calls而本轉接器不支援工具(僅api類)
 //   'invalid-response' 回應結構不合規(缺choices[0].message.content、缺output陣列,
-//                      或api-typesafe-systemone缺answers物件/缺所請求題目之答案, 僅api類)
+//                      或api-typesafe-systemone缺answers物件/缺所請求題目之答案, 僅api類);
+//                      HTTP 200但本體非JSON時error另為'INVALID_RESPONSE: body is not JSON (...)'(附位元組資訊,
+//                      遞補層整組跳過; 見describeNonJsonBody.mjs), 「JSON缺欄位」則仍換金鑰
 //   'incomplete'       回應未完整: 截斷(chat/completions之finish_reason為length/content_filter、
 //                      Responses API之status為incomplete; 結果另帶truncated:true, 規則見checkTruncation.mjs)
 //                      與Responses API之其餘非completed狀態(如failed; truncated:false)。僅api類;

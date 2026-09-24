@@ -11,6 +11,7 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { TRUNCATION_REASONS, normalizeFinishReason, safeValidate, judgeTruncated } from './checkTruncation.mjs'
+import describeNonJsonBody from './describeNonJsonBody.mjs'
 
 
 // dispatchApiOpenaiCompat.mjs — 以fetch直呼OpenAI相容API(chat/completions)
@@ -43,9 +44,16 @@ import { TRUNCATION_REASONS, normalizeFinishReason, safeValidate, judgeTruncated
 // 【預設帶Accept-Encoding: identity(2026-09-24起, 三個REST轉接器同步)】Node內建fetch(undici)只在回應
 //   帶Content-Encoding時才自動解壓; 伺服器若壓縮了本體卻漏標此標頭, fetch原樣交出壓縮位元組,
 //   JSON.parse失敗而回INVALID_RESPONSE(使用端回報Zen之space-bunny-free即此症: 手動brotli解壓得完整答案,
-//   改帶identity即得正常JSON)。本機以假伺服器重現該機制; 惟同日對Zen取樣7次皆正確標示br(未重現漏標),
-//   故屬防禦: identity請伺服器勿壓縮, 從源頭消除「壓縮處理不一致」一類失敗(不論成因在伺服器、代理或執行環境)。
+//   改帶identity即得正常JSON)。本機以假伺服器重現該機制。重現條件(安裝方tai-kns-trade, 2026-09-24 11:5x實測):
+//   長回應(chat/completions約35秒)時Node fetch所見回應標頭為0個、本體9,224 bytes為brotli位元組, 改帶identity
+//   則本體為22,124 bytes之JSON; 同環境同時段他端點標頭正常(npm registry 13個、Zen /models 8個含content-encoding=br)
+//   且未設代理。本機同日對Zen取樣7次(含65KB長回應)皆正確標示br、未重現——推測漏標為有條件出現(長回應),
+//   條件未定。identity請伺服器勿壓縮, 從源頭消除「壓縮處理不一致」一類失敗(不論成因在伺服器、代理或執行環境),
 //   代價僅傳輸量變大(實測Zen回應約5~8KB→20~65KB)。呼叫端可以opt.headers之'Accept-Encoding'覆寫。
+//
+// 【HTTP 200但本體非JSON另報(安裝方建議C2)】JSON.parse失敗時不再與「缺choices[0].message.content」同一句,
+//   改回INVALID_RESPONSE: body is not JSON(附原始位元組數、前16位元組hex、content-encoding、content-type,
+//   規則單一來源見describeNonJsonBody.mjs), 遞補層據此整組跳過; 「JSON缺content」維持換金鑰。
 //
 // 【截斷(finish_reason為length或content_filter)預設失敗(2026-09-24起, 規則單一來源見checkTruncation.mjs)】
 //   舊版不看finish_reason, 實測Zen之space-bunny-free於max_tokens:600時推理即耗盡而回content:""、
@@ -65,7 +73,7 @@ import { TRUNCATION_REASONS, normalizeFinishReason, safeValidate, judgeTruncated
 //   incomplete/validation/params, 一覽見getErrorType.mjs檔頭), error字串保留不動, 兩者並存。
 //   stdout為回覆內容、code為HTTP狀態碼(網路錯誤與逾時為null)、逾時error以TIMEOUT開頭、
 //   驗證失敗error為OUTPUT_VALIDATION_FAILED(validate拋錯亦同, 拋錯訊息置stderr)——
-//   dispatchAiFallback據此分流: 逾時/驗證失敗/截斷/工具不支援整組跳過, 其餘換金鑰。
+//   dispatchAiFallback據此分流: 逾時/驗證失敗/截斷/工具不支援/本體非JSON整組跳過, 其餘換金鑰。
 
 
 //預設值
@@ -114,7 +122,9 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
         controller.abort()
     }, timeoutMs)
 
+    //本體先取原始位元組再以UTF-8解碼(等同res.text()), 本體非JSON時才有原始位元組可供診斷(見describeNonJsonBody.mjs)
     let res = null
+    let raw = new Uint8Array(0)
     let txt = ''
     try {
         res = await fetch(url, {
@@ -123,7 +133,8 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
             body: JSON.stringify(body),
             signal: controller.signal,
         })
-        txt = await res.text()
+        raw = new Uint8Array(await res.arrayBuffer())
+        txt = new TextDecoder('utf-8').decode(raw)
     }
     catch (err) {
         clearTimeout(timer)
@@ -154,6 +165,7 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
     let finishReasonRaw = null
     let toolCalls = null
     let usage = null
+    let parsed = true
     try {
         let j = JSON.parse(txt)
         content = get(j, 'choices.0.message.content', null)
@@ -164,7 +176,21 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
             usage = null
         }
     }
-    catch {}
+    catch {
+        parsed = false
+    }
+
+    //本體非JSON, 與「JSON缺content」分開回報並附原始位元組資訊; 遞補層據前綴整組跳過(見describeNonJsonBody.mjs)
+    if (!parsed) {
+        return mkResult({
+            stderr: strTruncate(txt, 500, optTruncate),
+            code: res.status,
+            error: describeNonJsonBody(raw, res.headers),
+            errorType: 'invalid-response',
+            finishReason: '',
+            truncated: false,
+        })
+    }
 
     //fin, 自此起之每個結果皆外顯正規化終止原因與是否截斷(規則見checkTruncation.mjs)
     let finishReason = normalizeFinishReason(finishReasonRaw)

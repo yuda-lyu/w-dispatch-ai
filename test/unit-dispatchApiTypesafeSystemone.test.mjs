@@ -94,8 +94,15 @@ describe('dispatchApiTypesafeSystemone', function() {
         let rr = [
             [false, 'invalid-response', 'INVALID_RESPONSE: missing answers for [urgent]', null, '', 'jev-1.13.0', { input_tokens: 7, output_tokens: 3 }],
             [false, 'invalid-response', 'INVALID_RESPONSE: missing answers object'],
-            [false, 'invalid-response', 'INVALID_RESPONSE: missing answers object'],
+            [false, 'invalid-response', 'INVALID_RESPONSE: body is not JSON (15 bytes, first bytes 706c61696e207465787420626f6479, content-encoding=none, content-type=text/plain)'],
         ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('HTTP 200但本體非JSON另報body is not JSON(附原始位元組資訊, 同dispatchApiOpenaiCompat)', async function() {
+        let t = await dispatchApiTypesafeSystemone('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'garbage-200', questions: Q })
+        let r = [t.ok, t.errorType, t.error]
+        let rr = [false, 'invalid-response', 'INVALID_RESPONSE: body is not JSON (8 bytes, first bytes 8bef0200e4ff1122, content-encoding=none, content-type=application/json)']
         assert.strict.deepEqual(r, rr)
     })
 

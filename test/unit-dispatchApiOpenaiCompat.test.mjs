@@ -170,10 +170,48 @@ describe('dispatchApiOpenaiCompat', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('呼叫端headers可覆寫Accept-Encoding: 改回允許壓縮時, 遇漏標之壓縮本體即解析失敗(invalid-response)', async function() {
+    it('呼叫端headers可覆寫Accept-Encoding: 改回允許壓縮時, 遇漏標之壓縮本體即解析失敗且訊息指出本體非JSON與content-encoding=none', async function() {
         let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'br-noheader', headers: { 'Accept-Encoding': 'gzip, deflate' } })
-        let r = [t.ok, t.code, t.errorType, t.error]
-        let rr = [false, 200, 'invalid-response', 'INVALID_RESPONSE: missing choices[0].message.content']
+        let r = [t.ok, t.code, t.errorType, t.error.indexOf('INVALID_RESPONSE: body is not JSON (') === 0, t.error.includes('content-encoding=none')]
+        let rr = [false, 200, 'invalid-response', true, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('INVALID_RESPONSE分拆: HTTP 200但本體非JSON另報body is not JSON(附原始位元組數、前段hex、content-encoding與content-type), JSON缺content維持原訊息', async function() {
+        let t1 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'garbage-200' })
+        let t2 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'not-json' })
+        let t3 = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, key: 'sk-good-1', model: 'no-choices' })
+        let r = [
+            [t1.ok, t1.code, t1.errorType, t1.error],
+            [t2.ok, t2.errorType, t2.error],
+            [t3.ok, t3.errorType, t3.error],
+        ]
+        let rr = [
+            [false, 200, 'invalid-response', 'INVALID_RESPONSE: body is not JSON (8 bytes, first bytes 8bef0200e4ff1122, content-encoding=none, content-type=application/json)'],
+            [false, 'invalid-response', 'INVALID_RESPONSE: body is not JSON (15 bytes, first bytes 706c61696e207465787420626f6479, content-encoding=none, content-type=text/plain)'],
+            [false, 'invalid-response', 'INVALID_RESPONSE: missing choices[0].message.content'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('本體非JSON與金鑰無關: 遞補鏈只試一把即整組跳過; JSON缺content仍逐把換金鑰', async function() {
+        let t1 = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'g-garbage', kind: 'api-openai-compat', baseURL: svr.url, model: 'garbage-200', keys: ['sk-g0', 'sk-g1'] },
+                { id: 'g-ok2', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-o0'] },
+            ],
+        })
+        let t2 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'g-nochoice', kind: 'api-openai-compat', baseURL: svr.url, model: 'no-choices', keys: ['sk-n0', 'sk-n1'] }],
+        })
+        let r = [
+            [t1.ok, t1.providerId, t1.tried.map((x) => [x.keyId, x.outcome])],
+            [t2.ok, t2.tried.map((x) => [x.keyId, x.outcome])],
+        ]
+        let rr = [
+            [true, 'g-ok2', [['g-garbage#0', 'skip-group'], ['g-ok2#0', 'ok']]],
+            [false, [['g-nochoice#0', 'next-key'], ['g-nochoice#1', 'next-key']]],
+        ]
         assert.strict.deepEqual(r, rr)
     })
 

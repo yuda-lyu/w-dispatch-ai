@@ -32,7 +32,8 @@ import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
 // 【截斷(2026-09-24起)】REST文字類轉接器於validate之前判定截斷, 預設回INCOMPLETE_RESPONSE(errorType
 //   incomplete, 遞補層整組跳過且不重試), 不再經驗證失敗路徑。本層之acceptTruncated預設為「有自訂parse且非
 //   rawText」: README明文之策略②(組成自訂parse注入搶救截斷前段, 見salvageTruncatedArray.mjs)本身即同意訊號,
-//   既有使用者不必改任何東西; 預設parse(extractJsonLoose)與rawText遇截斷一律判失敗換家。可顯式覆寫。
+//   本層之既有使用者不必改任何東西; 預設parse(extractJsonLoose)與rawText遇截斷一律判失敗換家。可顯式覆寫。
+//   注意此自動同意只在本層: 直接呼叫dispatchAiFallback或轉接器、把搶救寫在validate裡者須自給acceptTruncated:true。
 //   CLI類轉接器拿不到終止訊號, 截斷不可判(已知限制)。
 //
 // 【防寫檔前綴】agentic CLI之cwd不是隔離邊界(可用絕對路徑寫到cwd外),
