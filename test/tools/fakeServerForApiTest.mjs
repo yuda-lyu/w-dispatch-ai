@@ -25,6 +25,7 @@ import zlib from 'zlib'
 //                    Content-Encoding(模擬2026-09-24使用端回報之伺服器: 壓縮卻漏標, Node fetch因而不解壓)
 //   TRUNC_ROUTES   — 200, 依表回指定之finish_reason與content(截斷處理之規格測試用, 見下方常數)
 //   garbage-200    — 200, Content-Type為application/json但本體為8個非JSON位元組(模擬壓縮或損壞本體)
+//   slow-401       — 延遲300ms後回401(與金鑰有關之失敗但耗時, 供組內預算用盡之情境)
 //   其他           — 404
 // 【responses之行為路由(依body.model)】
 //   echo           — 200, message之output_text為JSON字串{ auth, body }
@@ -366,6 +367,12 @@ async function fakeServerForApiTest() {
             }
             else if (model === 'br-noheader') {
                 sendUndeclaredBr({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '完成' } }] })
+            }
+            else if (model === 'slow-401') {
+                setTimeout(() => {
+                    res.writeHead(401, { 'Content-Type': 'application/json' })
+                    res.end(JSON.stringify({ type: 'error', error: { type: 'AuthError', message: 'Invalid API key.' } }))
+                }, 300)
             }
             else if (TRUNC_ROUTES[model] !== undefined) {
                 let t = TRUNC_ROUTES[model]

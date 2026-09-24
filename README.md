@@ -220,8 +220,11 @@ await test()
 5. 三個 REST 轉接器預設帶`Accept-Encoding: identity`。
 6. 依`errorType`做健康計數或監控者：截斷且驗證不過者由`validation`改為`incomplete`，須一併納入；結果另帶`finishReason`與`truncated`。
 
-**1.0.37 之後**：
+**1.0.38 起**：
 7. HTTP 200 但本體非 JSON，另報`INVALID_RESPONSE: body is not JSON (<位元組數>, first bytes <前16位元組hex>, content-encoding=…, content-type=…)`（此前與「JSON 缺欄位」同一句），並改為**整組跳過**；`errorType`仍為`invalid-response`，「JSON 缺欄位」維持換金鑰。依`errorType`計數者若要把此類整組失敗計入，須納入`invalid-response`。
+
+**1.0.38 之後**：
+8. `dispatchAiFallback`之`onEvent`新增事件`'group-exhausted'`：一組試完仍無成交時發出（每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前），欄位見下方 Options for dispatchAiFallback 之`onEvent`；成交、預算用盡、中止之組不發，`tried`不變，既有 7 種事件之順序、欄位與觸發條件不變。**逐事件寫日誌者每個試完的組多一行**；只認特定`ev.type`者不受影響。以「本次呼叫整組全敗」計數（如健康層降序）者，改為每收到一次此事件計一次，不必再以金鑰數與逐把失敗次數重建（並行下不精確）。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -406,7 +409,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流字樣各家不同、隨版本漂移，且不一定在stderr（Claude Code之執行期失敗以result印在stdout，官方headless文件），**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`（注意：opencode 1.18.32 遇 Zen 免費層 429 時 `run` **不會結束**、stderr 只有 session 標頭，直到逾時才以 `TIMEOUT` 回報——內建 TIMEOUT 觸發已涵蓋；要讓字樣出現在 stderr 須於 `extraArgs` 加 `--print-logs --log-level ERROR`，2026-09-23 實測 DEBUG log 內為 `AI_APICallError: Rate limit exceeded`；不經本套件的原始 CLI 亦同）；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調拋出例外視同`false` |
 | `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調拋出例外視同`false` |
 | `meta` | any | 無 | 保留鍵，同`providers[].meta`，永不轉傳 |
-| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外不影響主流程 |
+| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現)、`'group-exhausted'`(一組試完仍無成交，每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前；帶`keys`(有效金鑰數，`0`代表登入態之單一虛擬金鑰)、`attempted`(本組實際嘗試數)、`by`(`'all-keys'`每把皆換鑰失敗，或`'skip-group'`以與金鑰無關之失敗收尾)、`errorTypes`(本組各次嘗試之`errorType`依序)與`error`(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入`tried`)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外不影響主流程 |
 
 頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
 
@@ -696,7 +699,7 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 #### Known design notes:
 - `package.json`**刻意不設**`exports`欄位：wsemi與w-*系列皆為自有套件，呼叫端以按需深層引入(`w-dispatch-ai/src/xxx.mjs`)為既定路線；增設exports會封死此路徑，勿加。
 - `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。
-- `dispatchAiFallback`為單向單輪：全數群組試畢即回傳最後一筆失敗結果與`tried`歷程，不回頭重試已敗的組。跨次執行僅記憶游標，不設金鑰停用清單（理由見上方失敗分流說明）；需跨次跳過特定金鑰時，由呼叫端依`tried`／`onEvent`內之`error`與`stderr`自行決策。
+- `dispatchAiFallback`為單向單輪：全數群組試畢即回傳最後一筆失敗結果與`tried`歷程，不回頭重試已敗的組。跨次執行僅記憶游標，不設金鑰停用清單（理由見上方失敗分流說明）；需跨次跳過特定金鑰時，由呼叫端依`tried`／`onEvent`內之`error`與`stderr`自行決策。要以條目為單位判斷「本次呼叫整組試完仍無成交」者（如健康層據以降序），每收到一次`group-exhausted`事件計一次即可，勿以金鑰數與逐把`next-key`次數重建——事件不帶呼叫識別，並行呼叫跨越一次成交時（游標只在成交時推進，各呼叫起點不同）重建會多計或少計。
 - `shouldStop`**只在嘗試邊界檢查，不中止進行中之嘗試**（不殺子進程、不斷開HTTP請求）：進行中嘗試之強制中止需侵入execCli層與各轉接器，屬已知設計取捨——最小版已把斷線後的損失從「整條鏈」縮成「至多再耗當前這一家」；如有實測場景證明不足再議完整版。
 - CLI類限流簽章**不進套件**：各家字樣（stdout或stderr）不同且隨CLI版本漂移，套件維護簽章表等同養一個自己驗證不了的分類器（與否決金鑰停用清單同一理由）。偵測經`coolDetect`依賴注入，由觀察到字樣的呼叫端維護。
 - `dispatchOpencode`之`key`與`provider`須同時給予才會注入金鑰；只給其一（或範例中`.env`缺鍵導致`key`為`undefined`）時不會報錯，而是靜默沿用CLI既有登入狀態。

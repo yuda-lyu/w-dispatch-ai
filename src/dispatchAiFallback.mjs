@@ -54,6 +54,14 @@ import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
 //   中止後每個後續呼叫進門即回ABORTED, 整條工作流自然快速收束, 不需逐層實作。
 //   不中止進行中之嘗試(不殺子進程/不斷開請求), 此為已知設計取捨(避免侵入execCli層)。
 //
+// 【組盡事件(group-exhausted)】逐次事件(try/next-key/skip-group等)不帶呼叫識別, 而同一onEvent常被並行呼叫共用
+//   (如runFanout之各席位)。呼叫端要判斷「某條目在這次呼叫裡整組試完仍無成交」(如健康層據以降序)時,
+//   若以金鑰數與逐把失敗次數重建, 並行呼叫跨越一次成交就會多計或少計——游標只在成交時推進,
+//   在途呼叫與新呼叫的起點不同(2026-09-24下游w-knowledge-extract實測重現), 且重建本身依賴本層之
+//   游標推進時機、每把至多一次、金鑰濾法三項內部性質。故由本層於本組未成交而試完時直接發出,
+//   每次呼叫每組恰一次; 成交、預算用盡、中止(本組未試完)皆不發——後兩者屬呼叫端的時間或意願, 非該組故障。
+//   組邊界只發事件, 不寫入tried(tried為逐次嘗試歷程, 其長度即嘗試次數)。
+//
 // 【meta保留鍵】「剔除自用鍵後原樣轉傳」令條目即調校點, 但呼叫端放進條目/opt的任何
 //   自有欄位都會被靜默轉傳——保留meta一鍵保證永不轉傳, 呼叫端要掛分類/標籤/註記
 //   一律放meta, 與轉傳機制永久絕緣(工作流各層之規格物件同此約定)。
@@ -276,7 +284,7 @@ function isKeyIndependentFail(r) {
  * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429/TIMEOUT觸發不受影響)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=>/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs>0時有效，回調拋出例外視同false，預設null
  * @param {Function} [opt.shouldStop=null] 輸入中止判定函數()=>Boolean，於每次嘗試之間檢查，回傳true即停止遞補回報ABORTED(不中止進行中之嘗試)——供呼叫端於成果已無人接收時(如客戶端斷線)止損；經工作流層原樣轉傳，中止後各後續呼叫進門即回ABORTED令整條工作流快速收束；回調拋出例外視同false，預設null
  * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊，保留鍵保證永不轉傳各轉接器，預設undefined
- * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null
+ * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現)、'group-exhausted'(本組未成交而試完，每次呼叫每組恰一次，位於本組最後一個next-key或skip-group之後、下一組首個try之前；帶keys(有效金鑰數，0代表登入態之單一虛擬金鑰)、attempted(本組實際嘗試數)、by('all-keys'每把皆換鑰失敗，或'skip-group'以與金鑰無關之失敗收尾)、errorTypes(本組各次嘗試之errorType依序)與error(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入tried)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則，條目可覆寫，預設undefined
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受REST文字類轉接器回報之截斷內容布林值(原樣轉傳轉接器)，1.0.37起截斷於validate之前判失敗，validate內含搶救策略者須給true，預設false
@@ -428,6 +436,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
         //組內逐把嘗試, 每把至多一次, 全敗即組盡遞補下一組
         let nAttempts = (nk > 0) ? nk : 1
         let skipGroup = false
+        let groupStart = tried.length //本組於tried之起點, 供組盡事件取本組各次嘗試
         for (let a = 0; a < nAttempts && !skipGroup; a++) {
 
             //中止檢查(嘗試邊界): 成果已無人接收時止損, 不中止進行中之嘗試(見檔頭【中止】)
@@ -519,6 +528,20 @@ async function dispatchAiFallback(prompt, opt = {}) {
             }
 
         }
+
+        //組盡: 走到這裡即本組未成交且已試完(成交、預算用盡、中止皆於迴圈內回傳), 每次呼叫每組恰發一次(見檔頭【組盡事件】)
+        let tg = tried.slice(groupStart)
+        emit({
+            type: 'group-exhausted',
+            providerId: id,
+            keyIndex: null,
+            keyId: id,
+            keys: nk, //有效金鑰數(同上方濾法), 0代表登入態之單一虛擬金鑰
+            attempted: tg.length, //本組實際送出之嘗試數
+            by: skipGroup ? 'skip-group' : 'all-keys', //以與金鑰無關之失敗收尾, 或每把皆換鑰失敗
+            errorTypes: tg.map((t) => t.errorType), //本組各次嘗試之errorType, 依嘗試順序
+            error: get(lastResult, 'error', ''), //本組最後一次嘗試之錯誤
+        })
     }
 
     //全數失敗, 回傳最後一筆失敗結果(含其errorType)與完整歷程

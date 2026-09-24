@@ -1,6 +1,7 @@
 import assert from 'assert'
 import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
 import createFakeCli from './tools/fakeCliForTest.mjs'
+import fakeServerForApiTest from './tools/fakeServerForApiTest.mjs'
 
 
 //assertKey, 由假CLI回聲之OPENCODE_AUTH_CONTENT解出本次注入之金鑰
@@ -18,14 +19,19 @@ let getInjectedKey = (stdout) => {
 describe('dispatchAiFallback', function() {
 
     let fake = null
+    let svr = null
 
-    before(function() {
+    before(async function() {
         fake = createFakeCli('fake-fallback')
+        svr = await fakeServerForApiTest() //組邊界事件之情境需REST假伺服器(401/截斷/延遲401)
     })
 
-    after(function() {
+    after(async function() {
         if (fake) {
             fake.clean()
+        }
+        if (svr) {
+            await svr.close()
         }
     })
 
@@ -673,6 +679,243 @@ describe('dispatchAiFallback', function() {
         })
         let r = [[t1.ok, t1.errorType], [t2.ok, t2.errorType], [t3.ok, t3.errorType]]
         let rr = [[false, 'exec'], [false, 'aborted'], [false, 'budget']]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 組內每把皆換鑰失敗, 於最後一個next-key之後恰發一次(by為all-keys), tried不增項', async function() {
+        let evs = []
+        let t = await dispatchAiFallback('abc', {
+            providers: [{ id: 'ge-all', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad-a', 'sk-bad-b'] }],
+            onEvent: (ev) => evs.push(ev),
+        })
+        let ge = evs.filter((x) => x.type === 'group-exhausted')
+        let r = [
+            t.ok,
+            evs.map((x) => [x.type, x.keyId]),
+            ge.map((x) => [x.providerId, x.keyIndex, x.keyId, x.keys, x.attempted, x.by, x.errorTypes]),
+            ge[0].error !== '' && ge[0].error === t.tried[1].error, //本組最後一次嘗試之錯誤
+            t.tried.map((x) => x.outcome), //組邊界只發事件, 不寫入逐次嘗試歷程
+        ]
+        let rr = [
+            false,
+            [['try', 'ge-all#0'], ['next-key', 'ge-all#0'], ['try', 'ge-all#1'], ['next-key', 'ge-all#1'], ['group-exhausted', 'ge-all']],
+            [['ge-all', null, 'ge-all', 2, 2, 'all-keys', ['http', 'http']]],
+            true,
+            ['next-key', 'next-key'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 換鑰後遇與金鑰無關之失敗(截斷)整組跳過, by為skip-group', async function() {
+        let evs = []
+        let t = await dispatchAiFallback('abc', {
+            providers: [{ id: 'ge-skip2', kind: 'api-openai-compat', baseURL: svr.url, model: 'trunc-text', keys: ['sk-bad-1', 'sk-good-2'] }],
+            onEvent: (ev) => evs.push(ev),
+        })
+        let ge = evs.filter((x) => x.type === 'group-exhausted')
+        let r = [
+            t.ok,
+            evs.map((x) => [x.type, x.keyId]),
+            ge.map((x) => [x.keys, x.attempted, x.by, x.errorTypes]),
+        ]
+        let rr = [
+            false,
+            [['try', 'ge-skip2#0'], ['next-key', 'ge-skip2#0'], ['try', 'ge-skip2#1'], ['skip-group', 'ge-skip2#1'], ['group-exhausted', 'ge-skip2']],
+            [[2, 2, 'skip-group', ['http', 'incomplete']]],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 首把即整組跳過時attempted為1, keys為濾除無效值後之有效金鑰數', async function() {
+        let evs = []
+        await dispatchAiFallback('abc', {
+            providers: [{ id: 'ge-skip1', kind: 'api-openai-compat', baseURL: svr.url, model: 'trunc-text', keys: ['sk-good-1', '', null, 'sk-good-2'] }],
+            onEvent: (ev) => evs.push(ev),
+        })
+        let ge = evs.filter((x) => x.type === 'group-exhausted')
+        let r = [
+            evs.map((x) => [x.type, x.keyId]),
+            ge.map((x) => [x.keys, x.attempted, x.by, x.errorTypes]),
+        ]
+        let rr = [
+            [['try', 'ge-skip1#0'], ['skip-group', 'ge-skip1#0'], ['group-exhausted', 'ge-skip1']],
+            [[2, 1, 'skip-group', ['incomplete']]],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 組內有任一把成交則不發(含換鑰後成交)', async function() {
+        let evs = []
+        let t = await dispatchAiFallback('abc', {
+            providers: [{ id: 'ge-ok', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad-1', 'sk-good-2'] }],
+            onEvent: (ev) => evs.push([ev.type, ev.keyId]),
+        })
+        let r = [t.ok, evs]
+        let rr = [true, [['try', 'ge-ok#0'], ['next-key', 'ge-ok#0'], ['try', 'ge-ok#1'], ['ok', 'ge-ok#1']]]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 組內預算用盡或中止(未試完)者不發, 之前已試完之組照發', async function() {
+        //預算用盡: 第1把延遲300ms後401, 輪到第2把時剩餘預算不足minAttemptMs → budget-out, 本組未試完
+        let evs1 = []
+        let t1 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'ge-bud', kind: 'api-openai-compat', baseURL: svr.url, model: 'slow-401', keys: ['sk-x-1', 'sk-x-2'] }],
+            budgetMs: 1000,
+            minAttemptMs: 800,
+            onEvent: (ev) => evs1.push([ev.type, ev.keyId]),
+        })
+        //中止: 輪到第2把時shouldStop轉true → aborted, 本組未試完
+        let n2 = 0
+        let evs2 = []
+        let t2 = await dispatchAiFallback('abc', {
+            providers: [{ id: 'ge-abt', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad-1', 'sk-bad-2'] }],
+            shouldStop: () => n2++ >= 1,
+            onEvent: (ev) => evs2.push([ev.type, ev.keyId]),
+        })
+        //跨組: 第1組已試完(照發), 第2組首把之前中止(不發)
+        let n3 = 0
+        let evs3 = []
+        let t3 = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'ge-abt-a', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad-1'] },
+                { id: 'ge-abt-b', kind: 'claude', exe: fake.exe },
+            ],
+            shouldStop: () => n3++ >= 1,
+            onEvent: (ev) => evs3.push([ev.type, ev.keyId]),
+        })
+        //跨組(預算): 第1組已試完(照發), 第2組首把之前剩餘預算不足 → budget-out(不發)
+        let evs4 = []
+        let t4 = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'ge-bud-a', kind: 'api-openai-compat', baseURL: svr.url, model: 'slow-401', keys: ['sk-q-1'] },
+                { id: 'ge-bud-b', kind: 'claude', exe: fake.exe },
+            ],
+            budgetMs: 1000,
+            minAttemptMs: 800,
+            onEvent: (ev) => evs4.push([ev.type, ev.keyId]),
+        })
+        let r = [[t1.errorType, evs1], [t2.errorType, evs2], [t3.errorType, evs3], [t4.errorType, evs4]]
+        let rr = [
+            ['budget', [['try', 'ge-bud#0'], ['next-key', 'ge-bud#0'], ['budget-out', 'ge-bud#1']]],
+            ['aborted', [['try', 'ge-abt#0'], ['next-key', 'ge-abt#0'], ['aborted', 'ge-abt']]],
+            ['aborted', [['try', 'ge-abt-a#0'], ['next-key', 'ge-abt-a#0'], ['group-exhausted', 'ge-abt-a'], ['aborted', 'ge-abt-b']]],
+            ['budget', [['try', 'ge-bud-a#0'], ['next-key', 'ge-bud-a#0'], ['group-exhausted', 'ge-bud-a'], ['budget-out', 'ge-bud-b']]],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 無keys或單把金鑰之條目失敗亦恰發一次(keys為0或1, attempted為1), 回調拋出例外不影響遞補', async function() {
+        let evs = []
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'ge-nokey-a', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-exit=1'] }, //換鑰型失敗(exec)
+                { id: 'ge-nokey-b', kind: 'claude', exe: fake.exe, validate: 'min:100000' }, //與金鑰無關之失敗(validation)
+                { id: 'ge-onekey', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad-1'] }, //單把金鑰換鑰型失敗(http)
+                { id: 'ge-badkind', kind: 'no-such-kind', keys: ['k-1', 'k-2'] }, //kind無效, 首把即整組跳過(params)
+                { id: 'ge-nokey-ok', kind: 'claude', exe: fake.exe },
+            ],
+            onEvent: (ev) => {
+                evs.push(ev)
+                throw new Error('callback error should not break the loop')
+            },
+        })
+        let ge = evs.filter((x) => x.type === 'group-exhausted')
+        let r = [
+            t.ok,
+            t.providerId,
+            ge.map((x) => [x.providerId, x.keyIndex, x.keyId, x.keys, x.attempted, x.by, x.errorTypes]),
+        ]
+        let rr = [
+            true,
+            'ge-nokey-ok',
+            [
+                ['ge-nokey-a', null, 'ge-nokey-a', 0, 1, 'all-keys', ['exec']],
+                ['ge-nokey-b', null, 'ge-nokey-b', 0, 1, 'skip-group', ['validation']],
+                ['ge-onekey', null, 'ge-onekey', 1, 1, 'all-keys', ['http']],
+                ['ge-badkind', null, 'ge-badkind', 2, 1, 'skip-group', ['params']],
+            ],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 多組鏈中每個試完之組各發一次, 皆位於下一組首個try之前(與cooled並存時殿後)', async function() {
+        let stored = { cursors: {}, cooling: {} }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let evs = []
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'ge-m1', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad-1', 'sk-bad-2'] },
+                { id: 'ge-m2', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-sleep=9000'], timeoutMs: 500 }, //逾時 → cooled與skip-group
+                { id: 'ge-m3', kind: 'claude', exe: fake.exe },
+            ],
+            store,
+            cooldownMs: 300000,
+            onEvent: (ev) => evs.push([ev.type, ev.keyId]),
+        })
+        let r = [t.ok, t.providerId, evs]
+        let rr = [
+            true,
+            'ge-m3',
+            [
+                ['try', 'ge-m1#0'], ['next-key', 'ge-m1#0'], ['try', 'ge-m1#1'], ['next-key', 'ge-m1#1'], ['group-exhausted', 'ge-m1'],
+                ['try', 'ge-m2'], ['cooled', 'ge-m2'], ['skip-group', 'ge-m2'], ['group-exhausted', 'ge-m2'],
+                ['try', 'ge-m3'], ['ok', 'ge-m3'],
+            ],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('group-exhausted: 並行呼叫共用onEvent與store且跨越一次成交時, 事件數恰等於試完之呼叫數', async function() {
+        //以金鑰數與逐把失敗次數重建「整組全敗」時, 並行跨越成交會多計或少計(游標只在成交時推進, 各呼叫起點不同);
+        //本事件由各呼叫自身之組迴圈發出, 不受並行交錯影響(對應安裝方報告之多計/少計情境)
+        let stored = { cursors: {}, cooling: {} }
+        let store = {
+            get: () => stored,
+            set: (s) => {
+                stored = s
+            }
+        }
+        let count = (evs) => evs.filter((x) => x === 'group-exhausted').length
+        //情境一(多計): X與Y同時自游標0起跑, X首把立即成交(游標推進至1), Y兩把皆於成交之後401; 其後Z自新游標1起跑兩把皆敗
+        let base1 = { id: 'ge-par1', kind: 'api-openai-compat', baseURL: svr.url }
+        let evs1 = []
+        let on1 = (ev) => evs1.push(ev.type)
+        let [tx, ty] = await Promise.all([
+            dispatchAiFallback('abc', { providers: [{ ...base1, model: 'echo', keys: ['sk-x-0', 'sk-x-1'] }], store, onEvent: on1 }),
+            dispatchAiFallback('abc', { providers: [{ ...base1, model: 'slow-401', keys: ['sk-y-0', 'sk-y-1'] }], store, onEvent: on1 }),
+        ])
+        let tz = await dispatchAiFallback('abc', { providers: [{ ...base1, model: 'slow-401', keys: ['sk-z-0', 'sk-z-1'] }], store, onEvent: on1 })
+        //情境二(少計): W首把立即401(成交之前), V首把成交, W次把延遲300ms後401(成交之後)
+        let base2 = { id: 'ge-par2', kind: 'api-openai-compat', baseURL: svr.url }
+        let evs2 = []
+        let on2 = (ev) => evs2.push(ev.type)
+        let [tw, tv] = await Promise.all([
+            dispatchAiFallback('abc', { providers: [{ ...base2, model: 'slow-401', keys: ['sk-bad-w-0', 'sk-w-1'] }], store, onEvent: on2 }),
+            dispatchAiFallback('abc', { providers: [{ ...base2, model: 'echo', keys: ['sk-v-0', 'sk-v-1'] }], store, onEvent: on2 }),
+        ])
+        let r = [
+            [tx.ok, ty.ok, tz.ok],
+            ty.tried.map((x) => x.keyId),
+            tz.tried.map((x) => x.keyId),
+            count(evs1),
+            [tw.ok, tv.ok],
+            tw.tried.map((x) => x.keyId),
+            count(evs2),
+        ]
+        let rr = [
+            [true, false, false],
+            ['ge-par1#0', 'ge-par1#1'],
+            ['ge-par1#1', 'ge-par1#0'],
+            2, //Y與Z各一
+            [false, true],
+            ['ge-par2#0', 'ge-par2#1'],
+            1, //W一
+        ]
         assert.strict.deepEqual(r, rr)
     })
 
