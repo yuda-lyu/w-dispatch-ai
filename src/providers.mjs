@@ -24,14 +24,16 @@
 //     v2頁列為Free但實測全不可用(CLI回UnknownError、REST回400 Upstream request failed: Model is unavailable):
 //       deepseek-v4-flash-free / laguna-s-2.1-free / ling-3.0-tiny-free / longcat-2.0-free / north-mini-code-free
 //     v1頁有而v2頁未列, 但實測可用: mimo-v2.6-flash-free / jev-1.13-free / muse-spark-1.2與1.3 / nemotron-3.5-lightning-free
-//     兩頁皆列且實測可用: big-pickle(CLI 7.1s) / mimo-v2.5-free / nemotron-3-ultra-free
+//     兩頁皆列且實測可用: big-pickle(CLI 7.1s) / mimo-v2.5-free / nemotron-3-ultra-free /
+//       space-bunny-free(2026-09-24新上線: CLI 8.1s、REST 1.9s)
 //     故判準固定為: 文件只用於「端點種類與計價」, 「能不能用」一律以/zen/v1/models或`opencode models`加實測為準。
 //
 //   ★ 核心事實: zen「不是」單一OpenAI相容端點, 端點依模型家族而異 ★
 //     依官方文件之端點欄(2026-09-22以v2 Console/Models頁複查, 分佈與v1一致):
 //       /zen/v1/chat/completions   @ai-sdk/openai-compatible  ← 本套件api-openai-compat僅支援此種
 //         mimo-v2.5-free / ling-3.0-flash-fin-free / nemotron-3-ultra-free /
-//         nemotron-3.5-lightning-free / big-pickle / glm-* / kimi-* / minimax-* / deepseek-v4-*
+//         nemotron-3.5-lightning-free / big-pickle / space-bunny-free(2026-09-24查證) /
+//         glm-* / kimi-* / minimax-* / deepseek-v4-*
 //       /zen/v1/responses          @ai-sdk/openai        (OpenAI Responses API, 非chat/completions)
 //         muse-spark-1.2-contributor-free / muse-spark-1.3-contributor-free / GPT系 / Grok系
 //       /zen/v1/messages           @ai-sdk/anthropic     Claude系 / Qwen系(qwen3.5~3.7-plus/max)
@@ -77,9 +79,11 @@
 //     屬刻意之反濫用政策; 付費模型不受限) ★
 //     症狀: 403 FreeTierError「OpenCode's free tier can only be used from within OpenCode」。
 //     判定依據(2026-09-18本機矩陣實測, opencode 1.18.31):
-//       - REST直呼(任何金鑰): /chat/completions與/responses之免費模型一律403 → 該類zen:條目自此為政策性失效。
-//         例外(2026-09-22實測): /systemone之jev-1.13-free不受此閘門, 帶金鑰或匿名皆200(0.6~1.2s)——
-//         閘門只套在對話型免費模型, 故zen:jev-1.13-free之REST條目可用(見該條)。
+//       - REST直呼(任何金鑰): /chat/completions與/responses之免費模型(當日逐一實測者)一律403 → 該類zen:條目自此為政策性失效。
+//         例外(2026-09-22實測): /systemone之jev-1.13-free不受此閘門, 帶金鑰或匿名皆200(0.6~1.2s),
+//         故zen:jev-1.13-free之REST條目可用(見該條)。
+//         例外(2026-09-24實測): /chat/completions之space-bunny-free亦不受此閘門, 匿名與帶金鑰皆200(1.9~2.0s)——
+//         即閘門係逐模型套用, 並非「對話型免費模型一律擋」; 例外可能隨時收回, 新模型能否走REST一律以實測為準。
 //       - opencode CLI匿名或帶金鑰: 通過; 但注入的設定若把bash工具deny掉(permission.bash:'deny'、
 //         舊式tools.bash:false、agent覆寫deny)即被判非opencode而403; 只deny edit、或改為ask則通過。
 //         即閘門以「請求之工具清單是否含bash」為指紋之一(另一指紋為User-Agent之版本字串, 非正式版build被拒)。
@@ -92,8 +96,8 @@
 //     (實測: muse-spark 1.2/1.3之REST 500而CLI皆秒級成功)。CLI版模型id為
 //     `opencode/<model-id>`, 可用 `opencode models` 列出; 兩者屬不同供應商條目(見id命名)。
 //
-// 【zen免費模型清單為「更新日快照」, 不保證即為當前狀態】zen:系收錄截至2026-08-21
-//   經GET https://opencode.ai/zen/v1/models 查得之免費模型(*-free), 不做好用篩選——
+// 【zen免費模型清單為「更新日快照」, 不保證即為當前狀態】zen:系收錄起於2026-08-21
+//   經GET https://opencode.ai/zen/v1/models 查得之免費模型(*-free), 其後之增刪見本段漂移紀錄(最近一次2026-09-24), 不做好用篩選——
 //   新模型會上線、舊模型可能下架或限流, 且各模型能力/速度/輸出習慣差異極大
 //   (各條目註解記錄已測特性), 由呼叫端自行評估選用; 要查當前清單, 以OPENCODE_KEYS
 //   打上述/models端點即可。暫時打不通的條目(限流/額度/上游中斷)依本套件哲學保留不移除:
@@ -134,6 +138,9 @@
 //     且維護者已明示為刻意政策而非故障, 故不適用「暫時失敗保留」之哲學。同模型之CLI版(oc:opencode/*)
 //     不受影響且已收錄, 能力覆蓋相同。日後政策放寬時, 依檔頭收錄檢核重新收錄即可(端點種類見端點表)。
 //     副作用: 移除後預設清單已無api-openai-responses之條目(該kind仍受支援, 僅無預設條目)。
+//   2026-09-24之漂移: 新增space-bunny-free之兩條目(oc:與zen:, 使用者指示)。官方v1/v2文件〈Pricing〉全Free,
+//     說明為限時免費之stealth推理模型(供應商零保留、不以資料訓練), 端點/chat/completions; CLI清單與/zen/v1/models皆有。
+//     與其他對話型免費模型不同, 其REST未被免費層閘門擋下(匿名與帶金鑰皆200), 故兩路皆收; 實測數據見兩條目註解。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
@@ -279,6 +286,20 @@ let providers = [
         //REST不收zen:版——同日實測403 FreeTierError(對話型免費模型之閘門, 見檔頭)
     },
     {
+        id: 'oc:opencode/space-bunny-free',
+        model: 'opencode/space-bunny-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        //2026-09-24新增(官方v1/v2文件、CLI清單與/zen/v1/models皆有; 〈Pricing〉全Free, 限時免費之stealth推理模型,
+        //context 1M、可輸入圖片與影片)。匿名CLI實測(opencode 1.18.32): 簡答8.1s、推理題34.9s答對、
+        //read工具讀相對路徑13.2s正確、要求寫檔被OC_READONLY擋下未落地。官方〈Privacy〉載明其供應商零保留
+        //且不以資料訓練(與big-pickle及各*-free模型之「可能用於改進模型」不同)。同模型另有zen:REST版(見該條)
+    },
+    {
         id: 'agy:gemini-3.8-flash-high',
         model: 'gemini-3.8-flash-high', //2026-09-03自3.7升版(agy 1.1.25): 實測12.5s vs 3.7之62.2s, 讀檔14.6s vs 57.6s
         kind: 'antigravity',
@@ -348,7 +369,7 @@ let providers = [
         //付費版jev-1.13未收: 同日以第1把金鑰實測403(Upstream request failed: Model access is disabled),
         //屬該金鑰工作區未開此模型; 要收須先於Zen後台開啟並確認計費($0.042/1M輸入)。
     },
-    //zen:系為2026-08-21快照(檔頭聲明), 各條註記當日以「請只回覆兩個字：完成」實測之結果
+    //REST文字生成條目(api-openai-compat): agnes:/poolside:走各家官方端點; zen:走OpenCode Zen轉售(端點表與免費層閘門見檔頭)
     {
         id: 'agnes:agnes-3.0-flash',
         model: 'agnes-3.0-flash',
@@ -367,6 +388,18 @@ let providers = [
             max_tokens: 8192,
             chat_template_kwargs: { enable_thinking: false },
         },
+    },
+    {
+        id: 'zen:space-bunny-free',
+        model: 'space-bunny-free',
+        kind: 'api-openai-compat',
+        envVar: 'OPENCODE_KEYS',
+        baseURL: 'https://opencode.ai/zen/v1',
+        body: { max_tokens: 32768 },
+        //2026-09-24新增: 對話型免費模型中少數REST可通者(免費層閘門未套用, 見檔頭; 例外可能隨時收回)——
+        //匿名1.9s、第1把金鑰2.0s皆200。max_tokens刻意不用zen條目慣例之8192: 此為推理模型, 推理token計入max_tokens,
+        //同日實測列10縣市一題即用5222(推理4849+正文373), 8192易截斷, 而本轉接器遇截斷仍回ok(內容殘缺或為空);
+        //長文(README前8000字)摘要成JSON一題用3385(推理3045), 三題finish_reason皆stop, 故取32768留約6倍餘裕。
     },
 
 ]

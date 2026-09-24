@@ -23,7 +23,7 @@ Note:
 - `dispatchCodex` needs [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) in system PATH, and uses its existing login state.
 - `dispatchOpencode` needs [opencode CLI](https://opencode.ai/) (`opencode`) in system PATH. Unlike the other two, it accepts a per-call `key`+`provider`, injected through `OPENCODE_AUTH_CONTENT`, so multiple api keys can be rotated without rewriting `auth.json`.
 - `dispatchAntigravity` needs [Google Antigravity CLI](https://antigravity.google/) (`agy`, not `antigravity`) in system PATH, and uses its existing OAuth login state (first login requires an interactive desktop session). Unlike the other three, agy takes the prompt via the `--print` flag instead of stdin, so the prompt is capped at 30000 chars (Windows command line limit); longer prompts return an error result.
-- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead**) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
+- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **most of its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead** (the gate is applied per model: `jev-1.13-free` on `/systemone` and `space-bunny-free` were verified to still accept REST)) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
 - Each cli adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
 - For the other three adapters the prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
 - All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object.
@@ -565,7 +565,7 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
 #### providers.mjs(內建供應商定義檔):
 [src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 收錄各供應商條目(CLI版與REST版)，金鑰以 `envVar` 間接引用(機密只放 `.env`)，經 `resolveProviders` 展開後即可直接使用或以 `pick` 自選。
 
-**zen免費模型清單為「更新日快照」**：`zen:` 系收錄截至 2026-08-21 經 `GET /zen/v1/models` 查得之**全部**免費模型(`*-free`)，不做好用篩選——新模型會上線、舊模型可能下架或限流，**不保證清單即為當前最新可用狀態**；且各模型能力/速度/輸出習慣差異極大（各條目註解記錄已測特性，如批次涵蓋率、實測耗時），由呼叫端自行評估選用。暫時打不通的條目依本套件哲學保留不移除：恢復的偵測就是下次再打一次，`fallback`/`cooldownMs` 即為此而生。
+**zen免費模型清單為「更新日快照」**：`zen:` 系起於 2026-08-21 經 `GET /zen/v1/models` 查得之免費模型(`*-free`)，其後依實測增刪（最近一次 2026-09-24）；因 2026-09-17 起之 Zen 免費層閘門擋下多數對話型免費模型之 REST 直呼，`zen:` 現僅收 REST 實測可通者（`zen:jev-1.13-free`、`zen:space-bunny-free`），其餘免費模型改收 `oc:` 版，增刪經過見 providers.mjs 檔頭之漂移紀錄。不做好用篩選——新模型會上線、舊模型可能下架或限流，**不保證清單即為當前最新可用狀態**；且各模型能力/速度/輸出習慣差異極大（各條目註解記錄已測特性，如批次涵蓋率、實測耗時），由呼叫端自行評估選用。暫時打不通的條目依本套件哲學保留不移除：恢復的偵測就是下次再打一次，`fallback`/`cooldownMs` 即為此而生。
 
 ```alias
 import wdi from 'w-dispatch-ai'
@@ -605,6 +605,8 @@ let extra = [{ id: 'zen:some-new-model-free', model: 'some-new-model-free', kind
 let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)), ...extra]
 let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```
+
+**推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷，而 `api-openai-compat` 遇截斷仍回 `ok`（內容殘缺或為空）；內建之 `zen:space-bunny-free` 即用 32768。
 
 **警語：動「輸入」、不要動「回傳」**——把條目 push 進回傳的 `providers` 陣列不會同步進 `table`，兩者當場分歧；合併輸入再呼叫則兩種輸出同源產出、必然一致。另同 id 重複條目屬設定錯誤（共用游標、日誌無法區分），合併時務必如上例先濾再接。
 
