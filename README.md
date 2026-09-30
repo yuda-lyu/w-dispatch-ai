@@ -223,8 +223,12 @@ await test()
 **1.0.38 起**：
 7. HTTP 200 但本體非 JSON，另報`INVALID_RESPONSE: body is not JSON (<位元組數>, first bytes <前16位元組hex>, content-encoding=…, content-type=…)`（此前與「JSON 缺欄位」同一句），並改為**整組跳過**；`errorType`仍為`invalid-response`，「JSON 缺欄位」維持換金鑰。依`errorType`計數者若要把此類整組失敗計入，須納入`invalid-response`。
 
-**1.0.38 之後**：
+**1.0.39 起**：
 8. `dispatchAiFallback`之`onEvent`新增事件`'group-exhausted'`：一組試完仍無成交時發出（每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前），欄位見下方 Options for dispatchAiFallback 之`onEvent`；成交、預算用盡、中止之組不發，`tried`不變，既有 7 種事件之順序、欄位與觸發條件不變。**逐事件寫日誌者每個試完的組多一行**；只認特定`ev.type`者不受影響。以「本次呼叫整組全敗」計數（如健康層降序）者，改為每收到一次此事件計一次，不必再以金鑰數與逐把失敗次數重建（並行下不精確）。
+
+**1.0.39 之後**：
+9. 內建 providers：`codex:gpt-6-sol` 改為 `codex:gpt-6.1-sol`（id 與 model 皆換）。以舊 id 做 `pick` 者會落入 `missing`（`hints` 會提示新 id），須改用新 id。
+10. 內建 providers 之思考強度一律明給 high：claude 條目加 `--effort high`（此前未給，`-p` 實測為 medium）；codex 條目加 `--config model_reasoning_effort="high"`（此前沿用執行機之 `config.toml`）；opencode 之 muse-spark-1.2／1.3 與 space-bunny 加 `--variant high`；`zen:space-bunny-free` 之 body 加 `reasoning_effort: 'high'`；`poolside:laguna-s-2.1` 由關閉思考改為開啟（`enable_thinking: true`，`max_tokens` 由 8192 改 32768）。**耗時會增加**（poolside 實測推理題由 3.8s 增為 15～28s，但關閉時該題答錯）。以 `patch` 覆寫條目 `extraArgs` 者，須自行一併帶上防寫與思考強度旗標。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -627,6 +631,8 @@ let extra = [{ id: 'zen:some-new-model-free', model: 'some-new-model-free', kind
 let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)), ...extra]
 let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```
+
+**內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（僅 `zen:space-bunny-free`），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效。
 
 **推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；內建之 `zen:space-bunny-free` 即用 32768。
 

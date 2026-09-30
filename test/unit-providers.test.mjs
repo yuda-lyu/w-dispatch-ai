@@ -109,4 +109,41 @@ describe('providers', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('思考強度一律high: claude、codex、antigravity條目必明給; opencode之--variant與REST之reasoning_effort帶則須為high, REST不得關閉思考', function() {
+        //未明給時claude回退-p預設(2026-09-30實測medium)、codex回退執行機之config.toml, 結果隨安裝機而異;
+        //opencode之variant與REST之reasoning_effort僅部分模型有(見providers.mjs之EFFORT常數), 故只檢「帶則為high」
+        let flagValues = (a, flag) => {
+            let arr = Array.isArray(a) ? a : []
+            let vs = []
+            for (let i = 0; i < arr.length - 1; i++) {
+                if (arr[i] === flag) {
+                    vs.push(arr[i + 1])
+                }
+            }
+            return vs
+        }
+        let isHigh = (p) => {
+            if (p.kind === 'claude') {
+                let vs = flagValues(p.extraArgs, '--effort')
+                return vs.length === 1 && vs[0] === 'high'
+            }
+            if (p.kind === 'codex') {
+                let vs = flagValues(p.extraArgs, '--config').filter((s) => /^model_reasoning_effort\s*=/.test(s))
+                return vs.length === 1 && vs[0] === 'model_reasoning_effort="high"'
+            }
+            if (p.kind === 'antigravity') {
+                return /-high$/.test(p.model) || p.effort === 'high' //檔位以slug或effort表示
+            }
+            if (p.kind === 'opencode') {
+                return flagValues(p.extraArgs, '--variant').every((v) => v === 'high')
+            }
+            let body = p.body || {}
+            let thinkingOff = !!body.chat_template_kwargs && body.chat_template_kwargs.enable_thinking === false
+            return (body.reasoning_effort === undefined || body.reasoning_effort === 'high') && !thinkingOff
+        }
+        let r = providers.map((p) => [p.id, isHigh(p)])
+        let rr = providers.map((p) => [p.id, true])
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

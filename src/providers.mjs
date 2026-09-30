@@ -194,6 +194,26 @@ let OC_READONLY = { edit: 'deny', bash: 'ask' }
 let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 
 
+//各條目之思考強度(單一來源, 2026-09-30使用者指示一律high): 各家參數不同, 條目引用下列常數而不手寫。
+//  claude   --effort(low/medium/high/xhigh/max): 未給時-p實測為medium(Claude Code 2.1.285, session紀錄之effort欄)。
+//  codex    --config model_reasoning_effort: 未給時沿用執行機之~/.codex/config.toml(本機為high), 再無則為模型預設
+//           (app-server model/list之defaultReasoningEffort, gpt-6.1-sol為low)——明給令條目不隨安裝機之設定而變;
+//           同日實測--config覆寫優先於config.toml(給low時session記為low)。
+//  opencode --variant: 僅部分模型有檔位, 以`opencode models <provider> --verbose`之variants查(同日opencode 1.18.33:
+//           muse-spark-1.2/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無),
+//           無檔位之條目不帶。同日實測space-bunny之variant low/high推理token為18/71, opencode.db之訊息記錄variant。
+//  REST     body.reasoning_effort: 僅zen:space-bunny-free帶——opencode模型目錄宣告其high檔即{reasoningEffort:'high'}
+//           (@ai-sdk/openai-compatible轉為此欄), 與oc:版同參數。agnes接受此欄但同日兩題各兩輪推理token無一致差異,
+//           視為未生效故不帶(其預設即會思考, usage可見推理token)。poolside之思考為開關(chat_template_kwargs.enable_thinking)
+//           而非檔位, 同日由關改開(見該條); jev(systemone)為決策模型無此概念。
+//  agy      以模型slug之檔位表示(gemini-3.8-flash-high), 不另帶--effort(與slug檔位不一致時agy報conflicts)。
+//  注意: 條目覆寫extraArgs時須一併帶上本常數(與防寫常數), 否則回退各CLI之預設強度。
+let EFFORT = 'high'
+let CLAUDE_EFFORT = ['--effort', EFFORT]
+let CODEX_EFFORT = ['--config', `model_reasoning_effort="${EFFORT}"`]
+let OC_EFFORT = ['--variant', EFFORT]
+
+
 let providers = [
 
     //cli版
@@ -246,7 +266,10 @@ let providers = [
         config: {
             permission: OC_READONLY,
         },
-        //2026-09-03實測8.1s(opencode CLI 1.18.27); 同模型另有zen:REST版, 額度池與故障域各自獨立
+        extraArgs: OC_EFFORT,
+        //2026-09-03實測8.1s(opencode CLI 1.18.27); 同模型另有zen:REST版, 額度池與故障域各自獨立。
+        //2026-09-30(opencode 1.18.33)連3次2.0s即失敗: 伺服器回UnknownError「Unexpected server error」, 帶不帶--variant皆同,
+        //同時1.3正常——屬上游暫時故障, 依套件哲學保留不移除(恢復之偵測即下次再打)
     },
     {
         id: 'oc:opencode/muse-spark-1.3-contributor-free',
@@ -257,6 +280,7 @@ let providers = [
         config: {
             permission: OC_READONLY,
         },
+        extraArgs: OC_EFFORT,
         //2026-09-03實測6.1s(opencode CLI 1.18.27)。註: 同日同模型走zen REST回HTTP 500,
         //僅CLI路徑可用——同模型不同路徑屬不同供應商之實例(故未增zen:對應條目)
     },
@@ -294,6 +318,7 @@ let providers = [
         config: {
             permission: OC_READONLY,
         },
+        extraArgs: OC_EFFORT,
         //2026-09-24新增(官方v1/v2文件、CLI清單與/zen/v1/models皆有; 〈Pricing〉全Free, 限時免費之stealth推理模型,
         //context 1M、可輸入圖片與影片)。匿名CLI實測(opencode 1.18.32): 簡答8.1s、推理題34.9s答對、
         //read工具讀相對路徑13.2s正確、要求寫檔被OC_READONLY擋下未落地。官方〈Privacy〉載明其供應商零保留
@@ -312,16 +337,18 @@ let providers = [
     },
     //claude/codex各兩條: 在前者為預設(全取遞補時先試), 在後者為較強之新模型(2026-09-23使用者指示)
     {
-        id: 'claude:sonnet',
+        id: 'claude:sonnet', //當前為5.5
         model: 'sonnet',
         kind: 'claude',
-        extraArgs: CLAUDE_READONLY,
+        extraArgs: [...CLAUDE_READONLY, ...CLAUDE_EFFORT],
+        //官方2026-09-28發布Sonnet 5.5; 2026-09-30於Claude Code 2.1.285以modelUsage實測別名已指向claude-sonnet-5-5。
+        //用別名則新版Sonnet發布即自動切換(與opus-5.5寫全名之取捨見該條)
     },
     {
         id: 'claude:opus-5.5',
         model: 'claude-opus-5-5',
         kind: 'claude',
-        extraArgs: CLAUDE_READONLY,
+        extraArgs: [...CLAUDE_READONLY, ...CLAUDE_EFFORT],
         //2026-09-23新增Opus 5.5(官方2026-09-22發布, API id claude-opus-5-5): Claude Code 2.1.280實測4.9~5.1s,
         //以--output-format json之modelUsage確認實際服務模型為claude-opus-5-5。
         //刻意寫全名而非別名'opus': 別名當下雖同樣指向5.5(同日實測), 但日後新版Opus發布時會無聲切換,
@@ -332,16 +359,20 @@ let providers = [
         model: 'gpt-5.6-luna',
         kind: 'codex',
         sandbox: 'read-only',
+        extraArgs: CODEX_EFFORT,
     },
     {
-        id: 'codex:gpt-6-sol',
-        model: 'gpt-6-sol',
+        id: 'codex:gpt-6.1-sol',
+        model: 'gpt-6.1-sol',
         kind: 'codex',
         sandbox: 'read-only',
-        //2026-09-23新增GPT-6 Sol(官方定位複雜程式與agentic工作): Codex CLI 0.156.1(穩定版)實測6.3~6.9s,
-        //該帳號之app-server model/list已列gpt-6-sol/gpt-6-luna/gpt-6-astra; 金絲雀實測唯讀沙箱擋下寫檔。
-        //openai/codex issue #47420稱「僅alpha版可用」係0.154.0使用者之回報, 0.156.1已不成立;
-        //若本機為較舊之codex而清單無此模型, 先執行`codex update`。推理強度沿用使用者config(實測為high)
+        extraArgs: CODEX_EFFORT,
+        //2026-09-30以GPT-6.1 Sol取代GPT-6 Sol(使用者指示; 前者2026-09-23收錄): 官方2026-09-29發布, Codex對Plus/Pro等開放;
+        //Codex CLI 0.159.2之app-server model/list已列且為該帳號預設模型(isDefault), 實測8.6s, session紀錄確認服務模型為gpt-6.1-sol;
+        //金絲雀實測唯讀沙箱擋下寫檔(回報沙箱唯讀、檔案未落地)。
+        //寫全名而非別名: Codex無「最新版sol」之別名——官方Models文件未載別名, model/list各筆亦無別名欄位且upgrade為null;
+        //不給model則改用執行機config.toml之model(本機實測不帶-m時跑gpt-5.6-sol)或官方推薦預設(不限sol系), 故新版發布時手動換。
+        //若本機為較舊之codex而清單無此模型, 先執行`codex update`
     },
 
     //api版
@@ -385,9 +416,13 @@ let providers = [
         envVar: 'POOLSIDE_KEYS',
         baseURL: 'https://inference.poolside.ai/v1',
         body: {
-            max_tokens: 8192,
-            chat_template_kwargs: { enable_thinking: false },
+            max_tokens: 32768,
+            chat_template_kwargs: { enable_thinking: true },
         },
+        //思考為開關而非檔位: 2026-09-30依「思考強度一律high」由false改true(原false無紀錄說明)。同日實測(第1把金鑰):
+        //不帶此欄即為開啟(推理829、27.6s); false時推理0、3.8s但一題正整數邊長矩形題答錯(12,3,6), true時答對(3,3,3、20.7s)。
+        //reasoning_effort於false時HTTP 400、true時接受但推理token無一致差異, 故不帶。開思考後推理token計入max_tokens,
+        //依README「推理模型請放寬body.max_tokens」由8192改32768(同日實測接受, 列10縣市題用538)
     },
     {
         id: 'zen:space-bunny-free',
@@ -395,11 +430,12 @@ let providers = [
         kind: 'api-openai-compat',
         envVar: 'OPENCODE_KEYS',
         baseURL: 'https://opencode.ai/zen/v1',
-        body: { max_tokens: 32768 },
+        body: { max_tokens: 32768, reasoning_effort: EFFORT },
         //2026-09-24新增: 對話型免費模型中少數REST可通者(免費層閘門未套用, 見檔頭; 例外可能隨時收回)——
         //匿名1.9s、第1把金鑰2.0s皆200。max_tokens刻意不用zen條目慣例之8192: 此為推理模型, 推理token計入max_tokens,
         //同日實測列10縣市一題即用5222(推理4849+正文373), 8192易截斷(轉接器遇截斷預設判失敗換家, 見checkTruncation.mjs);
         //長文(README前8000字)摘要成JSON一題用3385(推理3045), 三題finish_reason皆stop, 故取32768留約6倍餘裕。
+        //2026-09-30加reasoning_effort(思考強度見EFFORT常數): 同日帶high列10縣市題用277(推理89)、6.6s、finish_reason為stop
     },
 
 ]
