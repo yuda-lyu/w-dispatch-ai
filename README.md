@@ -226,9 +226,13 @@ await test()
 **1.0.39 起**：
 8. `dispatchAiFallback`之`onEvent`新增事件`'group-exhausted'`：一組試完仍無成交時發出（每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前），欄位見下方 Options for dispatchAiFallback 之`onEvent`；成交、預算用盡、中止之組不發，`tried`不變，既有 7 種事件之順序、欄位與觸發條件不變。**逐事件寫日誌者每個試完的組多一行**；只認特定`ev.type`者不受影響。以「本次呼叫整組全敗」計數（如健康層降序）者，改為每收到一次此事件計一次，不必再以金鑰數與逐把失敗次數重建（並行下不精確）。
 
-**1.0.39 之後**：
+**1.0.40 起**：
 9. 內建 providers：`codex:gpt-6-sol` 改為 `codex:gpt-6.1-sol`（id 與 model 皆換）。以舊 id 做 `pick` 者會落入 `missing`（`hints` 會提示新 id），須改用新 id。
 10. 內建 providers 之思考強度一律明給 high：claude 條目加 `--effort high`（此前未給，`-p` 實測為 medium）；codex 條目加 `--config model_reasoning_effort="high"`（此前沿用執行機之 `config.toml`）；opencode 之 muse-spark-1.2／1.3 與 space-bunny 加 `--variant high`；`zen:space-bunny-free` 之 body 加 `reasoning_effort: 'high'`；`poolside:laguna-s-2.1` 由關閉思考改為開啟（`enable_thinking: true`，`max_tokens` 由 8192 改 32768）。**耗時會增加**（poolside 實測推理題由 3.8s 增為 15～28s，但關閉時該題答錯）。以 `patch` 覆寫條目 `extraArgs` 者，須自行一併帶上防寫與思考強度旗標。
+
+**1.0.41 之後**：
+11. 內建 providers 新增三條 opencode 免費模型：`oc:opencode/ling-3.1-flash-free`、`oc:opencode/longcat-2.5-preview-free`、`oc:opencode/fledge-alpha-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），排在 `oc:opencode/space-bunny-free` 之後、`agy:` 之前。以 `pick` 自選者不受影響；**全取者遞補鏈變長**，原排其後之條目（agy、claude、codex 等）要在這三條也失敗後才輪到。三者之 REST 遭 Zen 免費層閘門擋下（403），故無 `zen:` 版。
+12. 內建 providers 移除 `oc:opencode/muse-spark-1.2-contributor-free`：該模型已自 opencode CLI 模型清單消失，呼叫持續回 `UnknownError`（2026-09-30 起）。以此 id 做 `pick` 者會落入 `missing`（`hints` 提示 `oc:opencode/muse-spark-1.3-contributor-free`），請改用 1.3；全取者遞補鏈少一條。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |

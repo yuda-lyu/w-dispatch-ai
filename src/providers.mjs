@@ -25,7 +25,8 @@
 //       deepseek-v4-flash-free / laguna-s-2.1-free / ling-3.0-tiny-free / longcat-2.0-free / north-mini-code-free
 //     v1頁有而v2頁未列, 但實測可用: mimo-v2.6-flash-free / jev-1.13-free / muse-spark-1.2與1.3 / nemotron-3.5-lightning-free
 //     兩頁皆列且實測可用: big-pickle(CLI 7.1s) / mimo-v2.5-free / nemotron-3-ultra-free /
-//       space-bunny-free(2026-09-24新上線: CLI 8.1s、REST 1.9s)
+//       space-bunny-free(2026-09-24新上線: CLI 8.1s、REST 1.9s) /
+//       ling-3.1-flash-free、longcat-2.5-preview-free、fledge-alpha-free(2026-10-03查證: CLI 11.5~19.6s、REST皆403)
 //     故判準固定為: 文件只用於「端點種類與計價」, 「能不能用」一律以/zen/v1/models或`opencode models`加實測為準。
 //
 //   ★ 核心事實: zen「不是」單一OpenAI相容端點, 端點依模型家族而異 ★
@@ -33,6 +34,7 @@
 //       /zen/v1/chat/completions   @ai-sdk/openai-compatible  ← 本套件api-openai-compat僅支援此種
 //         mimo-v2.5-free / ling-3.0-flash-fin-free / nemotron-3-ultra-free /
 //         nemotron-3.5-lightning-free / big-pickle / space-bunny-free(2026-09-24查證) /
+//         ling-3.1-flash-free / longcat-2.5-preview-free / fledge-alpha-free(2026-10-03查證) /
 //         glm-* / kimi-* / minimax-* / deepseek-v4-*
 //       /zen/v1/responses          @ai-sdk/openai        (OpenAI Responses API, 非chat/completions)
 //         muse-spark-1.2-contributor-free / muse-spark-1.3-contributor-free / GPT系 / Grok系
@@ -141,6 +143,13 @@
 //   2026-09-24之漂移: 新增space-bunny-free之兩條目(oc:與zen:, 使用者指示)。官方v1/v2文件〈Pricing〉全Free,
 //     說明為限時免費之stealth推理模型(供應商零保留、不以資料訓練), 端點/chat/completions; CLI清單與/zen/v1/models皆有。
 //     與其他對話型免費模型不同, 其REST未被免費層閘門擋下(匿名與帶金鑰皆200), 故兩路皆收; 實測數據見兩條目註解。
+//   2026-10-03之漂移: 新增oc:opencode/ling-3.1-flash-free、longcat-2.5-preview-free、fledge-alpha-free三條(使用者指示)。
+//     三者官方v1/v2文件〈Pricing〉皆Free、端點/chat/completions, CLI清單(--refresh)與/zen/v1/models皆有;
+//     REST三者皆403 FreeTierError(匿名與第1把金鑰各2次; 同時段zen:space-bunny-free仍200, 證閘門逐模型套用), 故只收oc:版。
+//     同日移除oc:opencode/muse-spark-1.2-contributor-free(使用者指示): 已自CLI目錄(--refresh)消失, 匿名CLI呼叫持續回
+//     UnknownError「Unexpected server error」(2026-09-30起累計4次, 每次2~4s即敗, 帶不帶--variant皆同, 同時段1.3正常)。
+//     /zen/v1/models雖仍列(未同時滿足先例之兩條件), 惟CLI為其唯一收錄路徑(zen:版已於09-22移除)且已不可用,
+//     留著只會讓全取者每輪空耗一次失敗。日後CLI目錄重新列出且實測可通時, 依收錄檢核重收即可。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
@@ -200,7 +209,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           (app-server model/list之defaultReasoningEffort, gpt-6.1-sol為low)——明給令條目不隨安裝機之設定而變;
 //           同日實測--config覆寫優先於config.toml(給low時session記為low)。
 //  opencode --variant: 僅部分模型有檔位, 以`opencode models <provider> --verbose`之variants查(同日opencode 1.18.33:
-//           muse-spark-1.2/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無),
+//           muse-spark-1.2(2026-10-03已移除)/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無;
+//           2026-10-03新收之ling-3.1-flash、longcat-2.5-preview、fledge-alpha亦有high, opencode 1.18.34),
 //           無檔位之條目不帶。同日實測space-bunny之variant low/high推理token為18/71, opencode.db之訊息記錄variant。
 //  REST     body.reasoning_effort: 僅zen:space-bunny-free帶——opencode模型目錄宣告其high檔即{reasoningEffort:'high'}
 //           (@ai-sdk/openai-compatible轉為此欄), 與oc:版同參數。agnes接受此欄但同日兩題各兩輪推理token無一致差異,
@@ -258,20 +268,6 @@ let providers = [
     //oc:opencode/*免費模型: 2026-09-18起改為匿名免費存取(不帶envVar、useStoredAuth:false), 理由見檔頭
     //【Zen免費層閘門】——帶金鑰反而依該金鑰所屬工作區之模型開關而異(第1把實測Model access is disabled)
     {
-        id: 'oc:opencode/muse-spark-1.2-contributor-free',
-        model: 'opencode/muse-spark-1.2-contributor-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //2026-09-03實測8.1s(opencode CLI 1.18.27); 同模型另有zen:REST版, 額度池與故障域各自獨立。
-        //2026-09-30(opencode 1.18.33)連3次2.0s即失敗: 伺服器回UnknownError「Unexpected server error」, 帶不帶--variant皆同,
-        //同時1.3正常——屬上游暫時故障, 依套件哲學保留不移除(恢復之偵測即下次再打)
-    },
-    {
         id: 'oc:opencode/muse-spark-1.3-contributor-free',
         model: 'opencode/muse-spark-1.3-contributor-free',
         kind: 'opencode',
@@ -323,6 +319,54 @@ let providers = [
         //context 1M、可輸入圖片與影片)。匿名CLI實測(opencode 1.18.32): 簡答8.1s、推理題34.9s答對、
         //read工具讀相對路徑13.2s正確、要求寫檔被OC_READONLY擋下未落地。官方〈Privacy〉載明其供應商零保留
         //且不以資料訓練(與big-pickle及各*-free模型之「可能用於改進模型」不同)。同模型另有zen:REST版(見該條)
+    },
+    //以下三條2026-10-03新增(使用者指示): 官方v1/v2文件、CLI清單(--refresh)與/zen/v1/models皆有, 〈Pricing〉全Free,
+    //端點/chat/completions; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError(免費層閘門, 見檔頭)。
+    //匿名CLI實測皆以opencode 1.18.34、variant high(opencode.db記錄確認): 簡答、推理題(答對)、read工具讀相對路徑(正確)、
+    //要求寫檔(被OC_READONLY擋下未落地)四項皆過
+    {
+        id: 'oc:opencode/ling-3.1-flash-free',
+        model: 'opencode/ling-3.1-flash-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //CLI目錄release_date 2026-09-29; 推理模型, context 262144、輸出上限32768、僅文字輸入。
+        //實測: 簡答19.6s、推理題14.9s、讀檔13.3s、寫檔金絲雀17.8s。
+        //官方〈Privacy〉載明免費期間所收資料可能用於改進模型, 敏感內容勿走此條
+    },
+    {
+        id: 'oc:opencode/longcat-2.5-preview-free',
+        model: 'opencode/longcat-2.5-preview-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //CLI目錄release_date 2026-09-25; 推理模型, context 1M、輸出上限131072、可輸入圖片。
+        //實測: 簡答12.0s、推理題13.1s、讀檔21.6s、寫檔金絲雀16.1s。
+        //官方〈Privacy〉載明其供應商零保留且不以資料訓練(同space-bunny)
+    },
+    {
+        id: 'oc:opencode/fledge-alpha-free',
+        model: 'opencode/fledge-alpha-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //CLI目錄release_date 2026-10-01; context 1M、輸出上限131072、可輸入圖片; 目錄標為推理模型(檔位low/high/max),
+        //但同日4次之session紀錄tokens_reasoning皆0(另兩條各有推理token), 推理量是否計入回報不明。
+        //實測: 簡答11.5s、推理題13.2s、讀檔12.6s、寫檔金絲雀11.0s。
+        //官方說明為限時免費(團隊藉此收集回饋改進模型), 〈Privacy〉載明免費期間所收資料可能用於改進模型, 敏感內容勿走此條;
+        //alpha限時免費模型可能提前結束(先例: union-alpha收錄隔日即轉付費並自清單消失, 見檔頭漂移紀錄)
     },
     {
         id: 'agy:gemini-3.8-flash-high',
