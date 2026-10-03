@@ -230,9 +230,12 @@ await test()
 9. 內建 providers：`codex:gpt-6-sol` 改為 `codex:gpt-6.1-sol`（id 與 model 皆換）。以舊 id 做 `pick` 者會落入 `missing`（`hints` 會提示新 id），須改用新 id。
 10. 內建 providers 之思考強度一律明給 high：claude 條目加 `--effort high`（此前未給，`-p` 實測為 medium）；codex 條目加 `--config model_reasoning_effort="high"`（此前沿用執行機之 `config.toml`）；opencode 之 muse-spark-1.2／1.3 與 space-bunny 加 `--variant high`；`zen:space-bunny-free` 之 body 加 `reasoning_effort: 'high'`；`poolside:laguna-s-2.1` 由關閉思考改為開啟（`enable_thinking: true`，`max_tokens` 由 8192 改 32768）。**耗時會增加**（poolside 實測推理題由 3.8s 增為 15～28s，但關閉時該題答錯）。以 `patch` 覆寫條目 `extraArgs` 者，須自行一併帶上防寫與思考強度旗標。
 
-**1.0.41 之後**：
+**1.0.42 起**：
 11. 內建 providers 新增三條 opencode 免費模型：`oc:opencode/ling-3.1-flash-free`、`oc:opencode/longcat-2.5-preview-free`、`oc:opencode/fledge-alpha-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），排在 `oc:opencode/space-bunny-free` 之後、`agy:` 之前。以 `pick` 自選者不受影響；**全取者遞補鏈變長**，原排其後之條目（agy、claude、codex 等）要在這三條也失敗後才輪到。三者之 REST 遭 Zen 免費層閘門擋下（403），故無 `zen:` 版。
 12. 內建 providers 移除 `oc:opencode/muse-spark-1.2-contributor-free`：該模型已自 opencode CLI 模型清單消失，呼叫持續回 `UnknownError`（2026-09-30 起）。以此 id 做 `pick` 者會落入 `missing`（`hints` 提示 `oc:opencode/muse-spark-1.3-contributor-free`），請改用 1.3；全取者遞補鏈少一條。
+
+**1.0.42 之後**：
+13. 內建 providers 新增 `agy:claude-sonnet-5-5-high`、`agy:claude-opus-5-5-high`（經 agy 呼叫 Claude 5.5；唯讀閘門與 `addDirs` 同 `agy:gemini-3.8-flash-high`），排在其後、`claude:sonnet` 之前。與 `claude:` 條目為同模型之不同路徑：額度走 agy 之「Claude and GPT models」群組（與 Claude Code 訂閱無關），故可在 `claude:` 受限時遞補。全取者遞補鏈多兩條；agy 單次實測 10～100 秒，前面全敗而走到這兩條時會明顯變慢。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |

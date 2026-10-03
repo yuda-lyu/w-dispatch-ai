@@ -216,7 +216,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           (@ai-sdk/openai-compatible轉為此欄), 與oc:版同參數。agnes接受此欄但同日兩題各兩輪推理token無一致差異,
 //           視為未生效故不帶(其預設即會思考, usage可見推理token)。poolside之思考為開關(chat_template_kwargs.enable_thinking)
 //           而非檔位, 同日由關改開(見該條); jev(systemone)為決策模型無此概念。
-//  agy      以模型slug之檔位表示(gemini-3.8-flash-high), 不另帶--effort(與slug檔位不一致時agy報conflicts)。
+//  agy      以模型slug之檔位表示(gemini-3.8-flash-high、claude-sonnet-5-5-high、claude-opus-5-5-high), 不另帶--effort
+//           (與slug檔位不一致時agy報conflicts)。
 //  注意: 條目覆寫extraArgs時須一併帶上本常數(與防寫常數), 否則回退各CLI之預設強度。
 let EFFORT = 'high'
 let CLAUDE_EFFORT = ['--effort', EFFORT]
@@ -378,6 +379,29 @@ let providers = [
         //唯讀工具照常(8.0s讀檔答對)。注意被擋時agy回ok:true且stdout為空(靜默拒絕非報錯),
         //工作流層無害(空回覆過不了validate而自動遞補); 需要寫入能力請於條目覆寫為true
         skipPermissions: false,
+    },
+    //agy之Claude兩條(2026-10-03新增, 使用者指示): agy 1.2.16之`agy models`已列claude-sonnet-5-5與claude-opus-5-5各low/medium/high,
+    //取-high符合EFFORT(agy以slug檔位表示)。與下方claude:條目為同模型之不同路徑(id規則②, 屬不同供應商): 走Google帳號之agy額度
+    //(`/usage`之「Claude and GPT models」群組, 有5小時與7天窗口, 與Gemini群組分開, 亦與Claude Code之Anthropic訂閱無關),
+    //額度池與故障域獨立, claude:路徑受限時仍可遞補。同日實測(防寫與addDirs同agy:gemini條目): --log-file日誌確認送往後端之
+    //模型label為「Claude Sonnet 5.5 (High)」/「Claude Opus 5.5 (High)」(--output-format json不帶模型名); 要求寫檔皆被擋未落地;
+    //耗時起伏大(10~100s; 同時段Gemini對照組亦10~90s, 屬agy整體狀況); 偶回暫時性503(Eligibility check failed: UNAVAILABLE),
+    //重試即成功, 由遞補層換家吸收。日誌開頭之「not logged into Antigravity」「not in local config」於Gemini對照組同樣出現, 屬啟動常態訊息
+    {
+        id: 'agy:claude-sonnet-5-5-high',
+        model: 'claude-sonnet-5-5-high',
+        kind: 'antigravity',
+        addDirs: ['.'],
+        skipPermissions: false,
+        //實測: 簡答10.5~100.6s、推理題44.3s答對(但附解題過程, 未照「只回一行」)、讀檔80.5s正確
+    },
+    {
+        id: 'agy:claude-opus-5-5-high',
+        model: 'claude-opus-5-5-high',
+        kind: 'antigravity',
+        addDirs: ['.'],
+        skipPermissions: false,
+        //實測: 簡答9.8~77.4s、推理題53.5s答對且照格式、讀檔61.9s正確(首次遇503, 重試成功)
     },
     //claude/codex各兩條: 在前者為預設(全取遞補時先試), 在後者為較強之新模型(2026-09-23使用者指示)
     {
