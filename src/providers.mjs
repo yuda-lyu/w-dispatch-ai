@@ -217,7 +217,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           視為未生效故不帶(其預設即會思考, usage可見推理token)。poolside之思考為開關(chat_template_kwargs.enable_thinking)
 //           而非檔位, 同日由關改開(見該條); jev(systemone)為決策模型無此概念。
 //  agy      以模型slug之檔位表示(gemini-3.8-flash-high、claude-sonnet-5-5-high、claude-opus-5-5-high), 不另帶--effort
-//           (與slug檔位不一致時agy報conflicts)。
+//           (與slug檔位不一致時agy報conflicts)。各模型可選檔位因模型而異, 以`agy -p /effort --model <slug> --output-format json`
+//           之available查(不耗額度; Git Bash下須加MSYS_NO_PATHCONV=1, 否則/effort被改寫成路徑而當成提示詞送出)。
 //  注意: 條目覆寫extraArgs時須一併帶上本常數(與防寫常數), 否則回退各CLI之預設強度。
 let EFFORT = 'high'
 let CLAUDE_EFFORT = ['--effort', EFFORT]
@@ -381,7 +382,9 @@ let providers = [
         skipPermissions: false,
     },
     //agy之Claude兩條(2026-10-03新增, 使用者指示): agy 1.2.16之`agy models`已列claude-sonnet-5-5與claude-opus-5-5各low/medium/high,
-    //取-high符合EFFORT(agy以slug檔位表示)。與下方claude:條目為同模型之不同路徑(id規則②, 屬不同供應商): 走Google帳號之agy額度
+    //取-high符合EFFORT(agy以slug檔位表示); high即agy對此兩模型開放之上限——`agy -p /effort --model <slug> --output-format json`
+    //之available為["low","medium","high"], 硬帶--effort xhigh/max回「has no "max" effort (available: low, medium, high)」(同日實測)。
+    //與下方claude:條目為同模型之不同路徑(id規則②, 屬不同供應商): 走Google帳號之agy額度
     //(`/usage`之「Claude and GPT models」群組, 有5小時與7天窗口, 與Gemini群組分開, 亦與Claude Code之Anthropic訂閱無關),
     //額度池與故障域獨立, claude:路徑受限時仍可遞補。同日實測(防寫與addDirs同agy:gemini條目): --log-file日誌確認送往後端之
     //模型label為「Claude Sonnet 5.5 (High)」/「Claude Opus 5.5 (High)」(--output-format json不帶模型名); 要求寫檔皆被擋未落地;
