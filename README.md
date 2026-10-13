@@ -23,7 +23,7 @@ Note:
 - `dispatchCodex` needs [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) in system PATH, and uses its existing login state.
 - `dispatchOpencode` needs [opencode CLI](https://opencode.ai/) (`opencode`) in system PATH. Unlike the other two, it accepts a per-call `key`+`provider`, injected through `OPENCODE_AUTH_CONTENT`, so multiple api keys can be rotated without rewriting `auth.json`.
 - `dispatchAntigravity` needs [Google Antigravity CLI](https://antigravity.google/) (`agy`, not `antigravity`) in system PATH, and uses its existing OAuth login state (first login requires an interactive desktop session). Unlike the other three, agy takes the prompt via the `--print` flag instead of stdin, so the prompt is capped at 30000 chars (Windows command line limit); longer prompts return an error result.
-- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **most of its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead** (the gate is applied per model: `jev-1.13-free` on `/systemone` and `space-bunny-free` were verified to still accept REST)) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
+- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (official docs list `https://opencode.ai/inference/v1` since 2026-10-13, and both bases worked that day; same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **most of its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead** (the gate is applied per model: `jev-1.13-free` on `/systemone` still accepts REST; `space-bunny-free` also did until the exception was revoked on 2026-10-13)) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
 - Each cli adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
 - For the other three adapters the prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
 - All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object.
@@ -234,8 +234,13 @@ await test()
 11. 內建 providers 新增三條 opencode 免費模型：`oc:opencode/ling-3.1-flash-free`、`oc:opencode/longcat-2.5-preview-free`、`oc:opencode/fledge-alpha-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），排在 `oc:opencode/space-bunny-free` 之後、`agy:` 之前。以 `pick` 自選者不受影響；**全取者遞補鏈變長**，原排其後之條目（agy、claude、codex 等）要在這三條也失敗後才輪到。三者之 REST 遭 Zen 免費層閘門擋下（403），故無 `zen:` 版。
 12. 內建 providers 移除 `oc:opencode/muse-spark-1.2-contributor-free`：該模型已自 opencode CLI 模型清單消失，呼叫持續回 `UnknownError`（2026-09-30 起）。以此 id 做 `pick` 者會落入 `missing`（`hints` 提示 `oc:opencode/muse-spark-1.3-contributor-free`），請改用 1.3；全取者遞補鏈少一條。
 
-**1.0.42 之後**：
+**1.0.43 起**：
 13. 內建 providers 新增 `agy:claude-sonnet-5-5-high`、`agy:claude-opus-5-5-high`（經 agy 呼叫 Claude 5.5；唯讀閘門與 `addDirs` 同 `agy:gemini-3.8-flash-high`），排在其後、`claude:sonnet` 之前。與 `claude:` 條目為同模型之不同路徑：額度走 agy 之「Claude and GPT models」群組（與 Claude Code 訂閱無關），故可在 `claude:` 受限時遞補。全取者遞補鏈多兩條；agy 單次實測 10～100 秒，前面全敗而走到這兩條時會明顯變慢。
+
+**1.0.46 之後**：
+14. 內建 providers 新增 `oc:opencode/cat-jam-free`、`oc:opencode/step-5-preview-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），排在 `oc:opencode/longcat-2.5-preview-free` 之後、`agy:` 之前。兩者之 REST 遭免費層閘門擋下（403），故無 `zen:` 版。全取者遞補鏈多兩條。**step-5 遇極短答案時偶會回空字串卻 `ok: true`**（2026-10-13 簡答題 14 次中 3 次，集中於同一時段；答案被寫進推理區塊而正文為空，需推理之題目則正常），呼叫端宜帶 `validate: 'nonempty'` 令空回覆判失敗而換家。
+15. 內建 providers 移除兩條：`oc:opencode/fledge-alpha-free`（已自 CLI 模型清單與官方文件消失，呼叫回 `UnknownError`）與 `zen:space-bunny-free`（免費層閘門之例外已收回，REST 一律 403）。以這兩個 id 做 `pick` 者會落入 `missing`：`zen:space-bunny-free` 之 `hints` 提示 `oc:opencode/space-bunny-free`（同模型之 CLI 版，可直接改用）；fledge 無替代模型，`hints` 所示僅為字串最接近者。
+16. `zen:jev-1.13-free` 之 `baseURL` 改為官方新基底 `https://opencode.ai/inference/v1`（原 `https://opencode.ai/zen/v1`；2026-10-13 新舊皆實測可用、答案相同），id 不變。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -402,7 +407,7 @@ let { providers: jev } = wdi.resolveProviders(wdi.providers, { env, pick: ['type
 let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 ```
 
-- **同一個 jev 有兩條路**：TypeSafe 官方端點（`typesafe:jev-latest`，用 `TYPESAFE_KEYS`）與 OpenCode Zen 轉售（`zen:jev-1.13-free`，端點 `/zen/v1/systemone`，用 `OPENCODE_KEYS`；不帶金鑰亦可）。兩者用同一個 kind，答案一致（2026-09-22 實測同題 `choice` 相同、`noul` 差 0.01），額度池與故障域各自獨立，可互為遞補。Zen 對話型免費模型的 403 閘門**不套用**於 `/systemone`。
+- **同一個 jev 有兩條路**：TypeSafe 官方端點（`typesafe:jev-latest`，用 `TYPESAFE_KEYS`）與 OpenCode Zen 轉售（`zen:jev-1.13-free`，端點 `/inference/v1/systemone`——2026-10-13 起之官方基底，舊 `/zen/v1/systemone` 同日仍可用；用 `OPENCODE_KEYS`；不帶金鑰亦可）。兩者用同一個 kind，答案一致（2026-09-22 實測同題 `choice` 相同、`noul` 差 0.01），額度池與故障域各自獨立，可互為遞補。Zen 對話型免費模型的 403 閘門**不套用**於 `/systemone`。
 
 - **經工作流 `callAi` 呼叫時務必傳 `promptPrefix: ''`**：預設的防寫檔前綴會被當成 state 的一部分送去評估。
 
@@ -598,7 +603,7 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
 #### providers.mjs(內建供應商定義檔):
 [src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 收錄各供應商條目(CLI版與REST版)，金鑰以 `envVar` 間接引用(機密只放 `.env`)，經 `resolveProviders` 展開後即可直接使用或以 `pick` 自選。
 
-**zen免費模型清單為「更新日快照」**：`zen:` 系起於 2026-08-21 經 `GET /zen/v1/models` 查得之免費模型(`*-free`)，其後依實測增刪（最近一次 2026-09-24）；因 2026-09-17 起之 Zen 免費層閘門擋下多數對話型免費模型之 REST 直呼，`zen:` 現僅收 REST 實測可通者（`zen:jev-1.13-free`、`zen:space-bunny-free`），其餘免費模型改收 `oc:` 版，增刪經過見 providers.mjs 檔頭之漂移紀錄。不做好用篩選——新模型會上線、舊模型可能下架或限流，**不保證清單即為當前最新可用狀態**；且各模型能力/速度/輸出習慣差異極大（各條目註解記錄已測特性，如批次涵蓋率、實測耗時），由呼叫端自行評估選用。暫時打不通的條目依本套件哲學保留不移除：恢復的偵測就是下次再打一次，`fallback`/`cooldownMs` 即為此而生。
+**zen免費模型清單為「更新日快照」**：`zen:` 系起於 2026-08-21 經 `GET /zen/v1/models` 查得之免費模型(`*-free`)，其後依實測增刪（最近一次 2026-10-13）；因 2026-09-17 起之 Zen 免費層閘門擋下多數對話型免費模型之 REST 直呼，`zen:` 現僅收 REST 實測可通者（`zen:jev-1.13-free`；`zen:space-bunny-free` 因閘門例外收回，已於 2026-10-13 移除），其餘免費模型改收 `oc:` 版，增刪經過見 providers.mjs 檔頭之漂移紀錄。不做好用篩選——新模型會上線、舊模型可能下架或限流，**不保證清單即為當前最新可用狀態**；且各模型能力/速度/輸出習慣差異極大（各條目註解記錄已測特性，如批次涵蓋率、實測耗時），由呼叫端自行評估選用。暫時打不通的條目依本套件哲學保留不移除：恢復的偵測就是下次再打一次，`fallback`/`cooldownMs` 即為此而生。
 
 ```alias
 import wdi from 'w-dispatch-ai'
@@ -639,9 +644,9 @@ let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)),
 let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```
 
-**內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（僅 `zen:space-bunny-free`），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效。
+**內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（原僅 `zen:space-bunny-free`，該條已於 2026-10-13 移除，現無內建 REST 條目帶此欄），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效。
 
-**推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；內建之 `zen:space-bunny-free` 即用 32768。
+**推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；內建之 `poolside:laguna-s-2.1`（開啟思考）即用 32768。
 
 **警語：動「輸入」、不要動「回傳」**——把條目 push 進回傳的 `providers` 陣列不會同步進 `table`，兩者當場分歧；合併輸入再呼叫則兩種輸出同源產出、必然一致。另同 id 重複條目屬設定錯誤（共用游標、日誌無法區分），合併時務必如上例先濾再接。
 

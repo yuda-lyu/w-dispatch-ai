@@ -325,7 +325,7 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
  *
  *     //OpenCode Zen(即opencode CLI之自家閘道), 模型名不帶opencode/前綴; 走此端點者見providers.mjs檔頭之端點表
  *     //注意Zen之免費模型自2026-09-17起多數禁止REST直呼(403 FreeTierError), 該類模型須改走opencode CLI(kind:'opencode');
- *     //閘門係逐模型套用(如space-bunny-free於2026-09-24實測REST仍200), 能否走REST以實測為準, 例外見providers.mjs檔頭
+ *     //閘門係逐模型套用(space-bunny-free曾於2026-09-24實測REST仍200, 2026-10-13已收回改403), 能否走REST以實測為準, 例外見providers.mjs檔頭
  *     let r2 = await dispatchApiOpenaiCompat('請只回覆兩個字：完成', {
  *         baseURL: 'https://opencode.ai/zen/v1',
  *         key: 'sk-xxxxxx',
