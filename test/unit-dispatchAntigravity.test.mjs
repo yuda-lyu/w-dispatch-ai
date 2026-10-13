@@ -1,19 +1,25 @@
 import assert from 'assert'
 import dispatchAntigravity from '../src/dispatchAntigravity.mjs'
-import createFakeCli from './tools/fakeCliForTest.mjs'
+import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
+import spawnFailCases from './tools/spawnFailCasesForTest.mjs'
 
 
 describe('dispatchAntigravity', function() {
 
     let fake = null
+    let bad = null
 
     before(function() {
         fake = createFakeCli('fake-agy')
+        bad = createUnstartableExe('bad-antigravity')
     })
 
     after(function() {
         if (fake) {
             fake.clean()
+        }
+        if (bad) {
+            bad.clean()
         }
     })
 
@@ -50,11 +56,12 @@ describe('dispatchAntigravity', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('轉義膨脹突破命令列上限時由try/catch兜底回傳錯誤結果物件不reject', async function() {
-        //29000個引號長度過前置檢查, 但spawn轉義後約58000字元 → 同步拋ENAMETOOLONG
+    it('轉義膨脹突破命令列上限時(spawn同步拋ENAMETOOLONG)回傳錯誤結果物件不reject, errorType為spawn且attempts為1', async function() {
+        //規格: README errorType表之spawn列(命令列過長屬子進程未能啟動); attempts為實際嘗試次數(帳本R-SPAWN-1)
+        //29000個引號長度過前置檢查, 但spawn轉義後約58000字元 → 同步拋ENAMETOOLONG, wsemi>=1.9.15由execCli以結果物件回報(實際嘗試1次)
         let t = await dispatchAntigravity('"'.repeat(29000), { exe: fake.exe })
-        let r = [t.ok, t.error.includes('ENAMETOOLONG'), t.attempts]
-        let rr = [false, true, 0]
+        let r = [t.ok, t.error.includes('ENAMETOOLONG'), t.attempts, t.errorType]
+        let rr = [false, true, 1, 'spawn']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -187,6 +194,31 @@ describe('dispatchAntigravity', function() {
         let o = JSON.parse(t.stdout)
         let r = [t.ok, o.cwd === process.cwd()]
         let rr = [true, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在)時不reject, errorType為spawn、code為null且attempts為1', async function() {
+        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3)
+        let cases = spawnFailCases({ kind: 'antigravity', okExe: fake.exe, badExe: bad.exe })
+        let r = []
+        for (let c of cases) {
+            let t = await dispatchAntigravity(c.prompt, c.opt)
+            r.push([c.label, t.ok, t.errorType, t.code, t.attempts])
+        }
+        let rr = cases.map((c) => [c.label, false, 'spawn', null, 1])
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('自訂validate拋錯時視同驗證失敗(OUTPUT_VALIDATION_FAILED, errorType為validation)且stderr前綴validate threw訊息(同REST類), 不成為未捕捉例外', async function() {
+        //規格: README行為變更紀錄1.0.37第3條與1.0.48(validate拋錯改回驗證失敗, stderr前綴validate threw, 與REST類同規則; 帳本R-VALIDATE-1)
+        let t = await dispatchAntigravity('abc', {
+            exe: fake.exe,
+            validate: () => {
+                throw new Error('validate boom')
+            },
+        })
+        let r = [t.ok, t.error, t.errorType, t.stderr.indexOf('validate threw: validate boom') === 0]
+        let rr = [false, 'OUTPUT_VALIDATION_FAILED', 'validation', true]
         assert.strict.deepEqual(r, rr)
     })
 

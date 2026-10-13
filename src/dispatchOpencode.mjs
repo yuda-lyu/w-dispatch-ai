@@ -3,10 +3,9 @@ import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
-import { attachErrorType } from './getErrorType.mjs'
+import runExecCli from './runExecCli.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
@@ -119,9 +118,9 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()；其絕對路徑並同步注入環境變數PWD(opencode以繼承之PWD優先於真實cwd決定session目錄，見檔頭)，呼叫端env內之PWD會被覆寫
- * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數拋錯視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
  * @example
  * //need opencode cli in system PATH
  *
@@ -207,10 +206,16 @@ async function dispatchOpencode(prompt, opt = {}) {
         env = undefined
     }
 
-    //config有效才注入, 否則沿用使用者既有設定檔, 物件則序列化為JSON字串
+    //config有效才注入, 否則沿用使用者既有設定檔, 物件則序列化為JSON字串;
+    //不可序列化(BigInt、循環參照、toJSON拋錯)以錯誤結果物件回報, 不reject(呼叫無法開始, 與金鑰無關故為params)
     let config = get(opt, 'config', null)
     if (isobj(config)) {
-        config = JSON.stringify(config)
+        try {
+            config = JSON.stringify(config)
+        }
+        catch (err) {
+            return getErrorResult(`config is not JSON-serializable: ${get(err, 'message', String(err))}`)
+        }
     }
     if (isestr(config)) {
         env = {
@@ -252,14 +257,13 @@ async function dispatchOpencode(prompt, opt = {}) {
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
 
-    //execCli, prompt一律走stdin; 失敗結果補上機器可讀之errorType(僅機械可判者, 見getErrorType.mjs)
-    let r = await execCli(exe, args, {
+    //execCli(經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上機器可讀之errorType, 見runExecCli.mjs), prompt一律走stdin
+    return runExecCli(exe, args, {
         ...optCli,
         input: prompt,
         env,
         timeoutMs,
     })
-    return attachErrorType(r)
 }
 
 

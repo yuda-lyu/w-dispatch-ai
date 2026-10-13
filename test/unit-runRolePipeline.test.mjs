@@ -172,4 +172,19 @@ describe('runRolePipeline', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('階段prompt函式拋錯時以該階段失敗回報並保留已完成成果, 不reject', async function() {
+        //規格: runRolePipeline之JSDoc「失敗即止但已完成成果完整回傳」「本函數不會reject」(帳本R-NOREJECT-1)
+        let t = await runRolePipeline({
+            providers,
+            callOpt,
+            stages: [
+                { id: 's1', use: 'p-a', prompt: () => '只回覆JSON' },
+                { id: 's2', use: 'p-b', prompt: (ctx) => ctx.prev.no.such.field },
+            ],
+        })
+        let r = [t.ok, t.failedStage, t.order, Object.keys(t.results), t.error.indexOf('stage[s2].prompt threw:') === 0]
+        let rr = [false, 's2', ['s1', 's2'], ['s1'], true]
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

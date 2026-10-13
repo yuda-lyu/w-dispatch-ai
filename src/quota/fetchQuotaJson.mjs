@@ -4,6 +4,7 @@ import iseobj from 'wsemi/src/iseobj.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import castPintOr from '../castPintOr.mjs'
 import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
+import redactText from '../redactText.mjs'
 
 
 // fetchQuotaJson.mjs — 各額度查詢端點共用之HTTP請求並解析JSON
@@ -20,34 +21,12 @@ import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
 // 【為何有redact與maxBodyBytes】錯誤訊息會夾帶回應本文片段, 若對端把請求標頭回顯(除錯頁、代理錯誤頁),
 //   權杖或帳號ID便會流入log; 呼叫端把機密值交給redact, 進訊息前一律替換。本文大小上限則防止
 //   異常回應(例如導向到整頁HTML或無限串流)撐爆記憶體; 額度端點正常回應不到10KB, 1MB綽綽有餘。
-//   兩者皆參考同類工具codex-reset-checker之做法。
+//   兩者皆參考同類工具codex-reset-checker之做法。遮蔽規則與REST轉接器共用單一來源(../redactText.mjs);
+//   網路層錯誤之訊息另附cause.code(2026-10-14起; undici之message僅為'fetch failed', 不附碼則無從分辨連線拒絕、DNS或憑證錯誤)。
 
 
 //回應本文預設上限位元組
 let DEFAULT_MAX_BODY_BYTES = 1048576
-
-
-//遮蔽替代文字; 短於此長度之機密值不遮(避免把常見短字串誤遮成無法閱讀)
-let REDACT_MASK = '[REDACTED]'
-let REDACT_MIN_LEN = 6
-
-
-/**
- * 將文字中之機密值替換為遮蔽字
- *
- * @param {String} text 輸入文字
- * @param {Array} redact 輸入機密值字串陣列
- * @returns {String} 回傳替換後文字
- */
-function redactText(text, redact) {
-    let s = String(text)
-    for (let v of redact) {
-        if (isestr(v) && v.length >= REDACT_MIN_LEN) {
-            s = s.split(v).join(REDACT_MASK)
-        }
-    }
-    return s
-}
 
 
 /**
@@ -215,7 +194,9 @@ async function fetchQuotaJson(url, opt = {}) {
             if (get(err, 'name', '') === 'AbortError') {
                 return rs(false, 0, null, `request timeout over ${timeoutMs}ms`, 'timeout')
             }
-            return rs(false, 0, null, `network error: ${redactText(get(err, 'message', 'unknown'), redact)}`, 'network')
+            //附cause.code(ECONNREFUSED、ENOTFOUND、憑證錯誤碼等; undici之message僅為'fetch failed'), 整句先經redact
+            let code = get(err, 'cause.code', '')
+            return rs(false, 0, null, redactText(`network error: ${get(err, 'message', 'unknown')}${isestr(code) ? ` (${code})` : ''}`, redact), 'network')
         }
 
         //body, 先取原文再解析, 令非JSON之錯誤頁能原樣回報而非只說解析失敗

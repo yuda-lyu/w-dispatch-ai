@@ -223,4 +223,30 @@ describe('runFanout', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('名額規格非物件時該名額以params失敗回報而其餘名額照跑; 整合prompt函式拋錯時以整合失敗回報並保留候選, 皆不reject', async function() {
+        //規格: runFanout之JSDoc「個別名額失敗不中斷整輪」「成功候選完整保留」「本函數不會reject」(帳本R-NOREJECT-1)
+        let t1 = await runFanout({ providers, task: 'hi', agents: [null, { use: 'p-a' }], integrate: { use: 'p-int' }, callOpt })
+        let t2 = await runFanout({
+            providers,
+            task: 'hi',
+            agents: [{ use: 'p-a' }, { use: 'p-b' }],
+            integrate: {
+                use: 'p-int',
+                prompt: () => {
+                    throw new Error('int boom')
+                },
+            },
+            callOpt,
+        })
+        let r = [
+            [t1.ok, t1.integrated, t1.agents[0].errorType, t1.candidates.length],
+            [t2.ok, t2.integrated, t2.candidates.length, t2.error],
+        ]
+        let rr = [
+            [true, false, 'params', 1],
+            [false, false, 2, 'integrate prompt threw: int boom'],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

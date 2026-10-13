@@ -9,6 +9,7 @@ import castPintOr from './castPintOr.mjs'
 import buildValidator from './buildValidator.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import redactText, { secretHeaderValues } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { TRUNCATION_REASONS, normalizeFinishReason, safeValidate, judgeTruncated } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
@@ -144,8 +145,8 @@ async function callOnce(url, headers, body, timeoutMs, validator, acceptTruncate
             return mkResult({ error: `TIMEOUT after ${timeoutMs / 1000}s`, errorType: 'timeout' })
         }
 
-        //網路層錯誤(DNS/連線拒絕等)
-        let cause = get(err, 'cause.code', '') || err.message
+        //網路層錯誤(DNS/連線拒絕等); 無cause.code者(送出前之例外, 如標頭值含換行)之訊息會夾帶標頭值(含金鑰), 一律遮蔽(見redactText.mjs)
+        let cause = get(err, 'cause.code', '') || redactText(get(err, 'message', ''), secretHeaderValues(headers))
         return mkResult({ error: `FETCH_ERROR: ${cause}`, errorType: 'fetch' })
     }
     clearTimeout(timer)

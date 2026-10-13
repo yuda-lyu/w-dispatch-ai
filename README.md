@@ -242,6 +242,14 @@ await test()
 15. 內建 providers 移除兩條：`oc:opencode/fledge-alpha-free`（已自 CLI 模型清單與官方文件消失，呼叫回 `UnknownError`）與 `zen:space-bunny-free`（免費層閘門之例外已收回，REST 一律 403）。以這兩個 id 做 `pick` 者會落入 `missing`：`zen:space-bunny-free` 之 `hints` 提示 `oc:opencode/space-bunny-free`（同模型之 CLI 版，可直接改用）；fledge 無替代模型，`hints` 所示僅為字串最接近者。
 16. `zen:jev-1.13-free` 之 `baseURL` 改為官方新基底 `https://opencode.ai/inference/v1`（原 `https://opencode.ai/zen/v1`；2026-10-13 新舊皆實測可用、答案相同），id 不變。
 
+**1.0.48 起**（子進程未能啟動與呼叫無法開始之回報；需 wsemi ≥1.9.15）：
+17. 子進程未能啟動之`errorType`改以結構判定（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`）：非有效執行檔（UNKNOWN／EFTYPE）、權限（EPERM／EACCES）、命令列過長、參數或環境變數含空字元等一律為`spawn`（此前只認 ENOENT／ENAMETOOLONG，其餘歸`exec`）；`dispatchClaude`／`dispatchCodex`／`dispatchOpencode`於這些情形此前（wsemi 1.9.12）會 reject，現回結果物件；`dispatchAntigravity`之命令列過長等`attempts`由 0 改為 1（execCli 實際嘗試 1 次）。已知例外：`env`物件之 getter 拋錯（病態輸入）時 wsemi 1.9.15 之 execCli 仍會 reject，`dispatchAntigravity`此前以自身 try/catch 攔截，移除後與另三家一致為 reject（已交 wsemi 修正）。
+18. `dispatchAiFallback`：`errorType`為`spawn`（子進程未能啟動，含命令列過長）或`params`（參數或設定檢核失敗，如 REST 條目缺`baseURL`／`model`、opencode 之`config`不可序列化）者改為**整組跳過**（此前除 ENOENT 與未知 kind 外逐把換金鑰）；依`group-exhausted`之`by`／`attempted`／`errorTypes`，或依逐次`next-key`／`skip-group`計數者，多金鑰條目之數字會變小。
+19. CLI 類轉接器之自訂`validate`函數拋錯改回驗證失敗（`errorType: 'validation'`，`stderr`前綴`validate threw: <訊息>`）；第 3 條此前只在 REST 類與工作流成立，CLI 類會成為未捕捉例外而使行程崩潰。
+20. REST 類之送出前錯誤（如金鑰含換行致標頭非法）之`error`改為遮蔽標頭值（`[REDACTED]`），此前會帶出完整金鑰並經遞補流入`tried`與事件；額度查詢（`getQuotaClaude`／`getQuotaCodex`之 HTTP 路徑）之網路錯誤訊息另附`cause.code`（如`network error: fetch failed (ECONNREFUSED)`）。
+21. `dispatchOpencode`之`config`不可序列化（BigInt、循環參照）改回`params`錯誤結果（此前 reject）；`runRolePipeline`之階段 prompt 函式拋錯、`runFanout`之整合 prompt 函式拋錯或名額規格非物件，改回失敗結果並保留已完成成果（此前整體 reject）。
+22. `getQuotaAntigravity`：執行檔未能啟動一律`notfound`（含`checkVersion: false`，此前為`exit`）；版本把關（`agy --version`）之逾時與非零離開改為`timeout`／`exit`（此前一律`notfound`），訊息皆附安裝指引。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -251,9 +259,9 @@ await test()
 | `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時將強制關閉子進程及其子孫程序；**全套件統一預設**(所有轉接器與各層一致，單一來源`dfTimeoutMs.mjs`)，由opt傳入即可覆寫 |
 | `cwd` | String | `process.cwd()` | 子進程工作目錄。**`dispatchOpencode` 另會把其絕對路徑同步注入環境變數 `PWD`**（覆寫呼叫端 `env` 內之同名變數）：opencode 以**繼承之 `PWD`** 優先於子進程真實 cwd 決定 session 目錄（原始碼 `run.ts`：`process.env.PWD ?? process.cwd()`），而 Git Bash 與 Linux/macOS 的 shell 都會設 `PWD`；2026-09-23 實測未同步時 opencode 會在父程序目錄讀寫（讀相對路徑回 NOTFOUND 且 `ok: true`，允許寫檔時檔案落在父程序目錄）。claude／codex 同組探針遵循 cwd，不受影響 |
 | `validate` | String\|Function | `undefined` | `stdout`驗證規則，可用`'nonempty'`、`'json'`、`'min:100'`，多規則以逗號串接，亦可給予`(stdout)=>Boolean` |
-| `maxRetries` | Integer | `0` | 失敗後最大重試次數，遇`ENOENT`或exit code 2視為不可重試而立即中止 |
+| `maxRetries` | Integer | `0` | 失敗後最大重試次數，遇`ENOENT`、exit code 2或無法啟動子進程之同步錯誤（如命令列過長、權限不足、非有效執行檔、參數含空字元；wsemi ≥1.9.15）視為不可重試而立即中止 |
 
-其餘設定會原樣轉傳給`wsemi`之`execCli`，例如`retryDelayMs`、`maxBuffer`、`onStdout`、`onStderr`、`env`。
+其餘設定會原樣轉傳給`wsemi`之`execCli`，例如`retryDelayMs`、`maxBuffer`、`onStdout`、`onStderr`、`env`。注意：`onStdout`／`onStderr`回調內拋出之錯誤**不會被攔截，將使行程崩潰**（wsemi 文件載明），請於回調內自行處理；`validate`之自訂函數拋錯則視同驗證失敗（`OUTPUT_VALIDATION_FAILED`，`stderr`前綴`validate threw: <訊息>`）。
 
 #### Options only for dispatchOpencode:
 | key | type | default | description |
@@ -345,11 +353,11 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | --- | --- | --- |
 | `params` | 參數/設定檢核失敗（進入執行前即被擋） | 全部 |
 | `timeout` | 逾時（execCli強殺或API abort） | 全部 |
-| `spawn` | 子進程無法啟動（ENOENT／ENAMETOOLONG） | CLI類 |
+| `spawn` | 子進程未能啟動（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`，不論錯誤碼：執行檔不存在、非有效執行檔、權限不足、命令列過長、參數或環境變數含空字元、cwd 不存在等） | CLI類 |
 | `validation` | stdout未過`validate` | 全部 |
-| `exec` | CLI非零離開碼之一般執行失敗（未能再機械細分） | CLI類 |
+| `exec` | CLI非零離開碼之一般執行失敗（未能再機械細分）；已知限制：`exe`為`.cmd`／`.bat`而經 cmd.exe 退路啟動者（該路徑不存在、npm shim 入口缺失），係 cmd.exe 或 node 已啟動後才以離開碼 1 結束，亦歸此類而非`spawn` | CLI類 |
 | `http` | HTTP非2xx（`code`為狀態碼） | api類 |
-| `fetch` | 網路層錯誤（DNS／連線拒絕） | api類 |
+| `fetch` | 網路層錯誤（DNS／連線拒絕／TLS／無效網址等）；送出前之例外（如金鑰含換行致標頭非法）之訊息會遮蔽標頭值 | api類 |
 | `tool-unsupported` | 模型回tool_calls而api類不支援工具 | api類 |
 | `invalid-response` | 回應結構不合規（缺`choices[0].message.content`、缺`output`陣列，或 systemone 缺`answers`／缺所請求題目之答案）；HTTP 200 但**本體非 JSON**時`error`另為`INVALID_RESPONSE: body is not JSON (<位元組數>, first bytes <前16位元組hex>, content-encoding=…, content-type=…)`，壓縮或損壞之本體可一眼辨識 | api類 |
 | `incomplete` | 回應未完整：截斷（`finish_reason`為`length`／`content_filter`、Responses API 之`status: 'incomplete'`；結果帶`truncated: true`）或 Responses API 之其餘非完成狀態（如`failed`，`truncated: false`）。截斷判定只適用 REST 文字類；CLI 類拿不到終止訊號，截斷無從判別（已知限制） | api類 |
@@ -445,14 +453,17 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | 失敗 | 判定 | 處置 |
 | --- | --- | --- |
 | 逾時 | `error`以`TIMEOUT`開頭 | 整組跳過 |
-| 執行檔不存在 | `error`含`ENOENT` | 整組跳過 |
-| 參數錯誤 | `code === 2` | 整組跳過 |
+| 子進程未能啟動 | `errorType === 'spawn'` | 整組跳過（執行檔不存在、非有效執行檔、權限不足、命令列過長、參數含空字元、cwd 不存在等） |
+| 執行檔不存在等（相容判準） | `error`含`ENOENT` | 整組跳過（亦涵蓋 REST 之`FETCH_ERROR: ENOENT`） |
+| 參數或設定檢核失敗（含 kind 無效、REST 條目缺`baseURL`／`model`／`questions`、opencode 之`config`不可序列化） | `errorType === 'params'` | 整組跳過 |
+| CLI 參數錯誤 | `code === 2` | 整組跳過 |
 | 輸出未過驗證 | `error === 'OUTPUT_VALIDATION_FAILED'` | 整組跳過 |
 | 截斷（REST 文字類） | `truncated === true` | 整組跳過（同模型同請求換金鑰必然再截斷；`status: 'failed'`不屬此列，照「其餘」換下一把） |
 | 模型回工具呼叫而 api 類不支援 | `error`以`TOOL_CALLS_UNSUPPORTED`開頭 | 整組跳過 |
 | HTTP 200 但本體非 JSON（api 類） | `error`以`INVALID_RESPONSE: body is not JSON`開頭 | 整組跳過（傳輸或閘道狀態；「JSON 缺欄位」不在此列，照「其餘」換下一把） |
-| kind無效 | `error`以`unknown ai kind`開頭 | 整組跳過 |
-| 其餘（含額度上限、金鑰無效、服務回錯） | — | 換組內下一把 |
+| 其餘（含額度上限、金鑰無效、服務回錯、REST 之`fetch`錯誤） | — | 換組內下一把 |
+
+已知限制（1.0.48）：REST 之`fetch`錯誤中，屬條目層者（無效網址、連線拒絕、DNS、TLS、協定不支援）換金鑰亦必然再敗，現仍逐把換，且其中送出前之確定性錯誤與 TLS 驗證失敗於`maxRetries`>0 時仍會重試；只有「金鑰含非法標頭字元」屬金鑰層、須換把。改善方案（fetch 前以`new Request()`預檢：無效網址與 body 不可序列化回`params`，金鑰層之標頭錯誤回固定文字並換把）另議。
 
 整組跳過的理由：同組各金鑰共用同一`exe`與`model`，這些失敗換金鑰必然再敗，逐把嘗試純屬空耗。其餘失敗一律換下一把、**不記憶不停用**——額度視窗形態多樣（5小時滾動、逐時、逐日），停用清單會把已恢復的金鑰閒置，而重探的代價僅一次快速失敗；跨次執行僅記憶游標（成功後推進，令額度在多把金鑰間均攤）。
 
@@ -692,7 +703,7 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 
 保留原生值可回溯 `raw`，也不必為求一致把 agy 的 4 桶 2 群組硬壓成 2 個。要「跨家找 5 小時窗口」請用 `windowSeconds === 18000`（7 天為 `604800`）配 `scope`，**不要比對 `key` 字串**。
 
-**errorType（quota 專用詞彙，與轉接器之 errorType 分開）**：`params`／`notfound`（憑證或執行檔不存在、未登入）／`unsupported`（API key 或雲端模式無訂閱額度、agy 版本過舊）／`auth`（權杖被拒）／`forbidden`／`ratelimit`（查詢端點自身之 429，非訂閱額度用罄）／`http`／`parse`／`timeout`／`network`／`toolarge`／`account`（帳號不符）／`exit`／`rpc`。
+**errorType（quota 專用詞彙，與轉接器之 errorType 分開）**：`params`／`notfound`（憑證或執行檔不存在或無法執行、未登入）／`unsupported`（API key 或雲端模式無訂閱額度、agy 版本過舊）／`auth`（權杖被拒）／`forbidden`／`ratelimit`（查詢端點自身之 429，非訂閱額度用罄）／`http`／`parse`／`timeout`／`network`／`toolarge`／`account`（帳號不符）／`exit`／`rpc`。
 
 | 設計要點 | 說明 |
 | --- | --- |

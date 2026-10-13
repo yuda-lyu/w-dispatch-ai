@@ -18,8 +18,11 @@ import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
 // 【兩層策略】群組之間依providers宣告順序(優先序), 群組之內(keys多把)以游標輪替(額度均攤)。
 //
 // 【失敗分流】只分兩路:
-//   與金鑰無關之失敗(TIMEOUT/ENOENT/參數錯誤/驗證失敗/未知kind/截斷/工具不支援/本體非JSON) → 整組跳過——
-//   同組各金鑰共用同一exe與model, 換金鑰必然再敗一次, 純屬空耗;
+//   與金鑰無關之失敗(TIMEOUT/子進程未能啟動(errorType spawn)/參數或設定檢核失敗(errorType params, 含未知kind)/
+//   CLI參數錯誤(離開碼2)/驗證失敗/截斷/工具不支援/本體非JSON) → 整組跳過——
+//   同組各金鑰共用同一exe、cwd、旗標與model, 換金鑰必然再敗一次, 純屬空耗;
+//   子進程未能啟動與參數檢核失敗改依errorType判定(2026-10-14起; 此前只認error含ENOENT與未知kind字樣,
+//   致非有效執行檔UNKNOWN/EFTYPE、權限EPERM、命令列過長ENAMETOOLONG、參數含空字元、REST條目缺baseURL/model逐把空耗);
 //   本體非JSON(REST之HTTP 200但無法解析, 見describeNonJsonBody.mjs)屬傳輸或閘道狀態, 2026-09-24依安裝方實例納入
 //   (換第二把金鑰只是以剩餘預算重打至逾時); 「JSON缺欄位」不在此列, 仍換金鑰(部分閘道以200回帳號層級錯誤);
 //   截斷(結果之truncated為true, 僅REST文字類可判, 見checkTruncation.mjs)與工具不支援(TOOL_CALLS_UNSUPPORTED)
@@ -213,18 +216,32 @@ function isKeyIndependentFail(r) {
         error = ''
     }
     let code = get(r, 'code', null)
+    let errorType = get(r, 'errorType', '')
 
     //逾時, 該服務卡住, 同服務其他金鑰只會再空耗一次完整timeout
     if (error.indexOf('TIMEOUT') === 0) {
         return true
     }
 
-    //執行檔不存在, 同組共用同一exe
+    //子進程未能啟動(執行檔不存在/非有效執行檔/權限不足/命令列過長/參數或環境變數含空字元/cwd不存在),
+    //同組共用同一exe、旗標與cwd; 判定之單一來源為getErrorType(結構判定, 不列錯誤碼)
+    if (errorType === 'spawn') {
+        return true
+    }
+
+    //error含ENOENT(既有判準, 保留): 除CLI之執行檔不存在(已含於spawn)外, 亦涵蓋REST之FETCH_ERROR: ENOENT
+    //(名稱解析器故障等, 屬條目層之連線失敗), 移除會令其由整組跳過退為逐把換金鑰
     if (error.includes('ENOENT')) {
         return true
     }
 
-    //參數錯誤, 同組共用同一組旗標
+    //參數或設定檢核失敗(進入執行前即被擋, 如REST條目缺baseURL/model、opencode之config不可序列化、kind無效), 屬條目或呼叫層設定錯誤;
+    //不變式: errorType 'params'只可用於與金鑰無關之檢核, 逐把金鑰之檢核須另給errorType, 否則一把壞金鑰會令整組跳過
+    if (errorType === 'params') {
+        return true
+    }
+
+    //CLI參數錯誤(離開碼2), 同組共用同一組旗標
     if (code === 2) {
         return true
     }
@@ -250,11 +267,6 @@ function isKeyIndependentFail(r) {
         return true
     }
 
-    //kind無效, 屬條目設定錯誤
-    if (error.indexOf('unknown ai kind') === 0) {
-        return true
-    }
-
     return false
 }
 
@@ -266,7 +278,7 @@ function isKeyIndependentFail(r) {
  * providers陣列順序即優先序，排前面的先用；
  * 條目本身即該次調用之opt(除id與keys外原樣透傳對應轉接器)，與dispatchAi「條目直接當opt」同一約定；
  * 條目給予keys(多把金鑰)時以游標輪替，某把失敗自動換下一把，全數失敗才遞補下一組；
- * 與金鑰無關之失敗(逾時/執行檔不存在/參數錯誤/輸出未過驗證/未知kind/截斷/工具不支援/HTTP 200但本體非JSON)直接整組跳過，不逐把空耗；
+ * 與金鑰無關之失敗(逾時/子進程未能啟動/參數或設定檢核失敗(含未知kind)/CLI參數錯誤/輸出未過驗證/截斷/工具不支援/HTTP 200但本體非JSON)直接整組跳過，不逐把空耗；
  * 跨次執行僅記憶游標(經store注入持久化)，不設金鑰停用清單——額度視窗形態多樣(5小時滾動/逐時/逐日)，
  * 停用會把已恢復的金鑰閒置，而重探的代價僅一次快速失敗；
  * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗

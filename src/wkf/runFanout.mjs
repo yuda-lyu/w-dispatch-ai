@@ -2,6 +2,7 @@ import get from 'lodash-es/get.js'
 import isearr from 'wsemi/src/isearr.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import callAiWithFallback from './callAiWithFallback.mjs'
@@ -118,7 +119,11 @@ async function runFanout(opt = {}) {
     //前段: 並行多開, 個別失敗不炸整輪
     //各名額可自帶check覆寫頂層(候選與終稿判準本可不同); 自spec抽出而非留在overrides,
     //否則會被後方明給之check靜默覆蓋(曾為死鍵); meta為保留鍵一併抽出, 保證永不轉傳
+    //名額規格非物件(如null)時該名額以params失敗回報, 不令解構拋錯而整輪reject
     let rsAgents = await Promise.all(agents.map((spec) => {
+        if (!isobj(spec)) {
+            return { ok: false, json: null, error: `agent spec must be an object: ${String(spec)}`, errorType: 'params', ms: 0, tried: [] }
+        }
         let { use, fallback, check: checkAgent, meta, ...overrides } = spec
         return callAiWithFallback(task, { ...callOpt, ...overrides, providers, spec: { use, fallback }, check: isfun(checkAgent) ? checkAgent : check })
     }))
@@ -140,7 +145,14 @@ async function runFanout(opt = {}) {
     }
     //整合可帶獨立check(終稿判準常較候選嚴, 如須含固定小標題), 未給則沿用頂層check; meta為保留鍵一併抽出
     let { use, fallback, prompt: intPromptFn, check: checkInt, meta, ...intOverrides } = integrate
-    let intPrompt = isfun(intPromptFn) ? intPromptFn(candidates) : defaultIntegratePrompt(candidates, opt)
+    //整合prompt函式拋錯以整合失敗回報並保留成功候選(同整合失敗之既有回傳形狀), 不reject
+    let intPrompt = null
+    try {
+        intPrompt = isfun(intPromptFn) ? intPromptFn(candidates) : defaultIntegratePrompt(candidates, opt)
+    }
+    catch (err) {
+        return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: `integrate prompt threw: ${get(err, 'message', String(err))}` }
+    }
     let rInt = await callAiWithFallback(intPrompt, { ...callOpt, ...intOverrides, providers, spec: { use, fallback }, check: isfun(checkInt) ? checkInt : check })
 
     return {

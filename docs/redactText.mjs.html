@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>redactText.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">redactText.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import isestr from 'wsemi/src/isestr.mjs'
+
+
+// redactText.mjs — 錯誤訊息中之機密值遮蔽(單一來源)
+//
+// 【為何獨立成檔】額度查詢(fetchQuotaJson)與三家REST轉接器之錯誤訊息皆可能夾帶機密值:
+//   前者為對端回顯之請求標頭, 後者為fetch在送出前驗標頭時之例外——金鑰含換行等非法字元時,
+//   undici之訊息為「Headers.append: "Bearer &lt;完整金鑰>" is an invalid header value.」,
+//   經遞補層流入tried、事件與日誌(2026-10-14實測)。兩處共用同一遮蔽規則, 不各自手寫。
+
+
+//遮蔽替代文字; 短於此長度之機密值不遮(避免把常見短字串誤遮成無法閱讀)
+let REDACT_MASK = '[REDACTED]'
+let REDACT_MIN_LEN = 6
+
+
+/**
+ * 將文字中之機密值替換為遮蔽字
+ *
+ * @param {String} text 輸入文字
+ * @param {Array} redact 輸入機密值字串陣列，長度不足6者不處理
+ * @returns {String} 回傳替換後文字
+ * @example
+ *
+ * import redactText from './src/redactText.mjs'
+ *
+ * console.log(redactText('Headers.append: "Bearer sk-abc\nX" is an invalid header value.', ['Bearer sk-abc\nX']))
+ * // => 'Headers.append: "[REDACTED]" is an invalid header value.'
+ *
+ */
+function redactText(text, redact) {
+    let s = String(text)
+    for (let v of redact) {
+        if (isestr(v) &amp;&amp; v.length >= REDACT_MIN_LEN) {
+            s = s.split(v).join(REDACT_MASK)
+        }
+    }
+    return s
+}
+
+
+/**
+ * 取請求標頭中須遮蔽之值：固定之Content-Type與Accept-Encoding以外一律視為機密(Authorization、x-api-key等)
+ *
+ * @param {Object} headers 輸入請求標頭物件
+ * @returns {Array} 回傳須遮蔽之標頭值字串陣列
+ * @example
+ *
+ * import { secretHeaderValues } from './src/redactText.mjs'
+ *
+ * console.log(secretHeaderValues({ 'Content-Type': 'application/json', 'Authorization': 'Bearer sk-abc' }))
+ * // => [ 'Bearer sk-abc' ]
+ *
+ */
+function secretHeaderValues(headers) {
+    let r = []
+    let hs = (headers &amp;&amp; typeof headers === 'object') ? headers : {}
+    for (let k of Object.keys(hs)) {
+        if (['content-type', 'accept-encoding'].includes(k.toLowerCase())) {
+            continue
+        }
+        if (isestr(hs[k])) {
+            r.push(hs[k])
+        }
+    }
+    return r
+}
+
+
+export default redactText
+export { secretHeaderValues }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Oct 14 2026 02:14:27 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

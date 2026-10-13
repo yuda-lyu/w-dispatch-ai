@@ -11,6 +11,7 @@ import cdbl from 'wsemi/src/cdbl.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import strCompareForVersion from 'wsemi/src/strCompareForVersion.mjs'
 import castPintOr from '../castPintOr.mjs'
+import { isSpawnFail } from '../getErrorType.mjs'
 import toQuotaLabel from './toQuotaLabel.mjs'
 import toQuotaWindow from './toQuotaWindow.mjs'
 import toQuotaResult from './toQuotaResult.mjs'
@@ -46,6 +47,7 @@ import toQuotaResult from './toQuotaResult.mjs'
 let DEFAULT_EXE = 'agy'
 let DEFAULT_TIMEOUT_MS = 60000
 let MIN_VERSION = '1.1.11'
+let INSTALL_HINT = 'see https://antigravity.google/docs/cli/ for install and login' //未能啟動時之指引, 版本把關與agyPrint共用
 
 
 //各窗口字串對應之秒數; 未列者以正則解析Nh/Nd, 皆不成則null(標籤退回桶名)
@@ -176,10 +178,14 @@ async function agyPrint(exe, cmd, o) {
     if (!r.ok) {
         let tail = String(get(r, 'stderr', '')).trim().slice(-300)
         let errorType = /timeout/i.test(get(r, 'error', '')) ? 'timeout' : 'exit'
+        let spawnFail = isSpawnFail(r)
+        if (spawnFail) {
+            errorType = 'notfound' //子進程未能啟動(執行檔不存在或無法執行), 與版本把關同歸notfound(判準見getErrorType.mjs之isSpawnFail)
+        }
         if (/not logged in|login|sign in|authenticate/i.test(tail)) {
             errorType = 'auth'
         }
-        return { ok: false, data: null, response: '', stderr: tail, error: `agy ${cmd} failed: ${get(r, 'error', '')}${tail ? ` | stderr: ${tail}` : ''}`, errorType, code: get(r, 'code', null) }
+        return { ok: false, data: null, response: '', stderr: tail, error: `agy ${cmd} failed: ${get(r, 'error', '')}${tail ? ` | stderr: ${tail}` : ''}${spawnFail ? `; ${INSTALL_HINT}` : ''}`, errorType, code: get(r, 'code', null) }
     }
 
     if (j === null) {
@@ -277,9 +283,14 @@ async function getQuotaAntigravity(email = '', opt = {}) {
     if (checkVersion) {
         let rv = await execCli(exe, ['--version'], { timeoutMs: Math.min(timeoutMs, 15000), cwd })
         if (!rv.ok) {
+
+            //未能啟動 → notfound; 已啟動但逾時或非零離開 → timeout/exit(與略過把關之agyPrint同一分法, 判準見getErrorType.mjs之isSpawnFail)
+            let spawnFail = isSpawnFail(rv)
+            let errorTypeV = spawnFail ? 'notfound' : (/timeout/i.test(get(rv, 'error', '')) ? 'timeout' : 'exit')
+            let stderrV = String(get(rv, 'stderr', '')).trim()
             return fin({
-                error: `agy not found or not executable (${exe}): ${get(rv, 'error', '')}${String(get(rv, 'stderr', '')).trim() ? ` | ${String(rv.stderr).trim().slice(-200)}` : ''}; see https://antigravity.google/docs/cli/ for install and login`,
-                errorType: 'notfound',
+                error: `${spawnFail ? `agy not found or not executable (${exe})` : `agy --version failed (${exe})`}: ${get(rv, 'error', '')}${stderrV ? ` | ${stderrV.slice(-200)}` : ''}; ${INSTALL_HINT}`,
+                errorType: errorTypeV,
             })
         }
         version = String(get(rv, 'stdout', '')).trim().split('\n')[0]

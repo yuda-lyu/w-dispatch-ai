@@ -1,6 +1,6 @@
 import assert from 'assert'
 import getQuotaAntigravity from '../src/quota/getQuotaAntigravity.mjs'
-import createFakeCli from './tools/fakeCliForTest.mjs'
+import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
 
 
 //假agy: 依MODE決定--version與-p /usage之行為; 帶--log-file時寫入含applyAuthResult之log
@@ -11,6 +11,13 @@ let args = process.argv.slice(2)
 let mode = '${mode}'
 let say = (o) => process.stdout.write((typeof o === 'string' ? o : JSON.stringify(o)) + '\\n')
 if (args.includes('--version')) {
+    if (mode === 'verhang') {
+        setInterval(() => {}, 1000) //保持事件迴圈存活, 直到被逾時樹殺
+        await new Promise(() => {})
+    }
+    if (mode === 'verexit3') {
+        process.exit(3)
+    }
     say(mode === 'old' ? '1.1.10' : '1.1.27')
     process.exit(0)
 }
@@ -118,6 +125,32 @@ describe('getQuotaAntigravity', function() {
         let r = await getQuotaAntigravity('', { exe: 'agy-no-such-exe-xyz', timeoutMs: 20000 })
         let rr = [r.ok, r.errorType, /antigravity\.google\/docs\/cli/.test(r.error)]
         assert.strict.deepEqual(rr, [false, 'notfound', true])
+    })
+
+    it('子進程未能啟動(存在但無法執行之執行檔、名稱查無)時: 版本把關與略過把關皆歸notfound且不reject', async function() {
+        //規格: README額度errorType之notfound(憑證或執行檔不存在)與行為變更紀錄1.0.48(帳本R-SPAWN-1)
+        let bad = createUnstartableExe('bad-quota-agy')
+        try {
+            let r = []
+            for (let [exe, checkVersion] of [[bad.exe, true], [bad.exe, false], ['agy-no-such-exe-xyz', false]]) {
+                let t = await getQuotaAntigravity('', { exe, checkVersion, timeoutMs: 20000 })
+                r.push([t.ok, t.errorType])
+            }
+            let rr = [[false, 'notfound'], [false, 'notfound'], [false, 'notfound']]
+            assert.strict.deepEqual(r, rr)
+        }
+        finally {
+            bad.clean()
+        }
+    })
+
+    it('版本把關: agy --version逾時→timeout、非零離開→exit(已啟動者不歸notfound), 訊息附安裝指引', async function() {
+        //規格: README額度errorType之timeout/exit與行為變更紀錄1.0.48(已啟動者不歸notfound, 訊息附安裝指引; 帳本R-SPAWN-1)
+        let t1 = await getQuotaAntigravity('', { exe: mkFake('verhang'), timeoutMs: 3000 })
+        let t2 = await getQuotaAntigravity('', { exe: mkFake('verexit3'), timeoutMs: 20000 })
+        let r = [[t1.ok, t1.errorType, t1.error.indexOf('agy --version failed') === 0], [t2.ok, t2.errorType, /antigravity\.google\/docs\/cli/.test(t2.error)]]
+        let rr = [[false, 'timeout', true], [false, 'exit', true]]
+        assert.strict.deepEqual(r, rr)
     })
 
 })

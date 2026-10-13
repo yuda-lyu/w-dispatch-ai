@@ -180,4 +180,13 @@ describe('dispatchApiTypesafeSystemone', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('金鑰含換行等非法標頭字元(送出前失敗)時錯誤訊息遮蔽金鑰, errorType仍為fetch', async function() {
+        //規格: README行為變更紀錄1.0.48(送出前錯誤訊息遮蔽標頭值, errorType仍為fetch; 帳本R-REDACT-1)
+        let key = 'sk-LEAKTEST-0123456789\nX'
+        let t = await dispatchApiTypesafeSystemone('abc', { baseURL: svr.url, key, questions: Q })
+        let r = [t.ok, t.errorType, t.error.includes('LEAKTEST'), t.error.includes('[REDACTED]')]
+        let rr = [false, 'fetch', false, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
 })

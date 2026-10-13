@@ -1,20 +1,26 @@
 import assert from 'assert'
 import path from 'path'
 import dispatchOpencode from '../src/dispatchOpencode.mjs'
-import createFakeCli from './tools/fakeCliForTest.mjs'
+import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
+import spawnFailCases from './tools/spawnFailCasesForTest.mjs'
 
 
 describe('dispatchOpencode', function() {
 
     let fake = null
+    let bad = null
 
     before(function() {
         fake = createFakeCli('fake-opencode')
+        bad = createUnstartableExe('bad-opencode')
     })
 
     after(function() {
         if (fake) {
             fake.clean()
+        }
+        if (bad) {
+            bad.clean()
         }
     })
 
@@ -216,6 +222,44 @@ describe('dispatchOpencode', function() {
         let t = await dispatchOpencode('abc', { exe: 'opencode-not-exist-for-test', maxRetries: 3 })
         let r = [t.ok, t.error.includes('ENOENT'), t.attempts]
         let rr = [false, true, 1]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在)時不reject, errorType為spawn、code為null且attempts為1', async function() {
+        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3)
+        let cases = spawnFailCases({ kind: 'opencode', okExe: fake.exe, badExe: bad.exe })
+        let r = []
+        for (let c of cases) {
+            let t = await dispatchOpencode(c.prompt, c.opt)
+            r.push([c.label, t.ok, t.errorType, t.code, t.attempts])
+        }
+        let rr = cases.map((c) => [c.label, false, 'spawn', null, 1])
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('自訂validate拋錯時視同驗證失敗(OUTPUT_VALIDATION_FAILED, errorType為validation)且stderr前綴validate threw訊息(同REST類), 不成為未捕捉例外', async function() {
+        //規格: README行為變更紀錄1.0.37第3條與1.0.48(validate拋錯改回驗證失敗, stderr前綴validate threw, 與REST類同規則; 帳本R-VALIDATE-1)
+        let t = await dispatchOpencode('abc', {
+            exe: fake.exe,
+            validate: () => {
+                throw new Error('validate boom')
+            },
+        })
+        let r = [t.ok, t.error, t.errorType, t.stderr.indexOf('validate threw: validate boom') === 0]
+        let rr = [false, 'OUTPUT_VALIDATION_FAILED', 'validation', true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('config不可序列化(BigInt、循環參照)時回傳params錯誤結果物件且不reject', async function() {
+        //規格: README行為變更紀錄1.0.48(config不可序列化回params, 不reject; 帳本R-NOREJECT-1)
+        let circ = {}
+        circ.self = circ
+        let r = []
+        for (let config of [{ x: 10n }, circ]) {
+            let t = await dispatchOpencode('abc', { exe: fake.exe, config })
+            r.push([t.ok, t.errorType, t.error.indexOf('config is not JSON-serializable') === 0, t.attempts])
+        }
+        let rr = [[false, 'params', true, 0], [false, 'params', true, 0]]
         assert.strict.deepEqual(r, rr)
     })
 

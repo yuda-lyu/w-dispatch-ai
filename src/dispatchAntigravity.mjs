@@ -3,10 +3,9 @@ import omit from 'lodash-es/omit.js'
 import isarr from 'wsemi/src/isarr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import execCli from 'wsemi/src/execCli.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
-import { attachErrorType } from './getErrorType.mjs'
+import runExecCli from './runExecCli.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
@@ -21,10 +20,11 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   把prompt塞stdin而args無--print會進互動模式卡住。此為與另三家轉接器最大差異。
 //
 // 【命令列長度上限(實測)】prompt作為命令列參數受Windows CreateProcess之32767字元上限:
-//   純文字32600可spawn、32700即spawn ENAMETOOLONG(同步拋出, 會穿透execCli成rejection)。
-//   且含引號之prompt經spawn轉義後長度會膨脹(實測2萬個引號轉義後仍炸), 故防護須兩層:
-//   前置長度檢查(常見情境給清楚錯誤訊息) + try/catch兜底(轉義膨脹等漏網情境),
-//   兩層皆回錯誤結果物件, 維持本套件「不reject」之契約。
+//   純文字32600可spawn、32700即spawn ENAMETOOLONG。含引號之prompt經spawn轉義後長度會膨脹
+//   (實測2萬個引號轉義後仍炸), 故前置長度檢查只涵蓋常見情境(給清楚錯誤訊息, errorType params, attempts 0);
+//   轉義膨脹等漏網情境由execCli回報: wsemi>=1.9.15起spawn同步拋錯不再reject, 而回結果物件
+//   (ok:false、code:null、pid:undefined、attempts:1、error為'ENAMETOOLONG: spawn ENAMETOOLONG'),
+//   經attachErrorType歸'spawn'(結構判定, 見getErrorType.mjs), 故本轉接器不再自包try/catch(與另三家CLI轉接器一致)。
 //
 // 【model與effort之衝突規則(實測)】帶檔位之slug(如gemini-3.1-pro-high)與--effort同時給定時,
 //   檔位「不一致」才拒絕(`--model gemini-3.1-pro-high conflicts with --effort=low`, exit 1),
@@ -73,9 +73,9 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`之前，預設[]
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
- * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，預設undefined代表不驗證
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數拋錯視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串)、code(離開碼)、error(錯誤訊息字串，成功時為空字串)、durationMs(耗時毫秒)、attempts(實際嘗試次數)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
  * @example
  * //need agy cli in system PATH, and OAuth login completed
  *
@@ -180,19 +180,12 @@ async function dispatchAntigravity(prompt, opt = {}) {
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
 
-    //execCli, 不帶input(agy由--print取得prompt); try/catch兜底轉義膨脹等
-    //前置檢查漏網之spawn同步拋出(如ENAMETOOLONG), 維持不reject契約;
-    //失敗結果補上機器可讀之errorType(僅機械可判者, 見getErrorType.mjs)
-    try {
-        let r = await execCli(exe, args, {
-            ...optCli,
-            timeoutMs,
-        })
-        return attachErrorType(r)
-    }
-    catch (err) {
-        return getErrorResult(`${err.code || 'UNKNOWN'}: ${err.message}`, 'spawn')
-    }
+    //execCli, 不帶input(agy由--print取得prompt); 前置檢查漏網之spawn同步錯誤(如轉義膨脹之ENAMETOOLONG)
+    //由execCli以結果物件回報(wsemi>=1.9.15, 不reject, 見檔頭); 經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上errorType(見runExecCli.mjs)
+    return runExecCli(exe, args, {
+        ...optCli,
+        timeoutMs,
+    })
 }
 
 

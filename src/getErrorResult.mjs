@@ -9,7 +9,7 @@ import isestr from 'wsemi/src/isestr.mjs'
  * 無須區分「參數錯誤」與「CLI執行失敗」兩種來源
  *
  * @param {String} error 輸入錯誤訊息字串
- * @param {String} [errorType='params'] 輸入機器可讀之錯誤類別字串(一覽見getErrorType.mjs檔頭)，預設'params'(參數/設定檢核失敗)
+ * @param {String} [errorType='params'] 輸入機器可讀之錯誤類別字串(一覽見getErrorType.mjs檔頭)，預設'params'(參數/設定檢核失敗)；dispatchAiFallback對'params'整組跳過，故'params'只可用於與金鑰無關之檢核(呼叫層或條目層)，逐把金鑰之檢核須另給errorType
  * @returns {Object} 回傳結果物件，內含ok(布林值，恆為false)、stdout(空字串)、stderr(空字串)、code(null)、error(錯誤訊息字串)、errorType(錯誤類別字串)、durationMs(0)、attempts(0)
  * @example
  *

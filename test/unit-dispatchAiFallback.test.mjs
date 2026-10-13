@@ -1,6 +1,6 @@
 import assert from 'assert'
 import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
-import createFakeCli from './tools/fakeCliForTest.mjs'
+import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
 import fakeServerForApiTest from './tools/fakeServerForApiTest.mjs'
 
 
@@ -916,6 +916,100 @@ describe('dispatchAiFallback', function() {
             ['ge-par2#0', 'ge-par2#1'],
             1, //W一
         ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('子進程未能啟動(存在但無法執行之執行檔、參數含空字元、命令列過長)整組跳過, 不逐把空耗', async function() {
+        //規格: README遞補分流表「子進程未能啟動」整組跳過(帳本R-SPAWN-2)
+        let bad = createUnstartableExe('bad-fallback')
+        try {
+            let r = []
+            let variants = [
+                ['unstartable-exe', { exe: bad.exe }],
+                ['nul-in-arg', { exe: fake.exe, extraArgs: ['--x=a\u0000b'] }],
+                ['cmdline-too-long', { exe: fake.exe, extraArgs: ['x'.repeat(40000)] }],
+            ]
+            if (process.platform !== 'win32') {
+                variants.pop() //命令列長度上限(ENAMETOOLONG)為Windows特有
+            }
+            for (let [label, o] of variants) {
+                let ge = []
+                let t = await dispatchAiFallback('abc', {
+                    providers: [
+                        { id: `g-nostart-${label}`, kind: 'opencode', provider: 'opencode', keys: ['sk-s0', 'sk-s1', 'sk-s2'], ...o },
+                        { id: 'g-start-ok', kind: 'claude', exe: fake.exe },
+                    ],
+                    onEvent: (ev) => {
+                        if (ev.type === 'group-exhausted') {
+                            ge.push([ev.by, ev.attempted, ev.errorTypes])
+                        }
+                    },
+                })
+                r.push([label, t.ok, t.providerId, t.tried.map((x) => [x.outcome, x.errorType || null]), ge])
+            }
+            let rr = variants.map(([label]) => [label, true, 'g-start-ok', [['skip-group', 'spawn'], ['ok', null]], [['skip-group', 1, ['spawn']]]])
+            assert.strict.deepEqual(r, rr)
+        }
+        finally {
+            bad.clean()
+        }
+    })
+
+    it('參數或設定檢核失敗(errorType params, 如REST條目缺baseURL或model)整組跳過, 不逐把空耗', async function() {
+        //規格: README遞補分流表「參數或設定檢核失敗」整組跳過(帳本R-SPAWN-2)
+        let r = []
+        for (let [label, o] of [['no-baseURL', { model: 'echo' }], ['no-model', { baseURL: svr.url }]]) {
+            let t = await dispatchAiFallback('abc', {
+                providers: [
+                    { id: `g-params-${label}`, kind: 'api-openai-compat', keys: ['sk-p0', 'sk-p1', 'sk-p2'], ...o },
+                    { id: 'g-params-next', kind: 'claude', exe: fake.exe },
+                ],
+            })
+            r.push([label, t.ok, t.providerId, t.tried.map((x) => [x.outcome, x.errorType || null])])
+        }
+        let rr = [
+            ['no-baseURL', true, 'g-params-next', [['skip-group', 'params'], ['ok', null]]],
+            ['no-model', true, 'g-params-next', [['skip-group', 'params'], ['ok', null]]],
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('金鑰相依之連線前失敗(errorType fetch, 如金鑰含換行致標頭非法)仍換組內下一把, 且錯誤訊息不夾帶金鑰', async function() {
+        //規格: README遞補分流表「其餘換下一把」(金鑰層失敗)與行為變更紀錄1.0.48(送出前錯誤遮蔽標頭值; 帳本R-SPAWN-2、R-REDACT-1)
+        let t = await dispatchAiFallback('abc', {
+            providers: [{ id: 'g-fetch-key', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad\nX', 'sk-good'] }],
+        })
+        let r = [t.ok, t.keyIndex, t.tried.map((x) => [x.outcome, x.errorType || null]), t.tried[0].error.includes('sk-bad'), t.tried[0].error.includes('[REDACTED]')]
+        let rr = [true, 1, [['next-key', 'fetch'], ['ok', null]], false, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('子進程未能啟動時dispatchAiFallback不reject, 單組失敗之最終結果帶errorType spawn', async function() {
+        //規格: README「All functions never reject」與errorType表之spawn列(帳本R-SPAWN-1、R-SPAWN-2)
+        let bad = createUnstartableExe('bad-fallback-final')
+        try {
+            let t = await dispatchAiFallback('abc', {
+                providers: [{ id: 'g-only-nostart', kind: 'claude', exe: bad.exe }],
+            })
+            let r = [t.ok, t.errorType, t.code, t.tried.map((x) => x.outcome)]
+            let rr = [false, 'spawn', null, ['skip-group']]
+            assert.strict.deepEqual(r, rr)
+        }
+        finally {
+            bad.clean()
+        }
+    })
+
+    it('opencode條目之config不可序列化時整組跳過(params), 不reject', async function() {
+        //規格: README遞補分流表「參數或設定檢核失敗」(含opencode之config不可序列化; 帳本R-NOREJECT-1、R-SPAWN-2)
+        let t = await dispatchAiFallback('abc', {
+            providers: [
+                { id: 'g-badcfg', kind: 'opencode', exe: fake.exe, provider: 'opencode', keys: ['sk-c0', 'sk-c1'], config: { x: 10n } },
+                { id: 'g-cfg-next', kind: 'claude', exe: fake.exe },
+            ],
+        })
+        let r = [t.ok, t.providerId, t.tried.map((x) => [x.outcome, x.errorType || null])]
+        let rr = [true, 'g-cfg-next', [['skip-group', 'params'], ['ok', null]]]
         assert.strict.deepEqual(r, rr)
     })
 

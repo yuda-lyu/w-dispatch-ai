@@ -67,4 +67,19 @@ describe('fetchQuotaJson', function() {
         assert.strict.deepEqual(rr, ['forbidden', true, false, true])
     })
 
+    it('network錯誤訊息附cause.code(連線拒絕→ECONNREFUSED); 無cause.code者(fetch禁用埠、送出前之標頭錯誤)不附, 整句照舊先經redact', async function() {
+        //規格: README行為變更紀錄1.0.48(額度查詢之網路錯誤附cause.code, 整句先經redact; 帳本R-REDACT-1)
+        //8651落在本套件測試保留埠段(8650–8699)且無任何測試監聽, 用作連線拒絕之目標(只連線不監聽);
+        //9為fetch規範之禁用埠, undici回cause為'bad port'而無code, 用以驗證無碼時不附
+        let r1 = await fetchQuotaJson('http://127.0.0.1:8651/nothing', { timeoutMs: 3000 })
+        let r2 = await fetchQuotaJson('http://127.0.0.1:9/nothing', { timeoutMs: 3000 })
+        let r3 = await fetchQuotaJson(svr.usageUrlClaude, { headers: { Authorization: 'Bearer tok-secret-0123\nX' }, redact: ['tok-secret-0123\nX'], timeoutMs: 3000 })
+        let rr = [
+            [r1.ok, r1.status, r1.errorType, /^network error: .+ \(ECONNREFUSED\)$/.test(r1.error)],
+            [r2.ok, r2.errorType, r2.error],
+            [r3.ok, r3.errorType, r3.error.includes('tok-secret'), r3.error.includes('[REDACTED]')],
+        ]
+        assert.strict.deepEqual(rr, [[false, 0, 'network', true], [false, 'network', 'network error: fetch failed'], [false, 'network', false, true]])
+    })
+
 })

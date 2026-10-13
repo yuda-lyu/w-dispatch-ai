@@ -99,7 +99,15 @@ async function runRolePipeline(opt = {}) {
             details[id] = { ok: false, error: `stage[${id}].prompt must be a function` }
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
         }
-        let prompt = promptFn({ input, prev, results, index: i })
+        //prompt函式拋錯(如讀上一階段成果之欄位而TypeError)以該階段失敗回報並保留已完成成果, 不reject
+        let prompt = null
+        try {
+            prompt = promptFn({ input, prev, results, index: i })
+        }
+        catch (err) {
+            details[id] = { ok: false, error: `stage[${id}].prompt threw: ${get(err, 'message', String(err))}` }
+            return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
+        }
         if (!isestr(prompt)) {
             details[id] = { ok: false, error: `stage[${id}].prompt returned empty` }
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }

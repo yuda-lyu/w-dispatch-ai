@@ -146,4 +146,33 @@ function createFakeCli(name, entryCode = CODE_ENTRY) {
 }
 
 
+/**
+ * 產生一個「存在但無法啟動」之執行檔，供測試子進程未能啟動(execCli回code為null且pid為undefined)之路徑
+ *
+ * Windows為內容非PE格式之.exe(spawn同步拋UNKNOWN)；POSIX為不具執行權限之檔案(spawn發出EACCES)。
+ * 錯誤碼隨平台而異，測試只斷言errorType與結構欄位，不斷言錯誤碼
+ *
+ * @param {String} name 輸入名稱字串，各測試檔須給予不同名稱，避免mocha並行執行時互相干擾
+ * @returns {Object} 回傳物件，內含exe(執行檔絕對路徑字串)、clean(清除產物之函數)
+ */
+function createUnstartableExe(name) {
+    let fd = path.resolve(FD_BASE, name)
+    fs.mkdirSync(fd, { recursive: true })
+    let exe = path.join(fd, process.platform === 'win32' ? `${name}.exe` : name)
+    fs.writeFileSync(exe, 'this is not an executable\n', 'utf8')
+    if (process.platform !== 'win32') {
+        fs.chmodSync(exe, 0o644)
+    }
+    let clean = () => {
+        fs.rmSync(fd, { recursive: true, force: true })
+        try {
+            fs.rmdirSync(FD_BASE)
+        }
+        catch {}
+    }
+    return { exe, clean }
+}
+
+
 export default createFakeCli
+export { createUnstartableExe }
