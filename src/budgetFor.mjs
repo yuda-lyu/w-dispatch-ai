@@ -14,6 +14,9 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 // 【與外部排程上限的關係】本函數給的是「保證能遞補到鏈尾」的值; 呼叫端之外層
 //   常另有硬上限(如Windows排程ExecutionTimeLimit), 兩者取小者交budgetMs即可——
 //   截短的取捨(可能走不完全鏈)由呼叫端自行決定。
+//
+// 【非同步驗證不另加】自訂validate(含工作流之parse/check)回傳Promise時與子進程/HTTP共用該次嘗試之timeoutMs(2026-10-16起),
+//   故「單次嘗試≤timeoutMs」與本函數之加總照舊成立, 不另計驗證時間。
 
 
 /**

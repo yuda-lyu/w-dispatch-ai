@@ -26,8 +26,29 @@ function spawnFailCases({ kind, okExe, badExe }) {
             : { label: 'nul-in-arg', prompt: 'abc', opt: { exe: okExe, extraArgs: ['--x=a\u0000b'] } },
         { label: 'nul-in-env', prompt: 'abc', opt: { exe: okExe, env: { FAKE_ENV: 'a\u0000b' } } },
         { label: 'cwd-missing', prompt: 'abc', opt: { exe: okExe, cwd: missingDir } },
+        //不存在之.cmd(wsemi>=1.9.16: ENOENT、不經cmd.exe退路、不重試; 1.9.15為Exit code 1而歸exec)
+        { label: 'cmd-missing', prompt: 'abc', opt: { exe: path.join(path.dirname(badExe), 'no-such-shim.cmd'), maxRetries: 2, retryDelayMs: 1 } },
     ]
 }
 
 
+/**
+ * 產生env不可讀(自有可列舉屬性之getter拋錯)之設定物件, 供四家CLI轉接器之對稱測試
+ *
+ * @param {String} okExe 輸入可正常啟動之假CLI路徑字串
+ * @returns {Object} 回傳設定物件
+ */
+function envUnreadableOpt(okExe) {
+    let env = {}
+    Object.defineProperty(env, 'BAD_ENV', {
+        enumerable: true,
+        get: () => {
+            throw new Error('env getter boom')
+        },
+    })
+    return { exe: okExe, env }
+}
+
+
 export default spawnFailCases
+export { envUnreadableOpt }

@@ -6,6 +6,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli from './runExecCli.mjs'
+import { readCallerObj, errMsg, asText } from './callUserFn.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
@@ -107,7 +108,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  *
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析，預設'opencode'
+ * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'opencode'
  * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/muse-spark-1.3-contributor-free'，預設''代表不帶`-m`旗標
  * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，預設''代表沿用CLI既有登入狀態
  * @param {String} [opt.provider=''] 輸入key所屬provider名稱字串，須與key同時給予才會注入，且須與model為同一組，預設''
@@ -118,7 +119,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()；其絕對路徑並同步注入環境變數PWD(opencode以繼承之PWD優先於真實cwd決定session目錄，見檔頭)，呼叫端env內之PWD會被覆寫
- * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數拋錯視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，預設undefined代表不驗證
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
  * @example
@@ -170,7 +171,8 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
 async function dispatchOpencode(prompt, opt = {}) {
 
     //check prompt, 不reject故以錯誤結果物件回報
-    if (!isestr(prompt)) {
+    prompt = asText(prompt) //String包裝物件取其原始字串(stdin只收原始字串, 空包裝不得繞過非空檢核); 判型不執行使用者程式碼(已撤銷之Proxy等回空字串)
+    if (prompt === '') {
         return getErrorResult('prompt must be a non-empty string')
     }
 
@@ -200,22 +202,26 @@ async function dispatchOpencode(prompt, opt = {}) {
         extraArgs,
     )
 
-    //env, 無效回退undefined代表不覆寫任何變數
-    let env = get(opt, 'env', null)
+    //env, 呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 不reject; 可讀者取物化之淺層副本(只讀一次, 與另三家經runExecCli同一helper); 非物件回退undefined代表不覆寫任何變數
+    let renv = readCallerObj(get(opt, 'env', null), 'env')
+    if (!renv.ok) {
+        return getErrorResult(renv.msg)
+    }
+    let env = renv.value
     if (!isobj(env)) {
         env = undefined
     }
 
     //config有效才注入, 否則沿用使用者既有設定檔, 物件則序列化為JSON字串;
-    //不可序列化(BigInt、循環參照、toJSON拋錯)以錯誤結果物件回報, 不reject(呼叫無法開始, 與金鑰無關故為params)
+    //不可序列化(BigInt、循環參照、toJSON或getter拋錯)或不可判型(已撤銷之Proxy)以錯誤結果物件回報, 不reject(呼叫無法開始, 與金鑰無關故為params)
     let config = get(opt, 'config', null)
-    if (isobj(config)) {
-        try {
+    try {
+        if (isobj(config)) {
             config = JSON.stringify(config)
         }
-        catch (err) {
-            return getErrorResult(`config is not JSON-serializable: ${get(err, 'message', String(err))}`)
-        }
+    }
+    catch (err) {
+        return getErrorResult(`config is not JSON-serializable: ${errMsg(err)}`) //errMsg對拋出null、已撤銷之Proxy等不再拋錯
     }
     if (isestr(config)) {
         env = {

@@ -1,7 +1,7 @@
 import assert from 'assert'
 import dispatchClaude from '../src/dispatchClaude.mjs'
 import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
-import spawnFailCases from './tools/spawnFailCasesForTest.mjs'
+import spawnFailCases, { envUnreadableOpt } from './tools/spawnFailCasesForTest.mjs'
 
 
 describe('dispatchClaude', function() {
@@ -147,8 +147,8 @@ describe('dispatchClaude', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在)時不reject, errorType為spawn、code為null且attempts為1', async function() {
-        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3)
+    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在、不存在之.cmd)時不reject, errorType為spawn、code為null且attempts為1', async function() {
+        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3); 不存在之.cmd不重試(帳本R-USERFN-3, wsemi>=1.9.16)
         let cases = spawnFailCases({ kind: 'claude', okExe: fake.exe, badExe: bad.exe })
         let r = []
         for (let c of cases) {
@@ -172,4 +172,12 @@ describe('dispatchClaude', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+
+    it('env不可讀(getter拋錯)時不reject, 以params回報且訊息載明env is not readable(四家同)', async function() {
+        //規格: README「All functions never reject」與行為變更紀錄1.0.49起之env不可讀改回params(改寫1.0.48第17條之已知例外); 帳本R-USERFN-1(readCallerObj)、R-SPAWN-3
+        let t = await dispatchClaude('abc', envUnreadableOpt(fake.exe))
+        let r = [t.ok, t.errorType, t.error.indexOf('env is not readable: env getter boom') === 0, t.attempts]
+        let rr = [false, 'params', true, 0]
+        assert.strict.deepEqual(r, rr)
+    })
 })

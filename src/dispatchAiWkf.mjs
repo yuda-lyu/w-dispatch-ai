@@ -4,6 +4,7 @@ import callAiWithFallback from './wkf/callAiWithFallback.mjs'
 import runFanout from './wkf/runFanout.mjs'
 import runRolePipeline from './wkf/runRolePipeline.mjs'
 import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
+import { readCallerObj } from './callUserFn.mjs'
 
 
 // dispatchAiWkf.mjs — 工作流工廠: 注入provider定義表與共用預設, 回傳綁定版API
@@ -15,7 +16,7 @@ import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
 //   可能交錯, 造成金鑰輪替不完全均攤——只影響公平性、不影響正確性(每把金鑰仍有效),
 //   故不加鎖; 要求嚴格均攤者可注入自帶佇列的store。
 //
-// 【本函數為同步工廠會throw】providers無效屬設定錯誤, 應於啟動期即失敗(fail fast),
+// 【本函數為同步工廠會throw】providers無效(及defaults不可讀, 2026-10-16起)屬設定錯誤, 應於啟動期即失敗(fail fast),
 //   與各dispatch函數「不reject」之約定不衝突——後者是執行期呼叫, 前者是組裝期設定。
 //
 // 【定義表之鍵名即條目id】該鍵名會成為dispatchAiFallback之條目id(游標鍵與日誌標籤),
@@ -31,6 +32,7 @@ import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
 //   工作流總時長: 無獨立參數(刻意)——由結構推導: Fanout≈最慢名額+整合(並行),
 //     RolePipeline≈Σ各階段(序列); 要上限就對每名額設budgetMs。
 //   最壞情況公式: 名額≤K×timeoutMs(K=鏈組數, 逾時每組只燒一次即跳組)。
+//   非同步之validate/parse/check計入單次嘗試(與子進程/HTTP共用timeoutMs); prompt函式(可為async)之耗時計入該段budgetMs。
 //   調整四層(細者覆蓋粗者): defaults(此處) → 各工作流callOpt → 階段/名額規格 → provider條目。
 //
 // 【定義providers時如何選kind: CLI或API】判準是「該階段需不需要工具」:
@@ -51,7 +53,7 @@ import runFanoutPipeline from './wkf/runFanoutPipeline.mjs'
  * 特點：
  * providers為名稱對dispatchAiFallback條目之定義表，之後各工作流以名稱宣告主模型與遞補鏈；
  * defaults為共用呼叫設定，各工作流之callOpt與名額規格可逐項覆寫；
- * 回傳之各函數皆不reject；本工廠為同步函數，providers無效時throw(設定錯誤應於啟動期即失敗)
+ * 回傳之各函數皆不reject；本工廠為同步函數，providers無效或defaults不可讀(拋錯之getter、已撤銷之Proxy)時throw(設定錯誤應於啟動期即失敗)
  *
  * @param {Object} opt 輸入設定物件
  * @param {Object} opt.providers 輸入provider定義表物件(名稱 → dispatchAiFallback條目：{ kind, model, keys, exe, provider, config, sandbox, extraArgs... })
@@ -108,9 +110,19 @@ function dispatchAiWkf(opt = {}) {
     if (!isobj(providers)) {
         throw new Error('dispatchAiWkf: opt.providers must be an object (name → provider entry)')
     }
-    let defaults = get(opt, 'defaults', null)
-    if (!isobj(defaults)) {
-        defaults = {}
+    //defaults, 呼叫端物件: 於工廠內物化一次(各綁定函數之展開皆讀副本, 不於呼叫時同步拋錯); 不可讀(拋錯之getter、已撤銷之Proxy)屬設定錯誤, 同providers於組裝期throw
+    let rdefaults = readCallerObj(get(opt, 'defaults', null), 'defaults')
+    if (!rdefaults.ok) {
+        throw new Error(`dispatchAiWkf: opt.${rdefaults.msg}`)
+    }
+    let defaults = isobj(rdefaults.value) ? rdefaults.value : {}
+
+    //mergeCallOpt, defaults併入各工作流之callOpt; callOpt不可讀(拋錯之getter、已撤銷之Proxy)時原樣交下層,
+    //由各工作流以失敗結果回報(此處若展開會同步拋錯, 連Promise都不回)
+    let mergeCallOpt = (o) => {
+        let co = get(o, 'callOpt', {})
+        let r = readCallerObj(co, 'callOpt')
+        return r.ok ? { ...defaults, ...r.value } : co
     }
 
     return {
@@ -120,13 +132,13 @@ function dispatchAiWkf(opt = {}) {
         callAi: (prompt, o = {}) => callAiWithFallback(prompt, { ...defaults, ...o, providers }),
 
         //Fanout工作流: runFanout({ task, agents, integrate, check, schema, minCandidates, callOpt? })
-        runFanout: (o = {}) => runFanout({ ...o, providers, callOpt: { ...defaults, ...get(o, 'callOpt', {}) } }),
+        runFanout: (o = {}) => runFanout({ ...o, providers, callOpt: mergeCallOpt(o) }),
 
         //RolePipeline工作流: runRolePipeline({ input, stages, callOpt? })
-        runRolePipeline: (o = {}) => runRolePipeline({ ...o, providers, callOpt: { ...defaults, ...get(o, 'callOpt', {}) } }),
+        runRolePipeline: (o = {}) => runRolePipeline({ ...o, providers, callOpt: mergeCallOpt(o) }),
 
         //FanoutPipeline工作流: runFanoutPipeline({ task, agents, integrate, stages, check, schema, callOpt? })
-        runFanoutPipeline: (o = {}) => runFanoutPipeline({ ...o, providers, callOpt: { ...defaults, ...get(o, 'callOpt', {}) } }),
+        runFanoutPipeline: (o = {}) => runFanoutPipeline({ ...o, providers, callOpt: mergeCallOpt(o) }),
     }
 }
 

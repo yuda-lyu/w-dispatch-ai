@@ -11,6 +11,7 @@ import getErrorResult from './getErrorResult.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
+import { callHookSync, readCallerObj, errMsg, asText } from './callUserFn.mjs'
 
 
 // dispatchAiFallback.mjs — 多供應商自動遞補層
@@ -119,6 +120,10 @@ let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
 let memoryState = { cursors: {} }
 
 
+//ENTRY_ERR, 條目不可讀(拋錯之getter、已撤銷之Proxy)時之標記鍵(Symbol, 不與條目之任何字串鍵衝突), 值為不可讀訊息
+let ENTRY_ERR = Symbol('entryErr')
+
+
 /**
  * 初始化游標與冷卻狀態(store有效即載入持久化狀態, 否則用行程內記憶體)
  *
@@ -126,29 +131,41 @@ let memoryState = { cursors: {} }
  * @returns {Object} 回傳物件，內含state(狀態物件，保證有cursors與cooling)與saveState(寫回函數，store無效或寫入失敗皆靜默)
  */
 function initState(store) {
-    let useStore = isobj(store) && isfun(store.get) && isfun(store.set)
+    //useStore, 判型不得拋錯(store為已撤銷之Proxy或get/set為拋錯之getter時視同無store)
+    let h0 = callHookSync(() => isobj(store) && isfun(store.get) && isfun(store.set))
+    let useStore = h0.state === 'value' && h0.value === true
     let state = null
     if (useStore) {
-        try {
-            state = store.get()
+        //store.get為同步契約: 拋錯或回傳Promise(並承接其rejection)時本次以全新狀態執行且不回寫——
+        //若以全新狀態set回, 會覆寫既有之cursors與cooling(2026-10-14實測); 回傳非物件(如尚未初始化之null)仍照舊以全新狀態起始並寫回
+        let h = callHookSync(() => store.get())
+        if (h.state === 'value') {
+            state = h.value
         }
-        catch {}
+        else {
+            useStore = false
+            state = { cursors: {} }
+        }
     }
-    if (!isobj(state)) {
-        state = useStore ? { cursors: {} } : memoryState
+    try {
+        if (!isobj(state)) {
+            state = useStore ? { cursors: {} } : memoryState
+        }
+        if (!isobj(state.cursors)) {
+            state.cursors = {}
+        }
+        if (!isobj(state.cooling)) {
+            state.cooling = {}
+        }
     }
-    if (!isobj(state.cursors)) {
-        state.cursors = {}
-    }
-    if (!isobj(state.cooling)) {
-        state.cooling = {}
+    catch {
+        //store.get回傳不可讀之物件(已撤銷之Proxy)或缺鍵之凍結物件: 同上, 本次以全新狀態執行且不回寫
+        useStore = false
+        state = { cursors: {}, cooling: {} }
     }
     let saveState = () => {
         if (useStore) {
-            try {
-                store.set(state)
-            }
-            catch {}
+            callHookSync(() => store.set(state)) //拋錯與rejection皆靜默(同步契約)
         }
     }
     return { state, saveState }
@@ -291,14 +308,14 @@ function isKeyIndependentFail(r) {
  * @param {*} [opt.providers[].meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳對應轉接器——條目其餘鍵一律原樣轉傳，自有欄位放此鍵可與轉傳機制永久絕緣，預設undefined
  * @param {Number} [opt.budgetMs=null] 輸入整輪遞補之時間上限毫秒正整數，剩餘預算會壓進每次呼叫之timeoutMs，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入單次嘗試之最低剩餘預算毫秒正整數，剩餘低於此值即停止嘗試回報budget exhausted，預設20000
- * @param {Object} [opt.store=null] 輸入狀態持久化物件{get:()=>state,set:(state)=>{}}，state內含cursors(逐群組游標)與cooling(供應商冷卻時間戳，僅cooldownMs>0時使用)，省略代表用行程內記憶體(跨呼叫有效，重啟歸零)。假定單行程序列調用，並行請自行加鎖
+ * @param {Object} [opt.store=null] 輸入狀態持久化物件{get:()=>state,set:(state)=>{}}，state內含cursors(逐群組游標)與cooling(供應商冷卻時間戳，僅cooldownMs>0時使用)，省略代表用行程內記憶體(跨呼叫有效，重啟歸零)。get/set須為同步函數：get拋錯、回傳Promise或回傳不可讀之物件時本次以全新狀態執行且不回寫(不覆寫既有游標與冷卻)，set拋錯或回傳Promise皆靜默。假定單行程序列調用，並行請自行加鎖
  * @param {Number} [opt.cooldownMs=0] 輸入供應商冷卻視窗毫秒非負整數，>0啟用：條目(限有明給id者)遭遇限流(HTTP 429，僅api類可偵測；CLI類可經coolDetect注入判定)或逾時(TIMEOUT開頭)後，於冷卻視窗內之後續呼叫中被移至鏈尾——只降序不移除，前面全敗時仍會被嘗試，任一次成功立即解除；注意啟用時「providers順序即優先序」會被暫時重排，此即本機制之目的；預設0代表不啟用
- * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429/TIMEOUT觸發不受影響)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=>/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs>0時有效，回調拋出例外視同false，預設null
- * @param {Function} [opt.shouldStop=null] 輸入中止判定函數()=>Boolean，於每次嘗試之間檢查，回傳true即停止遞補回報ABORTED(不中止進行中之嘗試)——供呼叫端於成果已無人接收時(如客戶端斷線)止損；經工作流層原樣轉傳，中止後各後續呼叫進門即回ABORTED令整條工作流快速收束；回調拋出例外視同false，預設null
+ * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429/TIMEOUT觸發不受影響)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=>/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs>0時有效，回調須為同步函數，拋出例外或回傳Promise(承接其rejection)皆視同false；以字樣判定者宜先排除errorType為'validation'者(其stderr含驗證函數自身之訊息)，預設null
+ * @param {Function} [opt.shouldStop=null] 輸入中止判定函數()=>Boolean，於每次嘗試之間檢查，回傳true即停止遞補回報ABORTED(不中止進行中之嘗試)——供呼叫端於成果已無人接收時(如客戶端斷線)止損；經工作流層原樣轉傳，中止後各後續呼叫進門即回ABORTED令整條工作流快速收束；回調須為同步函數(回傳值恰為true才中止)，拋出例外或回傳Promise(承接其rejection)皆視同false，預設null
  * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊，保留鍵保證永不轉傳各轉接器，預設undefined
- * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現)、'group-exhausted'(本組未成交而試完，每次呼叫每組恰一次，位於本組最後一個next-key或skip-group之後、下一組首個try之前；帶keys(有效金鑰數，0代表登入態之單一虛擬金鑰)、attempted(本組實際嘗試數)、by('all-keys'每把皆換鑰失敗，或'skip-group'以與金鑰無關之失敗收尾)、errorTypes(本組各次嘗試之errorType依序)與error(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入tried)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外不影響主流程，預設null
+ * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現)、'group-exhausted'(本組未成交而試完，每次呼叫每組恰一次，位於本組最後一個next-key或skip-group之後、下一組首個try之前；帶keys(有效金鑰數，0代表登入態之單一虛擬金鑰)、attempted(本組實際嘗試數)、by('all-keys'每把皆換鑰失敗，或'skip-group'以與金鑰無關之失敗收尾)、errorTypes(本組各次嘗試之errorType依序)與error(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入tried)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外或回傳被reject之Promise皆不影響主流程(不等待其結果)，預設null
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
- * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則，條目可覆寫，預設undefined
+ * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則(同dispatch functions之validate，自訂函數可回傳Promise)，條目可覆寫，預設undefined
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受REST文字類轉接器回報之截斷內容布林值(原樣轉傳轉接器)，1.0.37起截斷於validate之前判失敗，validate內含搶救策略者須給true，預設false
  * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；REST文字類轉接器另帶finishReason與truncated(是否截斷)，同樣流出於結果與tried各項；本函數不會reject
@@ -345,13 +362,36 @@ function isKeyIndependentFail(r) {
 async function dispatchAiFallback(prompt, opt = {}) {
 
     //check prompt, 於頂層先擋, 否則會逐組空跑同一錯誤
-    if (!isestr(prompt)) {
+    prompt = asText(prompt) //String包裝物件取其原始字串(stdin只收原始字串, 空包裝不得繞過非空檢核); 判型不執行使用者程式碼(已撤銷之Proxy等回空字串)
+    if (prompt === '') {
         return { ...getErrorResult('prompt must be a non-empty string'), tried: [] }
     }
 
-    //providers, 濾除非物件條目
+    //providers, 濾除非物件條目; 判型不得拋錯(已撤銷之Proxy使isarr/isobj拋錯): 陣列本身不可讀以params回報,
+    //無法判型之條目不濾除(交readCallerObj判為不可讀, 於迴圈中以params失敗並留下歷程, 不悄悄消失)
     let providersRaw = get(opt, 'providers', null)
-    let providers = isarr(providersRaw) ? providersRaw.filter(isobj) : []
+    let keepEntry = (p) => {
+        try {
+            return isobj(p)
+        }
+        catch {
+            return true
+        }
+    }
+    let providers = []
+    try {
+        providers = isarr(providersRaw) ? providersRaw.map((p, i) => [p, i]).filter(([p]) => keepEntry(p)) : []
+    }
+    catch (err) {
+        return { ...getErrorResult(`providers is not readable: ${errMsg(err)}`), tried: [] }
+    }
+
+    //條目為呼叫端物件: 於冷卻重排與逐組迴圈之前一次物化(只讀一次, 重排與嘗試共用同一副本), 不可讀者記下訊息(以原陣列索引標示),
+    //於迴圈中以params失敗(與kind無效同為整組跳過), 不reject
+    providers = providers.map(([p, i]) => {
+        let r = readCallerObj(p, `providers[${i}]`)
+        return r.ok ? r.value : { [ENTRY_ERR]: r.msg }
+    })
     if (providers.length === 0) {
         return { ...getErrorResult('providers must be a non-empty array'), tried: [] }
     }
@@ -384,12 +424,8 @@ async function dispatchAiFallback(prompt, opt = {}) {
         if (shouldStop === null) {
             return false
         }
-        try {
-            return shouldStop() === true
-        }
-        catch {
-            return false
-        }
+        let h = callHookSync(() => shouldStop()) //同步契約: 拋錯或回傳Promise(承接其rejection)皆視同false
+        return h.state === 'value' && h.value === true
     }
 
     //供應商冷卻: 冷卻中的條目降至鏈尾(細節見reorderByCooling)
@@ -401,10 +437,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
     let onEvent = get(opt, 'onEvent', null)
     let emit = (ev) => {
         if (isfun(onEvent)) {
-            try {
-                onEvent(ev)
-            }
-            catch {}
+            callHookSync(() => onEvent(ev)) //拋錯與rejection皆不影響主流程
         }
     }
 
@@ -417,7 +450,9 @@ async function dispatchAiFallback(prompt, opt = {}) {
 
     //逐群組(宣告順序即優先序), 單向單輪不回頭
     for (let ig = 0; ig < providers.length; ig++) {
+        //entry, 已於迴圈前物化; 不可讀者帶ENTRY_ERR, 本條目以params失敗
         let entry = providers[ig]
+        let entryErr = entry[ENTRY_ERR] || ''
 
         //id, 無效回退條目索引字串; idExplicit供冷卻機制判別(索引式id不參與冷卻)
         let id = get(entry, 'id', null)
@@ -485,7 +520,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
 
             //dispatch
             emit({ type: 'try', providerId: id, keyIndex, keyId, kind, model })
-            let r = await dispatchAi(kind, prompt, attemptOpt)
+            let r = (entryErr !== '') ? getErrorResult(entryErr) : await dispatchAi(kind, prompt, attemptOpt)
 
             //成功, 推進游標(額度均攤)並回傳; 任一次成功立即解除該家冷卻
             if (r.ok) {
@@ -511,10 +546,8 @@ async function dispatchAiFallback(prompt, opt = {}) {
             if (cooldownMs > 0 && idExplicit) {
                 let isCoolTrigger = (r.code === 429) || (isestr(r.error) && r.error.indexOf('TIMEOUT') === 0)
                 if (!isCoolTrigger && coolDetect !== null) {
-                    try {
-                        isCoolTrigger = coolDetect(r) === true
-                    }
-                    catch {}
+                    let h = callHookSync(() => coolDetect(r)) //同步契約: 拋錯或回傳Promise(承接其rejection)皆視同false
+                    isCoolTrigger = h.state === 'value' && h.value === true
                 }
                 if (isCoolTrigger) {
                     state.cooling[id] = Date.now()

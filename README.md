@@ -26,7 +26,7 @@ Note:
 - `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (official docs list `https://opencode.ai/inference/v1` since 2026-10-13, and both bases worked that day; same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **most of its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead** (the gate is applied per model: `jev-1.13-free` on `/systemone` still accepts REST; `space-bunny-free` also did until the exception was revoked on 2026-10-13)) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
 - Each cli adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
 - For the other three adapters the prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
-- All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object.
+- All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object. Since 1.0.49 this also holds when injected callbacks (`validate`, workflow `check`／`parse`／`prompt`, `shouldStop`, `coolDetect`, `onEvent`, `store`, `stamp`, `getDate`, `keyOf`) throw, reject or never settle, and when caller objects cannot be read (a throwing getter or revoked Proxy in `env`／`headers`／`body`／provider entries → `errorType: 'params'`). Out of contract (may still reject, crash or hang): `opt` itself being a hostile Proxy (including throwing getters on `opt`); scalar or array option values that are revoked Proxies or whose `Symbol.toStringTag` throws (e.g. `model`, `extraArgs`, `addDirs`, an entry's `keys`／`id`, the `stages`／`agents` arrays themselves; `prompt`／`task` are read as primitive strings and reported as `params` when unreadable); injected functions that are themselves hostile objects (a function whose `Symbol.toStringTag` getter throws); a rejected native Promise whose `constructor` getter throws (its rejection cannot be handled from JavaScript); synchronous infinite loops or endless microtask chains inside a callback (timeouts need the event loop to advance); errors thrown in `onStdout`／`onStderr` (not intercepted, see Options shared); and a `store` that violates its contract (see the `store` row).
 - **Security**: `dispatchClaude` passes `--dangerously-skip-permissions` by default, so the non-interactive `-p` mode will not hang on permission prompts. If the prompt embeds untrusted content (e.g. a web page to summarize), instructions inside that content would also run without the permission gate. Pass `skipPermissions: false` to keep the CLI permission gate.
 
 #### Functions:
@@ -45,7 +45,7 @@ Note:
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
 | `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
-| `budgetFor(providers)` | derive the time budget to walk a whole fallback chain (sum of per-entry `timeoutMs`, defaults applied) |
+| `budgetFor(providers)` | derive the time budget to walk a whole fallback chain (sum of per-entry `timeoutMs`, defaults applied; async `validate` time is counted within each attempt, not added) |
 | `createFileStore(opt)` | file-persisted `store` for `dispatchAiFallback` (cursors and cooling survive across processes), exclusion-style passthrough |
 | `createUsageCounter(opt)` | per-day per-key usage counter fed by `onEvent` (observation only, never throttles) |
 | `salvageTruncatedArray(text)` | salvage the complete leading elements of a truncated JSON array (opt-in, not part of default parsing) |
@@ -243,25 +243,35 @@ await test()
 16. `zen:jev-1.13-free` 之 `baseURL` 改為官方新基底 `https://opencode.ai/inference/v1`（原 `https://opencode.ai/zen/v1`；2026-10-13 新舊皆實測可用、答案相同），id 不變。
 
 **1.0.48 起**（子進程未能啟動與呼叫無法開始之回報；需 wsemi ≥1.9.15）：
-17. 子進程未能啟動之`errorType`改以結構判定（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`）：非有效執行檔（UNKNOWN／EFTYPE）、權限（EPERM／EACCES）、命令列過長、參數或環境變數含空字元等一律為`spawn`（此前只認 ENOENT／ENAMETOOLONG，其餘歸`exec`）；`dispatchClaude`／`dispatchCodex`／`dispatchOpencode`於這些情形此前（wsemi 1.9.12）會 reject，現回結果物件；`dispatchAntigravity`之命令列過長等`attempts`由 0 改為 1（execCli 實際嘗試 1 次）。已知例外：`env`物件之 getter 拋錯（病態輸入）時 wsemi 1.9.15 之 execCli 仍會 reject，`dispatchAntigravity`此前以自身 try/catch 攔截，移除後與另三家一致為 reject（已交 wsemi 修正）。
+17. 子進程未能啟動之`errorType`改以結構判定（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`）：非有效執行檔（UNKNOWN／EFTYPE）、權限（EPERM／EACCES）、命令列過長、參數或環境變數含空字元等一律為`spawn`（此前只認 ENOENT／ENAMETOOLONG，其餘歸`exec`）；`dispatchClaude`／`dispatchCodex`／`dispatchOpencode`於這些情形此前（wsemi 1.9.12）會 reject，現回結果物件；`dispatchAntigravity`之命令列過長等`attempts`由 0 改為 1（execCli 實際嘗試 1 次）。已知例外：`env`物件之 getter 拋錯（病態輸入）時 wsemi 1.9.15 之 execCli 仍會 reject，`dispatchAntigravity`此前以自身 try/catch 攔截，移除後與另三家一致為 reject（已交 wsemi 修正）。**1.0.49 起改回`params`錯誤結果，見第 28 條。**
 18. `dispatchAiFallback`：`errorType`為`spawn`（子進程未能啟動，含命令列過長）或`params`（參數或設定檢核失敗，如 REST 條目缺`baseURL`／`model`、opencode 之`config`不可序列化）者改為**整組跳過**（此前除 ENOENT 與未知 kind 外逐把換金鑰）；依`group-exhausted`之`by`／`attempted`／`errorTypes`，或依逐次`next-key`／`skip-group`計數者，多金鑰條目之數字會變小。
 19. CLI 類轉接器之自訂`validate`函數拋錯改回驗證失敗（`errorType: 'validation'`，`stderr`前綴`validate threw: <訊息>`）；第 3 條此前只在 REST 類與工作流成立，CLI 類會成為未捕捉例外而使行程崩潰。
 20. REST 類之送出前錯誤（如金鑰含換行致標頭非法）之`error`改為遮蔽標頭值（`[REDACTED]`），此前會帶出完整金鑰並經遞補流入`tried`與事件；額度查詢（`getQuotaClaude`／`getQuotaCodex`之 HTTP 路徑）之網路錯誤訊息另附`cause.code`（如`network error: fetch failed (ECONNREFUSED)`）。
 21. `dispatchOpencode`之`config`不可序列化（BigInt、循環參照）改回`params`錯誤結果（此前 reject）；`runRolePipeline`之階段 prompt 函式拋錯、`runFanout`之整合 prompt 函式拋錯或名額規格非物件，改回失敗結果並保留已完成成果（此前整體 reject）。
 22. `getQuotaAntigravity`：執行檔未能啟動一律`notfound`（含`checkVersion: false`，此前為`exit`）；版本把關（`agy --version`）之逾時與非零離開改為`timeout`／`exit`（此前一律`notfound`），訊息皆附安裝指引。
 
+**1.0.49 起**（呼叫端注入之函數與物件：非同步、拋錯、永不落定；需 wsemi ≥1.9.16）：
+23. `validate`之自訂函數可回傳 Promise（CLI 四家、REST 三家、截斷放行、遞補條目、工作流皆同）：以 resolve 值之真假判定；**此前回傳 Promise 者恆視為通過**（含 resolve 假），其 reject 會使行程以離開碼 1 結束。驗證與子進程／HTTP **共用該次嘗試之`timeoutMs`**；逾時亦為`OUTPUT_VALIDATION_FAILED`（`errorType: 'validation'`，不觸發冷卻），`stderr`前綴`validate timed out: did not settle within <N>s`（拋錯與 reject 仍為`validate threw: <訊息>`）。CLI 類之驗證改由本套件判定（不交 wsemi 之 execCli，判定不依賴 wsemi 版本）；重試時`stderr`不再殘留前次之`validate threw`註記；拋錯訊息截斷至 500 字元（此前未截斷）。
+24. `durationMs`（含`tried[].durationMs`）改為含驗證時間（CLI、REST 同）；`validate`耗時者數字會變大。
+25. 工作流（`callAi`／`runFanout`／`runRolePipeline`／`runFanoutPipeline`）：`check`、`parse`可為 async（此前 async `check`恆不過、async `parse`之成果`json`為 Promise）；`prompt`函式可為 async（此前判為空），等待上限為該段`timeoutMs`與`budgetMs`取小，耗時自`budgetMs`扣除；**呼叫層`validate`改為生效**並與工作流驗證取交集（此前被靜默忽略）——例如`callAi(p, { validate: 'min:100' })`或`dispatchAiWkf({ defaults: { validate: 'json' } })`此前不作用，現會擋下短於 100 字或非嚴格 JSON（寬鬆解析可過）之回覆而換家；條目之`validate`鍵為`undefined`／`null`／`''`時不再繞過工作流之`parse`＋`check`（此前不過之回覆亦`ok: true`且不遞補）；成果`json`為通過驗證時之解析結果（不重解析，`check`就地修改之物件會帶出）。
+26. `dispatchAiFallback`之控制類回調為**同步契約**：`shouldStop`／`coolDetect`回傳 Promise 視同`false`，`onEvent`／`store.set`之 rejection 被承接（此前任一回調之 reject 會使行程結束）；`store.get`拋錯、回傳 Promise 或不可讀之物件時本次以全新狀態執行且**不回寫**（此前以全新狀態寫回，抹除既有游標與冷卻）；`store`本身或`providers`陣列不可讀時不再 reject。
+27. `createFileStore`之`stamp`、`createUsageCounter`之`getDate`／`keyOf`拋錯或回傳 Promise 時退用預設（此前同步拋錯外拋；回傳 Promise 時`stamp`寫入`"at": {}`、`getDate`以`"[object Promise]"`為日期鍵、`keyOf`不計數）；`stamp`回傳不可序列化之值（BigInt、循環參照）時退用預設時間戳（此前整份寫檔靜默失敗）；`getDate`回傳非字串非數值者退用預設日期；`keyOf`回傳非字串者照舊不計數（判型不再執行使用者程式碼）。
+28. 呼叫端物件不可讀（拋錯之 getter、已撤銷之 Proxy）改回`errorType: 'params'`（此前 reject）：四家 CLI 之`env`（`env is not readable: <訊息>`，`attempts: 0`；改寫第 17 條之已知例外，claude／codex／antigravity 於 wsemi 1.9.16 下此前為`spawn`）、REST 三家之`headers`／`body`、`dispatchApiTypesafeSystemone`之`questions`、`dispatchOpencode`之`config`（已撤銷之 Proxy）、`dispatchAiFallback`之條目與`providers`陣列（條目不可讀則該組以`params`整組跳過、續試下一組）、`callAi`之定義表條目；REST 之`body`不可序列化（BigInt、循環參照）改於送出前回`params`（此前歸`fetch`並逐把換金鑰）；REST 之`body`改為送出前序列化一次、重試共用（`toJSON`與 getter 只執行一次），標頭值於送出前以`String()`物化一次（同 fetch 之轉換；轉換拋錯回`params`，以`toString`交出秘密之包裝物件亦納入錯誤訊息之遮蔽）。工作流之規格物件（`runFanout`之各名額規格與`integrate`、`runRolePipeline`之各階段、兩者與`dispatchAiWkf`之`callOpt`、`callAi`之`providers`定義表與`spec`）不可讀時改回該段失敗結果並保留已完成成果（此前 reject，`dispatchAiWkf`之`callOpt`不可讀時更為同步拋錯）；`dispatchAiFallback`啟用冷卻時，條目之讀取改於重排前一次物化（此前`id`之 getter 會被讀兩次、拋錯即 reject），已撤銷之條目不再被悄悄濾除而留下`params`歷程。頂層`prompt`（各轉接器、`dispatchAiFallback`、`callAi`）與`runFanout`之`task`改以原始字串判讀：String 包裝物件取其值照常執行（此前 claude／codex／opencode 經 stdin 寫入而 reject）、空包裝與不可讀者回`params`（此前空包裝可繞過非空檢核）；`dispatchAi`之`kind`為物件時回`params`（此前`toString`拋錯者 reject）；`agents`／`stages`恰含 1 個不可讀元素時與多個元素時同樣逐一回報（此前長度 1 時整輪 reject）；`dispatchAiWkf`之`defaults`不可讀時於組裝期 throw（同`providers`；此前於各綁定函數呼叫時同步拋錯）。依`errorType`計數者（如健康層）之數字會由`spawn`／`fetch`移至`params`。物件以淺層副本讀取一次（自有可列舉屬性，同物件展開），**一般資料物件之送出內容不變**；`providers`條目須為一般物件（原型鏈上之屬性，如 class 之 getter，不再讀取）。
+29. wsemi 1.9.16 連動：不存在之`.cmd`／`.bat`（絕對、相對、只給檔名）由`exec`（離開碼 1、依`maxRetries`重試）改為`spawn`且不重試；`getQuotaCodex`之 app-server 未能啟動由`exit`改為`notfound`；cwd 不存在之訊息改為`ENOENT: cwd is not an existing folder: <cwd>`；只給檔名之批次檔先搜子進程`cwd`（見`exe`列）。npm shim 形狀之`.cmd`而入口缺失者仍為`exec`（見 errorType 表）。
+30. 深層匯入者：`src/checkTruncation.mjs`之`safeValidate`維持同步簽章，回傳 Promise 之驗證函數改視為拒絕（此前恆通過；本套件內部改用非同步版）；`judgeTruncated`改為 async。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
-| `exe` | String | 各CLI名稱 | 執行檔名稱或絕對路徑，給予名稱時由系統`PATH`解析 |
+| `exe` | String | 各CLI名稱 | 執行檔名稱或絕對路徑，給予名稱時由系統`PATH`解析；**`.cmd`／`.bat`只給檔名時依 cmd.exe 語意先搜子進程`cwd`再搜`PATH`**（wsemi ≥1.9.16），`cwd`為不可信之工作區時請給絕對路徑（或以`resolveProviders`之`exes`注入）；不存在之`.cmd`／`.bat`為`errorType: 'spawn'`且不重試 |
 | `model` | String | `''` | 模型ID，未給予則不帶模型旗標，由CLI自行決定 |
 | `extraArgs` | Array | `[]` | 額外命令列旗標字串陣列，接於固定旗標之後 |
 | `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時將強制關閉子進程及其子孫程序；**全套件統一預設**(所有轉接器與各層一致，單一來源`dfTimeoutMs.mjs`)，由opt傳入即可覆寫 |
 | `cwd` | String | `process.cwd()` | 子進程工作目錄。**`dispatchOpencode` 另會把其絕對路徑同步注入環境變數 `PWD`**（覆寫呼叫端 `env` 內之同名變數）：opencode 以**繼承之 `PWD`** 優先於子進程真實 cwd 決定 session 目錄（原始碼 `run.ts`：`process.env.PWD ?? process.cwd()`），而 Git Bash 與 Linux/macOS 的 shell 都會設 `PWD`；2026-09-23 實測未同步時 opencode 會在父程序目錄讀寫（讀相對路徑回 NOTFOUND 且 `ok: true`，允許寫檔時檔案落在父程序目錄）。claude／codex 同組探針遵循 cwd，不受影響 |
-| `validate` | String\|Function | `undefined` | `stdout`驗證規則，可用`'nonempty'`、`'json'`、`'min:100'`，多規則以逗號串接，亦可給予`(stdout)=>Boolean` |
+| `validate` | String\|Function | `undefined` | `stdout`驗證規則，可用`'nonempty'`、`'json'`、`'min:100'`，多規則以逗號串接，亦可給予`(stdout)=>Boolean`或回傳 Promise 之函數（以 resolve 值之真假判定；1.0.49 起，此前 Promise 恆視為通過）。驗證與子進程／HTTP **共用該次嘗試之`timeoutMs`**（等待上限為`timeoutMs`減去該次已耗時間；子進程耗時接近`timeoutMs`時驗證可用時間很少）；同步拋錯或 reject → `stderr`前綴`validate threw: <訊息>`，逾時 → `validate timed out: did not settle within <N>s`，皆為`OUTPUT_VALIDATION_FAILED`（`errorType: 'validation'`，不觸發冷卻、照常遞補），訊息截斷至 500 字元；逾時不會取消驗證函數本身之工作（無取消訊號），且逾時以事件迴圈可前進為前提（同步死迴圈或無止盡之微任務不在保證內）；結果之`durationMs`含驗證時間 |
 | `maxRetries` | Integer | `0` | 失敗後最大重試次數，遇`ENOENT`、exit code 2或無法啟動子進程之同步錯誤（如命令列過長、權限不足、非有效執行檔、參數含空字元；wsemi ≥1.9.15）視為不可重試而立即中止 |
 
-其餘設定會原樣轉傳給`wsemi`之`execCli`，例如`retryDelayMs`、`maxBuffer`、`onStdout`、`onStderr`、`env`。注意：`onStdout`／`onStderr`回調內拋出之錯誤**不會被攔截，將使行程崩潰**（wsemi 文件載明），請於回調內自行處理；`validate`之自訂函數拋錯則視同驗證失敗（`OUTPUT_VALIDATION_FAILED`，`stderr`前綴`validate threw: <訊息>`）。
+其餘設定會原樣轉傳給`wsemi`之`execCli`，例如`retryDelayMs`、`maxBuffer`、`onStdout`、`onStderr`、`env`（`env`以淺層副本轉傳；含拋錯之 getter 或為已撤銷之 Proxy 者回`errorType: 'params'`，1.0.49 起，此前 reject）。注意：`onStdout`／`onStderr`回調內拋出之錯誤**不會被攔截，將使行程崩潰**（wsemi 文件載明），回調為 async 者其 rejection 亦同，請於回調內自行處理；`validate`之自訂函數拋錯、reject 或逾時則視同驗證失敗（見上表`validate`列）。
 
 #### Options only for dispatchOpencode:
 | key | type | default | description |
@@ -353,9 +363,9 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | --- | --- | --- |
 | `params` | 參數/設定檢核失敗（進入執行前即被擋） | 全部 |
 | `timeout` | 逾時（execCli強殺或API abort） | 全部 |
-| `spawn` | 子進程未能啟動（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`，不論錯誤碼：執行檔不存在、非有效執行檔、權限不足、命令列過長、參數或環境變數含空字元、cwd 不存在等） | CLI類 |
+| `spawn` | 子進程未能啟動（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`，不論錯誤碼：執行檔不存在、不存在之`.cmd`／`.bat`（wsemi ≥1.9.16）、非有效執行檔、權限不足、命令列過長、參數或環境變數含空字元、cwd 不存在等） | CLI類 |
 | `validation` | stdout未過`validate` | 全部 |
-| `exec` | CLI非零離開碼之一般執行失敗（未能再機械細分）；已知限制：`exe`為`.cmd`／`.bat`而經 cmd.exe 退路啟動者（該路徑不存在、npm shim 入口缺失），係 cmd.exe 或 node 已啟動後才以離開碼 1 結束，亦歸此類而非`spawn` | CLI類 |
+| `exec` | CLI非零離開碼之一般執行失敗（未能再機械細分）；已知限制：`exe`為 npm shim 形狀之`.cmd`而其入口檔缺失者，wsemi 仍經 cmd.exe 退路啟動、node 已啟動後才以離開碼 1 結束，亦歸此類而非`spawn`，且依`maxRetries`重試（已交 wsemi；不存在之`.cmd`／`.bat`於 wsemi ≥1.9.16 已歸`spawn`） | CLI類 |
 | `http` | HTTP非2xx（`code`為狀態碼） | api類 |
 | `fetch` | 網路層錯誤（DNS／連線拒絕／TLS／無效網址等）；送出前之例外（如金鑰含換行致標頭非法）之訊息會遮蔽標頭值 | api類 |
 | `tool-unsupported` | 模型回tool_calls而api類不支援工具 | api類 |
@@ -426,14 +436,14 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | `providers[].id` | String | 條目索引 | 群組識別，游標以此為鍵、亦為日誌標籤；本套件不解讀其內容，命名規則見下方 |
 | `providers[].keys` | Array | `[]` | 同一服務之多把API key，逐次注入輪替（`kind`為`opencode`時須同時給`provider`）；省略代表沿用CLI登入狀態 |
 | `providers[].meta` | any | 無 | **保留鍵，保證永不轉傳**轉接器。條目其餘鍵一律原樣轉傳——呼叫端要在條目上掛自有資訊（分類、標籤、註記）一律放`meta`，與轉傳機制永久絕緣（頂層opt與工作流各層規格物件同此約定） |
-| `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs` |
+| `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs`（非同步之`validate`與該次嘗試共用此時限，故亦受預算約束）。**已知限制**：條目或共用設定帶`maxRetries`>0 時，剩餘預算只壓進「呼叫轉接器」之那一次，轉接器內之各次重試各自以該值為上限，整輪至多約（maxRetries+1）×剩餘預算＋重試間隔，可超出`budgetMs`（既有行為，非同步驗證之重試亦同；以期限傳入轉接器之改善另議） |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
-| `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用）；假定單行程序列調用。跨行程持久化可直接用`createFileStore`；自行實作時**務必整包原封存還**，白名單式挑欄位會在套件擴充state時靜默丟棄新欄位 |
+| `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用）；假定單行程序列調用。跨行程持久化可直接用`createFileStore`；自行實作時**務必整包原封存還**，白名單式挑欄位會在套件擴充state時靜默丟棄新欄位。`get`／`set`須為**同步函數**：`get`拋錯、回傳 Promise 或回傳不可讀之物件時本次以全新狀態執行且**不回寫**（不覆寫既有之游標與冷卻；1.0.49 起，此前以全新狀態寫回），`get`回傳非物件（如尚未初始化之`null`）則照舊以全新狀態起始並寫回；`set`拋錯或回傳 Promise 皆靜默（其 rejection 被承接）。**state 之契約**：`get`回傳之 state 須為可寫之一般資料物件（`cursors`／`cooling`不得為凍結物件或帶拋錯之 getter），本層於整輪中持續讀寫同一物件並把它交給`set`——`set`不得凍結或改寫收到之 state（如 immer 式深凍結），需要不可變存放時請存其副本；違反者屬契約外，可能 reject。巢狀呼叫（`validate`內再呼叫本套件）共用同一檔案 store 時可能互相覆寫 |
 | `cooldownMs` | Integer | `0`不啟用 | 供應商冷卻視窗：條目（限有明給id者）遭遇**限流(HTTP 429，僅api類可偵測)或逾時(TIMEOUT)**後，於視窗內之後續呼叫中被**移至鏈尾（只降序不移除）**——前面全敗時仍會被嘗試、任一次成功立即解除，故不存在把已恢復服務冰住的問題。多階段工作流可大幅省去逐階段重踩已失效供應商的成本（使用端實測107s→15s）。注意啟用時providers順序會被暫時重排，此即機制目的 |
-| `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流字樣各家不同、隨版本漂移，且不一定在stderr（Claude Code之執行期失敗以result印在stdout，官方headless文件），**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`（注意：opencode 1.18.32 遇 Zen 免費層 429 時 `run` **不會結束**、stderr 只有 session 標頭，直到逾時才以 `TIMEOUT` 回報——內建 TIMEOUT 觸發已涵蓋；要讓字樣出現在 stderr 須於 `extraArgs` 加 `--print-logs --log-level ERROR`，2026-09-23 實測 DEBUG log 內為 `AI_APICallError: Rate limit exceeded`；不經本套件的原始 CLI 亦同）；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調拋出例外視同`false` |
-| `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調拋出例外視同`false` |
+| `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流字樣各家不同、隨版本漂移，且不一定在stderr（Claude Code之執行期失敗以result印在stdout，官方headless文件），**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`（注意：opencode 1.18.32 遇 Zen 免費層 429 時 `run` **不會結束**、stderr 只有 session 標頭，直到逾時才以 `TIMEOUT` 回報——內建 TIMEOUT 觸發已涵蓋；要讓字樣出現在 stderr 須於 `extraArgs` 加 `--print-logs --log-level ERROR`，2026-09-23 實測 DEBUG log 內為 `AI_APICallError: Rate limit exceeded`；不經本套件的原始 CLI 亦同）；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調須為**同步函數**，拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false`；以字樣判定者宜先排除`r.errorType === 'validation'`（驗證失敗之`stderr`含驗證函數自身之訊息，可能誤中字樣） |
+| `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調須為**同步函數**（回傳值恰為`true`才中止），拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false` |
 | `meta` | any | 無 | 保留鍵，同`providers[].meta`，永不轉傳 |
-| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現)、`'group-exhausted'`(一組試完仍無成交，每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前；帶`keys`(有效金鑰數，`0`代表登入態之單一虛擬金鑰)、`attempted`(本組實際嘗試數)、`by`(`'all-keys'`每把皆換鑰失敗，或`'skip-group'`以與金鑰無關之失敗收尾)、`errorTypes`(本組各次嘗試之`errorType`依序)與`error`(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入`tried`)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外不影響主流程 |
+| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現)、`'group-exhausted'`(一組試完仍無成交，每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前；帶`keys`(有效金鑰數，`0`代表登入態之單一虛擬金鑰)、`attempted`(本組實際嘗試數)、`by`(`'all-keys'`每把皆換鑰失敗，或`'skip-group'`以與金鑰無關之失敗收尾)、`errorTypes`(本組各次嘗試之`errorType`依序)與`error`(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入`tried`)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外或回傳被 reject 之 Promise 皆不影響主流程（不等待其結果） |
 
 頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
 
@@ -476,7 +486,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
     stderr: '\x1b[0m\r\n> build · muse-spark-1.3-contributor-free\r\n\x1b[0m\r\n',
     code: 0,
     error: '',
-    durationMs: 11742,
+    durationMs: 11742, //該次嘗試之耗時(含validate之時間, 1.0.49起)
     pid: 9800,
     attempts: 1,
 }
@@ -524,7 +534,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 **全數失敗時，頂層`error`／`errorType`只反映「最後一次」嘗試**：多把金鑰或多家依序失敗時（例如第一把本體非 JSON、第二把以剩餘預算重打而逾時），只記最終錯誤會誤判歸因。記日誌或評比時請一併記下各次嘗試，例如`` r.tried.filter((t) => t.outcome !== 'ok').map((t) => `${t.keyId}:${t.errorType}`) ``。
 
 #### dispatchAiWkf (workflow factory):
-注入一次provider定義表(名稱 → `dispatchAiFallback`條目)與共用預設，之後以名稱宣告工作流；名稱查無定義即回報錯誤(fail fast)。回覆經寬鬆JSON解析(`extractJsonLoose`)＋自訂`check`驗證，非法回覆視為該家失敗而自動遞補；預設於prompt前掛「禁止建檔」約束(`promptPrefix: ''`可關閉)；措辭豁免唯讀查閱——codex以shell讀檔，一律禁指令會令其無法讀取專案檔案且靜默回拒答(2026-08-13實測)。
+注入一次provider定義表(名稱 → `dispatchAiFallback`條目)與共用預設，之後以名稱宣告工作流；名稱查無定義即回報錯誤(fail fast)。回覆經寬鬆JSON解析(`extractJsonLoose`)＋自訂`check`驗證，非法回覆視為該家失敗而自動遞補；`parse`、`check`與各工作流之`prompt`函式可為 async（1.0.49 起；`parse`／`check`與該次嘗試共用`timeoutMs`，`prompt`以該段`timeoutMs`與`budgetMs`取小為上限，拋錯、reject、逾時皆以失敗回報而不 reject；`check`須恰回`true`）；呼叫層`validate`（`callAi`之 opt、名額／階段之覆寫鍵、`defaults`）與工作流之`parse`＋`check`及條目`validate`取交集（皆過才算過）；成果`json`為通過驗證時之解析結果（不重解析，`check`就地修改之物件會帶出）；預設於prompt前掛「禁止建檔」約束(`promptPrefix: ''`可關閉)；措辭豁免唯讀查閱——codex以shell讀檔，一律禁指令會令其無法讀取專案檔案且靜默回拒答(2026-08-13實測)。
 
 ```alias
 let wkf = wdi.dispatchAiWkf({
@@ -569,9 +579,9 @@ agy --print-timeout（自動＝timeoutMs−30s）
 
 | 參數 | 作用範圍 | 預設 | 逾時後果／備註 |
 | --- | --- | --- | --- |
-| `timeoutMs` | **單次AI嘗試**，所有kind一致（直接呼叫與工作流內皆同一數字） | `300000` | CLI強殺子進程樹／API中止請求；`error`以`TIMEOUT`開頭 → fallback視為**與金鑰無關**，整組跳過（不逐把空耗） |
+| `timeoutMs` | **單次AI嘗試**，所有kind一致（直接呼叫與工作流內皆同一數字） | `300000` | CLI強殺子進程樹／API中止請求；`error`以`TIMEOUT`開頭 → fallback視為**與金鑰無關**，整組跳過（不逐把空耗）；非同步之`validate`（含工作流之`parse`／`check`）計入同一次嘗試（等待上限為剩餘時間，逾時歸`validation`） |
 | `printTimeout` | 僅antigravity，agy自身等待上限 | 自動＝timeoutMs−30s | 令CLI先於外層逾時，錯誤訊息來自agy自身；一般無須手動設 |
-| `budgetMs` | `dispatchAiFallback`整輪遞補（＝工作流的一個名額／階段） | `null`不限 | 有值時剩餘預算會壓進每次嘗試的timeoutMs；用盡回`budget exhausted` |
+| `budgetMs` | `dispatchAiFallback`整輪遞補（＝工作流的一個名額／階段） | `null`不限 | 有值時剩餘預算會壓進每次嘗試的timeoutMs；用盡回`budget exhausted`；工作流之`prompt`函式（可為 async）之耗時亦自該階段／整合名額之budgetMs扣除；`maxRetries`>0 時整輪可超出（見 Options for dispatchAiFallback 之`budgetMs`列） |
 | `minAttemptMs` | 搭配budgetMs的開工門檻 | `20000` | 剩餘預算低於此值即不再開工；**無budgetMs時不作用** |
 | 工作流總時長 | `runFanout`／`runRolePipeline`／`runFanoutPipeline` | 無（刻意） | 由結構推導，要上限就設各名額的`budgetMs` |
 
@@ -665,9 +675,9 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 
 | 工具 | 用途 |
 | --- | --- |
-| `createFileStore({ dir })` | `dispatchAiFallback`之`store`的檔案持久化——排程任務每次執行都是新行程，記憶體游標/冷卻每次歸零；本實作採**排除式passthrough**（state原封存還，僅剔自用欄位`at`），日後套件擴充state欄位自動相容（殷鑑：白名單store曾把1.0.7新增的`cooling`靜默丟棄） |
-| `createUsageCounter({ dir })` | 逐日逐鍵用量計帳，`onEvent`直接掛進dispatch即於`try`事件記帳；**純觀測絕不據以節流**（額度視窗形態多樣，臆測門檻擋自己的呼叫等同拿猜測當事實）；排程環境務必注入`getDate`錨定時區 |
-| `budgetFor(chain)` | 遞補鏈走滿全鏈之時間預算（Σ各條目`timeoutMs`，未帶者以統一預設300000計）；與外部排程硬上限取小者交`budgetMs` |
+| `createFileStore({ dir })` | `dispatchAiFallback`之`store`的檔案持久化——排程任務每次執行都是新行程，記憶體游標/冷卻每次歸零；本實作採**排除式passthrough**（state原封存還，僅剔自用欄位`at`），日後套件擴充state欄位自動相容（殷鑑：白名單store曾把1.0.7新增的`cooling`靜默丟棄）；注入之`stamp`須為同步函數，拋錯或回傳 Promise 時退用預設時間戳（不外拋） |
+| `createUsageCounter({ dir })` | 逐日逐鍵用量計帳，`onEvent`直接掛進dispatch即於`try`事件記帳；**純觀測絕不據以節流**（額度視窗形態多樣，臆測門檻擋自己的呼叫等同拿猜測當事實）；排程環境務必注入`getDate`錨定時區；注入之`getDate`／`keyOf`須為同步函數，拋錯或回傳 Promise 時退用預設（不外拋） |
+| `budgetFor(chain)` | 遞補鏈走滿全鏈之時間預算（Σ各條目`timeoutMs`，未帶者以統一預設300000計；非同步驗證計入單次嘗試，不另加；條目之`maxRetries`不計入，見`budgetMs`列之已知限制）；與外部排程硬上限取小者交`budgetMs` |
 | `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可。REST 文字類截斷預設失敗，但工作流`callAi`之`acceptTruncated`預設為「有自訂`parse`且非`rawText`」，故注入自訂`parse`即同意接受截斷內容、既有用法不必改；結果之`truncated: true`可辨識救回的是半批；**直接呼叫`dispatchAiFallback`或轉接器、把搶救寫在`validate`裡者，須自行給`acceptTruncated: true`**（1.0.37 起，否則截斷在`validate`之前即判失敗）。限制：只救頂層元素為物件之陣列，從第一個`[`起算（外包物件如`{"items":[…`會救回內層陣列、前言含`[`會失效） |
 | `NO_SIDE_EFFECT` | 防副作用prompt前綴之單一來源（措辭含唯讀查閱豁免——codex以shell讀檔，一律禁指令等同禁讀檔）；工作流`callAi`預設自動掛上，直呼`dispatchAiFallback`者自行前綴 |
 

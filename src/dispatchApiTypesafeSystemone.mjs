@@ -10,9 +10,10 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import castPintOr from './castPintOr.mjs'
 import buildValidator from './buildValidator.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import redactText, { secretHeaderValues } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
-import { safeValidate } from './checkTruncation.mjs'
+import { safeValidateAsync } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
 
 
@@ -77,13 +78,13 @@ let optTruncate = {
  *
  * @param {String} url 輸入完整端點網址字串
  * @param {Object} headers 輸入請求標頭物件
- * @param {Object} body 輸入請求本體物件
+ * @param {String} bodyText 輸入已序列化之請求本體JSON字串(送出前序列化一次, 重試共用)
  * @param {Array} ids 輸入請求之題目id陣列，用於檢核回應是否每題皆有答案
  * @param {Number} timeoutMs 輸入逾時毫秒
  * @param {Function|null} validator 輸入驗證函式
  * @returns {Promise} 回傳Promise，resolve回傳結果物件
  */
-async function callOnce(url, headers, body, ids, timeoutMs, validator) {
+async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
 
     let t0 = Date.now()
 
@@ -115,7 +116,7 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
         res = await fetch(url, {
             method: 'POST',
             headers,
-            body: JSON.stringify(body),
+            body: bodyText,
             signal: controller.signal,
         })
         raw = new Uint8Array(await res.arrayBuffer())
@@ -125,12 +126,13 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
         clearTimeout(timer)
 
         //逾時, error以TIMEOUT開頭令dispatchAiFallback視為與金鑰無關而跳組
-        if (err.name === 'AbortError') {
+        if (errField(err, 'name') === 'AbortError') {
             return mkResult({ error: `TIMEOUT after ${timeoutMs / 1000}s`, errorType: 'timeout' })
         }
 
         //網路層錯誤(DNS/連線拒絕等); 無cause.code者(送出前之例外, 如標頭值含換行)之訊息會夾帶標頭值(含金鑰), 一律遮蔽(見redactText.mjs)
-        let cause = get(err, 'cause.code', '') || redactText(get(err, 'message', ''), secretHeaderValues(headers))
+        //拋出值可為null或已撤銷之Proxy(如標頭值之toString拋出者), 一律安全讀取, 訊息經errMsg
+        let cause = errField(err, 'cause.code') || redactText(errMsg(err), secretHeaderValues(headers))
         return mkResult({ error: `FETCH_ERROR: ${cause}`, errorType: 'fetch' })
     }
     clearTimeout(timer)
@@ -204,11 +206,11 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
 
     //validator, error與execCli一致令dispatchAiFallback可統一分流; 拋錯視同拒絕(不reject), 訊息置stderr
     if (validator) {
-        let v = safeValidate(validator, content)
+        let v = await safeValidateAsync(validator, content, Math.max(timeoutMs - (Date.now() - t0), 1)) //validate與本次嘗試共用timeoutMs(剩餘時間)
         if (!v.pass) {
             return mkResult({
                 stdout: strTruncate(content, 500, optTruncate),
-                stderr: v.threw ? `validate threw: ${v.threw}` : '',
+                stderr: v.note,
                 code: res.status,
                 error: 'OUTPUT_VALIDATION_FAILED',
                 errorType: 'validation',
@@ -253,7 +255,7 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
  * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，預設{}
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求，全套件統一預設300000
- * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數拋錯視同驗證失敗，預設undefined代表不驗證
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(answers之JSON字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，欄位名為input_tokens/output_tokens，無則null)、answers(成功時為已解析之答案物件，否則null)、modelResolved(回應所載之實際模型版本字串，如'jev-1.13.0'，無則'')，本函數不會reject
@@ -296,12 +298,17 @@ async function callOnce(url, headers, body, ids, timeoutMs, validator) {
 async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
 
     //check prompt, 不reject故以錯誤結果物件回報
-    if (!isestr(prompt)) {
+    prompt = asText(prompt) //String包裝物件取其原始字串(stdin只收原始字串, 空包裝不得繞過非空檢核); 判型不執行使用者程式碼(已撤銷之Proxy等回空字串)
+    if (prompt === '') {
         return getErrorResult('prompt must be a non-empty string')
     }
 
-    //questions必填且非空, 題型細節交伺服器驗證(回422)
-    let questions = get(opt, 'questions', null)
+    //questions必填且非空, 題型細節交伺服器驗證(回422); 呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 可讀者取物化之淺層副本(同body)
+    let rquestions = readCallerObj(get(opt, 'questions', null), 'questions')
+    if (!rquestions.ok) {
+        return getErrorResult(rquestions.msg)
+    }
+    let questions = rquestions.value
     if (!iseobj(questions)) {
         return getErrorResult('questions must be a non-empty object')
     }
@@ -322,13 +329,21 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     let key = get(opt, 'key', null)
 
     //bodyExtra
-    let bodyExtra = get(opt, 'body', null)
+    let rbody = readCallerObj(get(opt, 'body', null), 'body') //呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 可讀者取物化之淺層副本
+    if (!rbody.ok) {
+        return getErrorResult(rbody.msg)
+    }
+    let bodyExtra = rbody.value
     if (!isobj(bodyExtra)) {
         bodyExtra = {}
     }
 
     //headersExtra
-    let headersExtra = get(opt, 'headers', null)
+    let rheaders = readCallerObj(get(opt, 'headers', null), 'headers')
+    if (!rheaders.ok) {
+        return getErrorResult(rheaders.msg)
+    }
+    let headersExtra = rheaders.value
     if (!isobj(headersExtra)) {
         headersExtra = {}
     }
@@ -357,13 +372,33 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     //body, prompt即state; 額外鍵以bodyExtra為準
     let body = { model, state: prompt, questions, ...bodyExtra }
 
-    //ids, 用於檢核回應是否每題皆有答案(以實際送出之questions為準)
-    let ids = Object.keys(isobj(body.questions) ? body.questions : questions)
-
     //headers
     let headers = { 'Content-Type': 'application/json', 'Accept-Encoding': 'identity', ...headersExtra } //Accept-Encoding預設identity, 見檔頭
+
+    //body, 送出前序列化一次(BigInt、循環參照、toJSON或getter拋錯等以params回報; 此前於callOnce內拋錯而歸fetch, 逐把空耗),
+    //重試共用同一字串, 不再執行呼叫端之toJSON/getter; ids取自實際送出之questions(body可覆寫), 同一try內判型
+    let bodyText = ''
+    let ids = []
+    try {
+        bodyText = JSON.stringify(body)
+        ids = Object.keys(isobj(body.questions) ? body.questions : questions)
+    }
+    catch (err) {
+        return getErrorResult(`body is not JSON-serializable: ${errMsg(err)}`)
+    }
     if (isestr(key)) {
         headers['Authorization'] = `Bearer ${key}`
+    }
+
+    //headers之值, 物化為字串(同fetch之轉換: undefined→'undefined'、數值→字串)且只讀一次; 轉換拋錯以params回報;
+    //遮蔽集合(secretHeaderValues)因而涵蓋以toString交出秘密之包裝物件(此前非字串值不在遮蔽集合)
+    try {
+        for (let k of Object.keys(headers)) {
+            headers[k] = String(headers[k])
+        }
+    }
+    catch (err) {
+        return getErrorResult(`headers is not readable: ${errMsg(err)}`)
     }
 
     let lastResult = null
@@ -376,7 +411,7 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
             await delay(Math.min(retryDelayMs * attempt, MAX_RETRY_DELAY_MS))
         }
 
-        lastResult = await callOnce(url, headers, body, ids, timeoutMs, validator)
+        lastResult = await callOnce(url, headers, bodyText, ids, timeoutMs, validator)
         totalAttempts = attempt + 1
 
         if (lastResult.ok) {

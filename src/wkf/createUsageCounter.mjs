@@ -6,6 +6,7 @@ import isfun from 'wsemi/src/isfun.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import fsReadJson from 'wsemi/src/fsReadJson.mjs'
 import fsWriteJson from 'wsemi/src/fsWriteJson.mjs'
+import { callHookSync, asText } from '../callUserFn.mjs'
 
 
 // createUsageCounter.mjs — 逐日、逐鍵之AI用量計帳(純觀測)
@@ -42,9 +43,9 @@ import fsWriteJson from 'wsemi/src/fsWriteJson.mjs'
  * @param {String} [opt.file=null] 輸入用量檔完整路徑字串，與dir/name二擇一
  * @param {String} [opt.dir=null] 輸入狀態目錄字串
  * @param {String} [opt.name='ai-usage.json'] 輸入用量檔名字串，預設'ai-usage.json'
- * @param {Function} [opt.getDate=系統日期] 輸入日期函數()=>'YYYY-MM-DD'，預設隨系統時區(排程環境建議注入時區錨定者)
+ * @param {Function} [opt.getDate=系統日期] 輸入日期函數()=>'YYYY-MM-DD'，預設隨系統時區(排程環境建議注入時區錨定者)；須為同步函數且回傳非空字串或數值(拋錯、回傳Promise或其他型別時退用預設，不外拋)
  * @param {Number} [opt.keepDays=14] 輸入保留天數正整數，預設14
- * @param {Function} [opt.keyOf=(ev)=>ev.keyId||ev.providerId] 輸入計帳鍵函數(ev)=>String，決定粒度(金鑰或條目)，預設優先keyId
+ * @param {Function} [opt.keyOf=(ev)=>ev.keyId||ev.providerId] 輸入計帳鍵函數(ev)=>String，決定粒度(金鑰或條目)，須為同步函數(拋錯或回傳Promise時退用預設，不外拋；同步回傳非字串或空字串者不計數)，預設優先keyId
  * @returns {Object} 回傳計數器物件，內含onEvent(可直接餵dispatch之onEvent)、bump(手動累加)、today(今日統計)與file(用量檔路徑)
  * @example
  *
@@ -67,13 +68,22 @@ function createUsageCounter(opt = {}) {
         file = path.join(dir, isestr(name) ? name : 'ai-usage.json')
     }
 
-    let getDate = get(opt, 'getDate', null)
-    if (!isfun(getDate)) {
-        getDate = () => {
-            let d = new Date()
-            let p2 = (n) => String(n).padStart(2, '0')
-            return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
-        }
+    let dfGetDate = () => {
+        let d = new Date()
+        let p2 = (n) => String(n).padStart(2, '0')
+        return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+    }
+    let getDateIn = get(opt, 'getDate', null)
+    if (!isfun(getDateIn)) {
+        getDateIn = dfGetDate
+    }
+    //getDate為同步契約: 拋錯或回傳Promise(承接其rejection)皆退用預設——檔頭「執行期之記帳與查詢則不throw」;
+    //回傳值須為非空字串或有限數值(作為日期鍵), 其餘(物件、已撤銷之Proxy等轉鍵時會執行使用者程式碼者)亦退用預設
+    let getDate = () => {
+        let h = callHookSync(() => getDateIn())
+        let v = h.value
+        let usable = h.state === 'value' && ((typeof v === 'string' && v !== '') || (typeof v === 'number' && Number.isFinite(v)))
+        return usable ? v : dfGetDate()
     }
 
     let keepDays = get(opt, 'keepDays', null)
@@ -81,9 +91,16 @@ function createUsageCounter(opt = {}) {
         keepDays = 14
     }
 
-    let keyOf = get(opt, 'keyOf', null)
-    if (!isfun(keyOf)) {
-        keyOf = (ev) => get(ev, 'keyId', null) || get(ev, 'providerId', '')
+    let dfKeyOf = (ev) => get(ev, 'keyId', null) || get(ev, 'providerId', '')
+    let keyOfIn = get(opt, 'keyOf', null)
+    if (!isfun(keyOfIn)) {
+        keyOfIn = dfKeyOf
+    }
+    //keyOf為同步契約: 拋錯或回傳Promise(承接其rejection)皆退用預設;
+    //同步回傳非字串者照舊不計數(交bump以空字串略過), 改以asText取值令判型不執行使用者程式碼(已撤銷之Proxy等不再外拋)
+    let keyOf = (ev) => {
+        let h = callHookSync(() => keyOfIn(ev))
+        return (h.state === 'value') ? asText(h.value) : dfKeyOf(ev)
     }
 
     let readAll = () => {

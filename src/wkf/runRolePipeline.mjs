@@ -1,9 +1,12 @@
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
-import isearr from 'wsemi/src/isearr.mjs'
+import isarr from 'wsemi/src/isarr.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import callAiWithFallback from './callAiWithFallback.mjs'
+import castPintOr from '../castPintOr.mjs'
+import dfTimeoutMs from '../dfTimeoutMs.mjs'
+import { awaitUserFn, readCallerObj, asText } from '../callUserFn.mjs'
 
 
 // runRolePipeline.mjs — RolePipeline工作流: 多角色串行鏈(stage1 → … → stageN)
@@ -40,7 +43,7 @@ let STAGE_KEYS = ['id', 'use', 'fallback', 'prompt', 'check', 'meta']
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Object} opt.providers 輸入provider定義表物件(名稱 → 條目)
  * @param {*} [opt.input=null] 輸入工作流輸入(原始任務字串或前一工作流之成果物件)，提供給各階段ctx.input，預設null
- * @param {Array} opt.stages 輸入階段規格陣列，各元素{ id, use, fallback, prompt:(ctx)=>String, check?, rawText?, maxRetries?, timeoutMs? }等；meta為保留鍵，呼叫端自有資訊(分類、標籤)掛此鍵保證永不轉傳下層
+ * @param {Array} opt.stages 輸入階段規格陣列，各元素{ id, use, fallback, prompt:(ctx)=>String, check?, rawText?, maxRetries?, timeoutMs? }等，prompt可為async(等待上限為該階段timeoutMs與budgetMs取小，耗時自budgetMs扣除；拋錯、reject、逾時以該階段失敗回報)；meta為保留鍵，呼叫端自有資訊(分類、標籤)掛此鍵保證永不轉傳下層
  * @param {Object} [opt.callOpt={}] 輸入透傳callAiWithFallback之共用設定，預設{}
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(布林值)、result(最末階段成果)、stages(id對階段完整呼叫結果之物件)、results(id對階段成果之物件)、order(階段id順序陣列)、failedStage(失敗階段id，無失敗為null)、totalMs(總耗時毫秒)、error(錯誤訊息字串)，本函數不會reject
  * @example
@@ -78,9 +81,15 @@ async function runRolePipeline(opt = {}) {
     let providers = get(opt, 'providers', null)
     let input = get(opt, 'input', null)
     let stages = get(opt, 'stages', null)
-    let callOpt = get(opt, 'callOpt', {})
 
-    if (!isearr(stages)) {
+    //callOpt, 呼叫端物件: 物化(只讀一次), 不可讀以失敗結果回報(不reject)
+    let rcallOpt = readCallerObj(get(opt, 'callOpt', {}), 'callOpt')
+    if (!rcallOpt.ok) {
+        return { ok: false, result: null, stages: {}, results: {}, order: [], failedStage: null, totalMs: 0, error: rcallOpt.msg }
+    }
+    let callOpt = rcallOpt.value
+
+    if (!isarr(stages) || stages.length === 0) { //不用isearr: 其於長度恰為1時會判型第0個元素(敵意元素即拋), 元素交下方readCallerObj逐一防護
         return { ok: false, result: null, stages: {}, results: {}, order: [], failedStage: null, totalMs: 0, error: 'stages must be a non-empty array' }
     }
 
@@ -90,7 +99,15 @@ async function runRolePipeline(opt = {}) {
     let prev = null
 
     for (let i = 0; i < stages.length; i++) {
-        let stage = stages[i]
+        //stage, 呼叫端物件: 物化(只讀一次), 不可讀以該階段失敗回報並保留已完成成果(同prompt函式拋錯), 不reject
+        let rstage = readCallerObj(stages[i], `stages[${i}]`)
+        if (!rstage.ok) {
+            let sid = `stage${i + 1}`
+            order.push(sid)
+            details[sid] = { ok: false, error: rstage.msg }
+            return { ok: false, result: null, stages: details, results, order, failedStage: sid, totalMs: Date.now() - t0, error: rstage.msg }
+        }
+        let stage = rstage.value
         let id = isestr(get(stage, 'id', '')) ? stage.id : `stage${i + 1}`
         order.push(id)
 
@@ -99,23 +116,30 @@ async function runRolePipeline(opt = {}) {
             details[id] = { ok: false, error: `stage[${id}].prompt must be a function` }
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
         }
-        //prompt函式拋錯(如讀上一階段成果之欄位而TypeError)以該階段失敗回報並保留已完成成果, 不reject
-        let prompt = null
-        try {
-            prompt = promptFn({ input, prev, results, index: i })
-        }
-        catch (err) {
-            details[id] = { ok: false, error: `stage[${id}].prompt threw: ${get(err, 'message', String(err))}` }
+        //overrides, 剔除階段自用鍵後其餘鍵覆寫該階段呼叫設定(rawText、maxRetries、timeoutMs等)
+        let overrides = omit(stage, STAGE_KEYS)
+
+        //prompt函式拋錯(如讀上一階段成果之欄位而TypeError)以該階段失敗回報並保留已完成成果, 不reject;
+        //prompt函式可為async(帳本R-USERFN-1): 等待上限為該階段timeoutMs與budgetMs取小, 其耗時自budgetMs扣除後交下層(階段≤budgetMs),
+        //拋錯、reject以'stage[id].prompt threw: 訊息'、逾時以'stage[id].prompt did not settle within Ns'回報
+        let stageOpt = { ...callOpt, ...overrides }
+        let stageBudget = castPintOr(get(stageOpt, 'budgetMs', null), null)
+        let stageTo = castPintOr(get(stageOpt, 'timeoutMs', null), dfTimeoutMs)
+        let tp = Date.now()
+        let pr = await awaitUserFn(() => promptFn({ input, prev, results, index: i }), stageBudget === null ? stageTo : Math.min(stageTo, stageBudget))
+        if (pr.state !== 'value') {
+            details[id] = { ok: false, error: pr.state === 'timeout' ? `stage[${id}].prompt ${pr.msg}` : `stage[${id}].prompt threw: ${pr.msg}` }
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
         }
-        if (!isestr(prompt)) {
+        let prompt = asText(pr.value) //不拋錯(回傳已撤銷Proxy時isestr會拋錯而reject); String包裝物件照舊接受
+        if (prompt === '') {
             details[id] = { ok: false, error: `stage[${id}].prompt returned empty` }
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
         }
-
-        //overrides, 剔除階段自用鍵後其餘鍵覆寫該階段呼叫設定(rawText、maxRetries、timeoutMs等)
-        let overrides = omit(stage, STAGE_KEYS)
-        let r = await callAiWithFallback(prompt, { ...callOpt, ...overrides, providers, spec: { use: get(stage, 'use', ''), fallback: get(stage, 'fallback', null) }, check: get(stage, 'check', null) })
+        if (stageBudget !== null) {
+            stageOpt.budgetMs = Math.max(stageBudget - (Date.now() - tp), 1)
+        }
+        let r = await callAiWithFallback(prompt, { ...stageOpt, providers, spec: { use: get(stage, 'use', ''), fallback: get(stage, 'fallback', null) }, check: get(stage, 'check', null) })
         details[id] = r
         if (!r.ok) {
             //失敗即止: 已完成階段成果保留於results, 供呼叫端接續重跑

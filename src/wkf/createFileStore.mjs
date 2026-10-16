@@ -6,6 +6,7 @@ import isfun from 'wsemi/src/isfun.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import fsReadJson from 'wsemi/src/fsReadJson.mjs'
 import fsWriteJson from 'wsemi/src/fsWriteJson.mjs'
+import { callHookSync } from '../callUserFn.mjs'
 
 
 // createFileStore.mjs — dispatchAiFallback之store的檔案持久化實作
@@ -42,7 +43,7 @@ import fsWriteJson from 'wsemi/src/fsWriteJson.mjs'
  * @param {String} [opt.dir=null] 輸入狀態目錄字串，與name組成檔案路徑
  * @param {String} [opt.name='ai-cursor.json'] 輸入狀態檔名字串，預設'ai-cursor.json'
  * @param {Array} [opt.ownKeys=['at']] 輸入本層自用、不屬於套件狀態之欄位名字串陣列，get時剔除set時補回，預設['at']
- * @param {Function} [opt.stamp=ISO時間戳] 輸入時間戳函數()=>String，寫入at欄位用，預設回傳new Date().toISOString()
+ * @param {Function} [opt.stamp=ISO時間戳] 輸入時間戳函數()=>String，寫入at欄位用，須為同步函數且回傳可JSON序列化之值(拋錯、回傳Promise或不可序列化時退用預設，不外拋)，預設回傳new Date().toISOString()
  * @returns {Object} 回傳store物件，內含get、set(可直接餵dispatchAiFallback之store)與file(狀態檔路徑)
  * @example
  *
@@ -92,7 +93,19 @@ function createFileStore(opt = {}) {
         },
 
         set: (state) => {
-            let out = { ...(isobj(state) ? state : {}), at: stamp() }
+            //stamp為同步契約: 拋錯或回傳Promise(承接其rejection)皆退用預設時間戳——檔頭「執行期之get/set不throw」;
+            //回傳值不可序列化(BigInt、循環參照、已撤銷之Proxy)者亦退用預設, 否則整份寫檔靜默失敗(游標與冷卻遺失)
+            let h = callHookSync(() => stamp())
+            let at = new Date().toISOString()
+            if (h.state === 'value') {
+                try {
+                    if (JSON.stringify(h.value) !== undefined) {
+                        at = h.value
+                    }
+                }
+                catch {}
+            }
+            let out = { ...(isobj(state) ? state : {}), at }
             fsWriteJson(file, out, { useFormat: true })
         },
 

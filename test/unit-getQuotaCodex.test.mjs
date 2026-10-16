@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import assert from 'assert'
 import getQuotaCodex from '../src/quota/getQuotaCodex.mjs'
 import fakeServerForQuotaTest from './tools/fakeServerForQuotaTest.mjs'
-import createFakeCli from './tools/fakeCliForTest.mjs'
+import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
 
 
 //產物落test/tmp/(同fakeCliForTest慣例), 測試結束清除
@@ -188,4 +188,21 @@ describe('getQuotaCodex', function() {
         assert.strict.deepEqual(rr, [false, false, 'account', 3, true])
     })
 
+
+    it('app-server子進程未能啟動(名稱查無、非有效執行檔、不存在之.cmd)且fallbackHttp為false→notfound(wsemi>=1.9.16之execCliJsonRpc)', async function() {
+        //規格: README額度errorType之notfound(憑證或執行檔不存在或無法執行); 帳本R-SPAWN-1之已知限制(除ENOENT外歸exit)於wsemi 1.9.16解除
+        let bad = createUnstartableExe('bad-quota-codex')
+        try {
+            let exes = ['codex-no-such-exe-xyz', bad.exe, path.join(path.dirname(bad.exe), 'no-such-codex.cmd')]
+            let r = []
+            for (let exe of exes) {
+                let t = await getQuotaCodex('', { exe, env: {}, fallbackHttp: false, timeoutMs: 20000 })
+                r.push([t.ok, t.source, t.errorType])
+            }
+            assert.strict.deepEqual(r, exes.map(() => [false, 'codex-app-server', 'notfound']))
+        }
+        finally {
+            bad.clean()
+        }
+    })
 })

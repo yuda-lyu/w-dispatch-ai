@@ -1,11 +1,14 @@
 import get from 'lodash-es/get.js'
-import isearr from 'wsemi/src/isearr.mjs'
+import isarr from 'wsemi/src/isarr.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import ispint from 'wsemi/src/ispint.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import callAiWithFallback from './callAiWithFallback.mjs'
+import castPintOr from '../castPintOr.mjs'
+import dfTimeoutMs from '../dfTimeoutMs.mjs'
+import { awaitUserFn, readCallerObj, asText } from '../callUserFn.mjs'
 
 
 // runFanout.mjs — Fanout工作流: 多開執行＋單點整合收斂
@@ -54,7 +57,7 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  * @param {Object} opt.providers 輸入provider定義表物件(名稱 → 條目)，透傳callAiWithFallback
  * @param {String} opt.task 輸入前段各名額共用之任務提示詞字串
  * @param {Array} opt.agents 輸入前段名額規格陣列，各元素{ use, fallback, check?, maxRetries?, timeoutMs? }等(check可覆寫頂層檢核；除use/fallback/check/meta外之鍵覆寫該名額呼叫設定；meta為保留鍵，呼叫端自有資訊掛此鍵保證永不轉傳下層)
- * @param {Object} opt.integrate 輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=>String自訂整合提示詞(省略用預設模板)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check；meta為保留鍵同agents
+ * @param {Object} opt.integrate 輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=>String或回傳Promise之自訂整合提示詞(省略用預設模板；等待上限為整合名額timeoutMs與budgetMs取小，拋錯、reject、逾時以整合失敗回報並保留候選)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check；meta為保留鍵同agents
  * @param {Function} [opt.check=null] 輸入檢核函數(json)=>Boolean，作為候選與終稿之共用預設，名額規格與integrate可各自帶check覆寫，預設null
  * @param {String} [opt.schema=''] 輸入輸出格式示意字串，供預設整合模板嵌入，預設''
  * @param {Number} [opt.minCandidates=2] 輸入進入整合所需之最少成功候選數正整數，未達門檻以首位候選為成果，預設2
@@ -99,12 +102,19 @@ async function runFanout(opt = {}) {
     let agents = get(opt, 'agents', null)
     let integrate = get(opt, 'integrate', null)
     let check = get(opt, 'check', null)
-    let callOpt = get(opt, 'callOpt', {})
 
-    if (!isestr(task)) {
+    //callOpt, 呼叫端物件: 物化(只讀一次), 不可讀以失敗結果回報(不reject)
+    let rcallOpt = readCallerObj(get(opt, 'callOpt', {}), 'callOpt')
+    if (!rcallOpt.ok) {
+        return { ok: false, result: null, integrated: false, agents: [], candidates: [], totalMs: 0, error: rcallOpt.msg }
+    }
+    let callOpt = rcallOpt.value
+
+    task = asText(task) //同頂層prompt: String包裝物件取其原始字串, 判型不執行使用者程式碼
+    if (task === '') {
         return { ok: false, result: null, integrated: false, agents: [], candidates: [], totalMs: 0, error: 'task must be a non-empty string' }
     }
-    if (!isearr(agents)) {
+    if (!isarr(agents) || agents.length === 0) { //不用isearr: 其於長度恰為1時會判型第0個元素(敵意元素即拋), 元素交下方readCallerObj逐一防護
         return { ok: false, result: null, integrated: false, agents: [], candidates: [], totalMs: 0, error: 'agents must be a non-empty array' }
     }
 
@@ -119,10 +129,17 @@ async function runFanout(opt = {}) {
     //前段: 並行多開, 個別失敗不炸整輪
     //各名額可自帶check覆寫頂層(候選與終稿判準本可不同); 自spec抽出而非留在overrides,
     //否則會被後方明給之check靜默覆蓋(曾為死鍵); meta為保留鍵一併抽出, 保證永不轉傳
-    //名額規格非物件(如null)時該名額以params失敗回報, 不令解構拋錯而整輪reject
-    let rsAgents = await Promise.all(agents.map((spec) => {
+    //名額規格非物件(如null)或不可讀(拋錯之getter、已撤銷之Proxy)時該名額以params失敗回報, 其餘照跑, 不令解構拋錯而整輪reject;
+    //規格先物化(只讀一次); 組訊息時不對物件呼叫String(spec)(toString拋錯之物件會再拋), 只報typeof
+    let rsAgents = await Promise.all(agents.map((spec0, i) => {
+        let rspec = readCallerObj(spec0, `agents[${i}]`)
+        if (!rspec.ok) {
+            return { ok: false, json: null, error: rspec.msg, errorType: 'params', ms: 0, tried: [] }
+        }
+        let spec = rspec.value
         if (!isobj(spec)) {
-            return { ok: false, json: null, error: `agent spec must be an object: ${String(spec)}`, errorType: 'params', ms: 0, tried: [] }
+            let shown = (spec === null || (typeof spec !== 'object' && typeof spec !== 'function')) ? String(spec) : typeof spec //原始值照舊顯示其值, 物件類只報typeof
+            return { ok: false, json: null, error: `agent spec must be an object: ${shown}`, errorType: 'params', ms: 0, tried: [] }
         }
         let { use, fallback, check: checkAgent, meta, ...overrides } = spec
         return callAiWithFallback(task, { ...callOpt, ...overrides, providers, spec: { use, fallback }, check: isfun(checkAgent) ? checkAgent : check })
@@ -139,21 +156,36 @@ async function runFanout(opt = {}) {
         return { ok: true, result: candidates[0], integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: '' }
     }
 
-    //後段: 整合
+    //後段: 整合; integrate為呼叫端物件: 物化(只讀一次), 不可讀以整合失敗回報並保留成功候選(不reject)
+    let rint = readCallerObj(integrate, 'integrate')
+    if (!rint.ok) {
+        return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: rint.msg }
+    }
+    integrate = rint.value
     if (!integrate || !isestr(get(integrate, 'use', ''))) {
         return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: 'integrate spec (with use) is required' }
     }
     //整合可帶獨立check(終稿判準常較候選嚴, 如須含固定小標題), 未給則沿用頂層check; meta為保留鍵一併抽出
     let { use, fallback, prompt: intPromptFn, check: checkInt, meta, ...intOverrides } = integrate
-    //整合prompt函式拋錯以整合失敗回報並保留成功候選(同整合失敗之既有回傳形狀), 不reject
-    let intPrompt = null
-    try {
-        intPrompt = isfun(intPromptFn) ? intPromptFn(candidates) : defaultIntegratePrompt(candidates, opt)
+    //整合prompt函式拋錯以整合失敗回報並保留成功候選(同整合失敗之既有回傳形狀), 不reject;
+    //整合prompt函式可為async(帳本R-USERFN-1); 自訂與預設模板同走awaitUserFn(預設模板以JSON.stringify序列化呼叫端parse之產物亦可能拋錯, 如BigInt);
+    //等待上限為整合名額之timeoutMs與budgetMs取小, 其耗時自budgetMs扣除後交下層(整合段≤budgetMs), 逾時以'integrate prompt did not settle within Ns'回報
+    let intOpt = { ...callOpt, ...intOverrides }
+    let intBudget = castPintOr(get(intOpt, 'budgetMs', null), null)
+    let intTo = castPintOr(get(intOpt, 'timeoutMs', null), dfTimeoutMs)
+    let tp = Date.now()
+    let pr = await awaitUserFn(() => (isfun(intPromptFn) ? intPromptFn(candidates) : defaultIntegratePrompt(candidates, opt)), intBudget === null ? intTo : Math.min(intTo, intBudget))
+    if (pr.state !== 'value') {
+        return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: pr.state === 'timeout' ? `integrate prompt ${pr.msg}` : `integrate prompt threw: ${pr.msg}` }
     }
-    catch (err) {
-        return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: `integrate prompt threw: ${get(err, 'message', String(err))}` }
+    let intPrompt = asText(pr.value) //不拋錯(回傳已撤銷Proxy或toStringTag拋錯之物件時isestr會拋錯而reject); String包裝物件照舊接受; 字樣同callAi之prompt檢核
+    if (intPrompt === '') {
+        return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: 'integrate failed: prompt must be a non-empty string' }
     }
-    let rInt = await callAiWithFallback(intPrompt, { ...callOpt, ...intOverrides, providers, spec: { use, fallback }, check: isfun(checkInt) ? checkInt : check })
+    if (intBudget !== null) {
+        intOpt.budgetMs = Math.max(intBudget - (Date.now() - tp), 1)
+    }
+    let rInt = await callAiWithFallback(intPrompt, { ...intOpt, providers, spec: { use, fallback }, check: isfun(checkInt) ? checkInt : check })
 
     return {
         ok: rInt.ok,

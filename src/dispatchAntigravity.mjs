@@ -6,6 +6,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli from './runExecCli.mjs'
+import { asText } from './callUserFn.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
@@ -64,7 +65,7 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  *
  * @param {String} prompt 輸入提示詞字串，作為`--print`旗標之值傳遞，長度上限30000字元
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析，預設'agy'
+ * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'agy'
  * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.6-flash-low'、'gemini-3.1-pro-high'，預設''代表不帶`--model`旗標由agy自行決定
  * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
@@ -73,7 +74,7 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`之前，預設[]
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
- * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數拋錯視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，預設undefined代表不驗證
+ * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
  * @example
@@ -106,7 +107,8 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
 async function dispatchAntigravity(prompt, opt = {}) {
 
     //check prompt, 不reject故以錯誤結果物件回報
-    if (!isestr(prompt)) {
+    prompt = asText(prompt) //String包裝物件取其原始字串(stdin只收原始字串, 空包裝不得繞過非空檢核); 判型不執行使用者程式碼(已撤銷之Proxy等回空字串)
+    if (prompt === '') {
         return getErrorResult('prompt must be a non-empty string')
     }
 
