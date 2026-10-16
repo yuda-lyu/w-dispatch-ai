@@ -127,16 +127,20 @@ describe('getQuotaAntigravity', function() {
         assert.strict.deepEqual(rr, [false, 'notfound', true])
     })
 
-    it('子進程未能啟動(存在但無法執行之執行檔、名稱查無)時: 版本把關與略過把關皆歸notfound且不reject', async function() {
-        //規格: README額度errorType之notfound(憑證或執行檔不存在)與行為變更紀錄1.0.48(帳本R-SPAWN-1)
+    it('子進程未能啟動(存在但無法執行之執行檔、名稱查無、入口缺失之npm shim[Windows])時: 版本把關與略過把關皆歸notfound且不reject', async function() {
+        //規格: README額度errorType之notfound(憑證或執行檔不存在)與行為變更紀錄1.0.48(帳本R-SPAWN-1); npm shim入口缺失於wsemi>=1.9.17為spawn而歸notfound(1.9.16為Exit code 1而歸exit, 帳本R-USERFN-3)
         let bad = createUnstartableExe('bad-quota-agy')
         try {
             let r = []
-            for (let [exe, checkVersion] of [[bad.exe, true], [bad.exe, false], ['agy-no-such-exe-xyz', false]]) {
+            let cases = [[bad.exe, true], [bad.exe, false], ['agy-no-such-exe-xyz', false]]
+            if (bad.shimNoEntryExe !== '') {
+                cases.push([bad.shimNoEntryExe, true], [bad.shimNoEntryExe, false]) //npm shim解析為Windows特有
+            }
+            for (let [exe, checkVersion] of cases) {
                 let t = await getQuotaAntigravity('', { exe, checkVersion, timeoutMs: 20000 })
                 r.push([t.ok, t.errorType])
             }
-            let rr = [[false, 'notfound'], [false, 'notfound'], [false, 'notfound']]
+            let rr = cases.map(() => [false, 'notfound'])
             assert.strict.deepEqual(r, rr)
         }
         finally {

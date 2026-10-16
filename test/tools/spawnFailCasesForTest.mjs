@@ -15,11 +15,12 @@ import path from 'path'
  * @param {String} o.kind 輸入轉接器種類字串，antigravity之prompt走命令列參數故空字元置於prompt，其餘置於extraArgs
  * @param {String} o.okExe 輸入可正常啟動之假CLI路徑字串(createFakeCli之exe)
  * @param {String} o.badExe 輸入存在但無法啟動之執行檔路徑字串(createUnstartableExe之exe)
+ * @param {String} [o.shimNoEntryExe=''] 輸入npm shim存在而其入口檔缺失之.cmd路徑字串(createUnstartableExe之shimNoEntryExe；非Windows為空字串，不產生該情境)
  * @returns {Array} 回傳情境陣列，各元素為{label, prompt, opt}
  */
-function spawnFailCases({ kind, okExe, badExe }) {
+function spawnFailCases({ kind, okExe, badExe, shimNoEntryExe = '' }) {
     let missingDir = path.join(path.dirname(badExe), 'no-such-dir-for-test')
-    return [
+    let cases = [
         { label: 'unstartable-exe', prompt: 'abc', opt: { exe: badExe } },
         (kind === 'antigravity')
             ? { label: 'nul-in-arg', prompt: 'a\u0000b', opt: { exe: okExe } }
@@ -29,6 +30,13 @@ function spawnFailCases({ kind, okExe, badExe }) {
         //不存在之.cmd(wsemi>=1.9.16: ENOENT、不經cmd.exe退路、不重試; 1.9.15為Exit code 1而歸exec)
         { label: 'cmd-missing', prompt: 'abc', opt: { exe: path.join(path.dirname(badExe), 'no-such-shim.cmd'), maxRetries: 2, retryDelayMs: 1 } },
     ]
+
+    //npm shim存在而入口檔缺失(wsemi>=1.9.17: ENOENT: spawn <入口> ENOENT、不經cmd.exe退路、不重試; 1.9.16為Exit code 1、pid有值、依maxRetries重試而歸exec)
+    //僅Windows有shim解析(shimNoEntryExe非空)
+    if (shimNoEntryExe !== '') {
+        cases.push({ label: 'shim-no-entry', prompt: 'abc', opt: { exe: shimNoEntryExe, maxRetries: 2, retryDelayMs: 1 } })
+    }
+    return cases
 }
 
 

@@ -188,7 +188,7 @@
 //     minAttemptMs: 1200000 (剩餘預算不足完整視窗即不開工——開了也不可能完成, 純浪費)
 //     budgetMs:     鏈長K×timeoutMs (逾時型失敗每組只燒一次timeout即跳組, 故K×20min
 //                   保證能走到最末; 例K=4 → 4800000＝80min。無外部排程時限則可null＝不限)
-//     agy之printTimeout由timeoutMs自動推導(−30s), 無須另設。
+//     agy之printTimeout由timeoutMs自動推導(＋30s, 令外層先逾時), 無須另設。
 //   工作流層總時長: RolePipeline為各階段序列相加(M階段≈M×名額預算);
 //   Fanout各名額並行(≈單一名額預算＋整合名額預算), 外部排程上限須據此預留。
 //   外部調整四層(細者覆蓋粗者): dispatchAiWkf之defaults(全域) → 各工作流callOpt
@@ -238,9 +238,10 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           (@ai-sdk/openai-compatible轉為此欄), 與oc:版同參數。agnes接受此欄但同日兩題各兩輪推理token無一致差異,
 //           視為未生效故不帶(其預設即會思考, usage可見推理token)。poolside之思考為開關(chat_template_kwargs.enable_thinking)
 //           而非檔位, 同日由關改開(見該條); jev(systemone)為決策模型無此概念。
-//  agy      以模型slug之檔位表示(gemini-3.8-flash-high、claude-sonnet-5-5-high、claude-opus-5-5-high), 不另帶--effort
-//           (與slug檔位不一致時agy報conflicts)。各模型可選檔位因模型而異, 以`agy -p /effort --model <slug> --output-format json`
-//           之available查(不耗額度; Git Bash下須加MSYS_NO_PATHCONV=1, 否則/effort被改寫成路徑而當成提示詞送出)。
+//  agy      以模型slug之檔位表示(gemini-3.8-flash-high、gemini-4-argon-high、claude-sonnet-5-5-high、claude-opus-5-5-high), 不另帶--effort
+//           (與slug檔位不一致時agy報conflicts)。各模型可選檔位因模型而異(2026-10-16: Gemini 4 Argon與3.8 Flash皆為low/medium/high, 無xhigh/max),
+//           以`agy -p /effort --model <slug> --output-format json`之available查(不耗額度; Git Bash下須加MSYS_NO_PATHCONV=1,
+//           否則/effort被改寫成路徑而當成提示詞送出)。
 //  注意: 條目覆寫extraArgs時須一併帶上本常數(與防寫常數), 否則回退各CLI之預設強度。
 let EFFORT = 'high'
 let CLAUDE_EFFORT = ['--effort', EFFORT]
@@ -421,8 +422,29 @@ let providers = [
         addDirs: ['.'],
         //保留CLI權限閘門(條目自帶防寫, 與其餘三家CLI條目一致): canary實測(2026-08-15)
         //無此鎖時要求建檔會真的落地(12.5s); false之下寫入被擋且不卡逾時(6.4s正常返回)、
-        //唯讀工具照常(8.0s讀檔答對)。注意被擋時agy回ok:true且stdout為空(靜默拒絕非報錯),
+        //唯讀工具照常(8.0s讀檔答對)。注意被擋時agy回ok:true且stdout為空(非報錯; agy 1.4.0起stderr帶
+        //「jetski: no output produced — a tool required the "write_file" permission ...」說明, 仍以空輸出判別),
         //工作流層無害(空回覆過不了validate而自動遞補); 需要寫入能力請於條目覆寫為true
+        skipPermissions: false,
+    },
+    //agy之Gemini 4 Argon(2026-10-16新增, 使用者指示): agy 1.4.0之`agy models`列gemini-4-argon-low/medium/high, `/effort`之available為
+    //["low","medium","high"], 取-high符合EFFORT, 硬帶--effort max/xhigh回「has no "max" effort (available: low, medium, high)」。
+    //額度池: `/usage`之獨立群組「Gemini 4 Argon」, 只有7天窗口(無5小時窗口), Pro方案與「Gemini Models」群組分開
+    //(2026-10-16以4次呼叫前後對照實測: 用Argon時Gemini群組讀數0→0、用3.8時Argon讀數2.11→2.11, 皆未動);
+    //官方描述Ultra方案計入較大之Gemini額度桶(Ultra實際回應未見, 未驗證)。故本機Pro觀察到的是額度池獨立(CLI、登入、網路仍與上一條共用, 非故障域獨立);
+    //Ultra若如官方描述則與上一條共池。全取鏈中四條agy條目相鄰, agy整體卡頓時會連續逾時4次(約4×timeoutMs), 宜搭配budgetMs與cooldownMs。
+    //排在3.8之後、不取代也不刪除3.8: 下游w-knowledge-extract以id引用3.8條目; 無任務級品質證據可證Argon較佳(四項輕量題兩者同分)。
+    //防寫與addDirs同上一條。實測(agy 1.4.0、同時段與3.8對照, 經本條目設定): 簡答8.5s(3.8為8.2s)、推理題10.7s答對(11.9s)、
+    //讀檔16.6s正確(13.7s)、寫檔金絲雀12.2s被擋未落地且ok:true、stdout空(stderr同3.8有「jetski: no output produced」說明)。
+    //耗用量級: 4次短題使Argon 7天窗口由1.37增為2.11個百分點(+0.74), 與3.8使Gemini群組7天窗口由0增為0.72相當;
+    //注意/usage讀數閒置時亦會在兩個值之間跳動而非單調(同帳號50秒內三次查詢, tmp/fix-20261016/probe-reset-drift.out: Gemini群組7天窗口0.93→0.07→0.93、Argon 3.91→3.39→3.91;
+    //更早一輪亦見0.91→0.72→0.93), 跳動幅度可達約0.5~0.9個百分點, 故以下耗用數字僅可作量級參考, 不可精算單次耗用。
+    //注意: 未給model時agy 1.4.0預設即Gemini 4 Argon (Medium)(日誌label為證; 2次無model呼叫使Argon+0.71)
+    {
+        id: 'agy:gemini-4-argon-high',
+        model: 'gemini-4-argon-high',
+        kind: 'antigravity',
+        addDirs: ['.'],
         skipPermissions: false,
     },
     //agy之Claude兩條(2026-10-03新增, 使用者指示): agy 1.2.16之`agy models`已列claude-sonnet-5-5與claude-opus-5-5各low/medium/high,

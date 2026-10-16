@@ -20,14 +20,14 @@ import isestr from 'wsemi/src/isestr.mjs'
 //   cwd不存在、路徑為資料夾)、UNKNOWN(非有效PE)、EFTYPE(零位元組.exe、.ps1)、EPERM(ACL拒絕)、ENAMETOOLONG(命令列過長)、
 //   ERR_INVALID_ARG_VALUE(參數或環境變數含空字元), 列舉必漏(如EFTYPE), 故以結構判定。
 //   判定限於帶自有pid鍵之物件(execCli結果): REST結果與getErrorResult物件亦為code null且無pid, 若不限定會被誤判為spawn。
-//   已知限制: npm shim形狀之.cmd而入口檔缺失者, wsemi仍經cmd.exe退路啟動, node已啟動後才以離開碼1結束,
-//   帶pid, 歸'exec'且依maxRetries重試(見wsemi之buildSpawnArgs; 已提建議wsemi修正)。不存在之.cmd/.bat於wsemi>=1.9.16
-//   為ENOENT且帶pid鍵而值為undefined, 已歸'spawn'(2026-10-16改寫, 原載「路徑不存在亦歸exec」)。不帶pid鍵之輸入(非execCli結果)以ENOENT/ENAMETOOLONG字樣判定。
+//   不存在之.cmd/.bat(wsemi>=1.9.16)與入口檔缺失之npm shim形狀.cmd(wsemi>=1.9.17)皆為ENOENT且帶pid鍵而值為undefined, 歸'spawn'且不重試
+//   (2026-10-16改寫, 原載「路徑不存在亦歸exec」與「npm shim入口缺失經cmd.exe退路、離開碼1、歸exec且依maxRetries重試」之已知限制, 已由wsemi解除)。
+//   不帶pid鍵之輸入(非execCli結果)以ENOENT/ENAMETOOLONG字樣判定。
 //
 // 【errorType一覽(僅失敗結果帶此欄, 成功結果無)】
 //   'params'           參數/設定檢核失敗(進入執行前即被擋, getErrorResult預設)
 //   'timeout'          逾時(execCli強殺或API abort, error以TIMEOUT開頭)
-//   'spawn'            子進程未能啟動(execCli結果之code為null且帶pid鍵而值為undefined, 見isSpawnFail; 如執行檔不存在、
+//   'spawn'            子進程未能啟動(execCli結果之code為null且帶pid鍵而值為undefined, 見isSpawnFail; 如執行檔不存在、入口缺失之npm shim、
 //                      非有效執行檔、權限不足、命令列過長、參數或環境變數含空字元、cwd不存在)
 //   'validation'       stdout未過validate(OUTPUT_VALIDATION_FAILED)
 //   'exec'             CLI非零離開碼之一般執行失敗(未能再機械細分)

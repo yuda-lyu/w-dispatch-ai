@@ -189,11 +189,14 @@ describe('getQuotaCodex', function() {
     })
 
 
-    it('app-server子進程未能啟動(名稱查無、非有效執行檔、不存在之.cmd)且fallbackHttp為false→notfound(wsemi>=1.9.16之execCliJsonRpc)', async function() {
-        //規格: README額度errorType之notfound(憑證或執行檔不存在或無法執行); 帳本R-SPAWN-1之已知限制(除ENOENT外歸exit)於wsemi 1.9.16解除
+    it('app-server子進程未能啟動(名稱查無、非有效執行檔、不存在之.cmd、入口缺失之npm shim[Windows])且fallbackHttp為false→notfound(wsemi>=1.9.17之execCliJsonRpc)', async function() {
+        //規格: README額度errorType之notfound(憑證或執行檔不存在或無法執行); 帳本R-SPAWN-1之已知限制(除ENOENT外歸exit)於wsemi 1.9.16解除, npm shim入口缺失(1.9.16為Exit code 1而歸exit)於1.9.17解除
         let bad = createUnstartableExe('bad-quota-codex')
         try {
             let exes = ['codex-no-such-exe-xyz', bad.exe, path.join(path.dirname(bad.exe), 'no-such-codex.cmd')]
+            if (bad.shimNoEntryExe !== '') {
+                exes.push(bad.shimNoEntryExe) //npm shim解析為Windows特有
+            }
             let r = []
             for (let exe of exes) {
                 let t = await getQuotaCodex('', { exe, env: {}, fallbackHttp: false, timeoutMs: 20000 })

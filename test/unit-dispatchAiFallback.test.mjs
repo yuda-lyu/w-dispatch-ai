@@ -919,8 +919,8 @@ describe('dispatchAiFallback', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('子進程未能啟動(存在但無法執行之執行檔、參數含空字元、命令列過長)整組跳過, 不逐把空耗', async function() {
-        //規格: README遞補分流表「子進程未能啟動」整組跳過(帳本R-SPAWN-2)
+    it('子進程未能啟動(存在但無法執行之執行檔、參數含空字元、命令列過長、入口缺失之npm shim[Windows])整組跳過, 不逐把空耗', async function() {
+        //規格: README遞補分流表「子進程未能啟動」整組跳過(帳本R-SPAWN-2); npm shim入口缺失於wsemi>=1.9.17歸spawn(帳本R-USERFN-3), 1.9.16下為exec而逐把換金鑰
         let bad = createUnstartableExe('bad-fallback')
         try {
             let r = []
@@ -931,6 +931,9 @@ describe('dispatchAiFallback', function() {
             ]
             if (process.platform !== 'win32') {
                 variants.pop() //命令列長度上限(ENAMETOOLONG)為Windows特有
+            }
+            if (bad.shimNoEntryExe !== '') {
+                variants.push(['shim-no-entry', { exe: bad.shimNoEntryExe, maxRetries: 2, retryDelayMs: 1 }]) //npm shim解析為Windows特有
             }
             for (let [label, o] of variants) {
                 let ge = []

@@ -1,5 +1,6 @@
 import assert from 'assert'
 import dispatchAntigravity from '../src/dispatchAntigravity.mjs'
+import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
 import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
 import spawnFailCases, { envUnreadableOpt } from './tools/spawnFailCasesForTest.mjs'
 
@@ -69,7 +70,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe })
         let o = JSON.parse(t.stdout)
         let r = [t.ok, o.args]
-        let rr = [true, ['--dangerously-skip-permissions', '--print-timeout', '270s', '--add-dir', process.cwd(), '--print', 'abc']]
+        let rr = [true, ['--dangerously-skip-permissions', '--print-timeout', '330s', '--add-dir', process.cwd(), '--print', 'abc']]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -85,7 +86,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, model: 'gemini-3.6-flash-low' })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'gemini-3.6-flash-low', '--add-dir', process.cwd(), '--print', 'abc']
+        let rr = ['--dangerously-skip-permissions', '--print-timeout', '330s', '--model', 'gemini-3.6-flash-low', '--add-dir', process.cwd(), '--print', 'abc']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -93,7 +94,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, model: 'gemini-3.1-pro', effort: 'low' })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--model', 'gemini-3.1-pro', '--effort', 'low', '--add-dir', process.cwd(), '--print', 'abc']
+        let rr = ['--dangerously-skip-permissions', '--print-timeout', '330s', '--model', 'gemini-3.1-pro', '--effort', 'low', '--add-dir', process.cwd(), '--print', 'abc']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -101,13 +102,25 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, skipPermissions: false })
         let o = JSON.parse(t.stdout)
         let r = [t.ok, o.args]
-        let rr = [true, ['--print-timeout', '270s', '--add-dir', process.cwd(), '--print', 'abc']]
+        let rr = [true, ['--print-timeout', '330s', '--add-dir', process.cwd(), '--print', 'abc']]
         assert.strict.deepEqual(r, rr)
     })
 
-    it('printTimeout由timeoutMs推導並預留30秒緩衝, 下限30秒', async function() {
+    it('printTimeout未給時推導為timeoutMs加30秒, 恆大於timeoutMs(外層先逾時, 令TIMEOUT分流與冷卻可達; agy自身逾時是exit 0之部分輸出而非錯誤)', async function() {
+        //規格: README Timeout階梯「timeoutMs < agy --print-timeout(自動＝timeoutMs＋30s, 後備)」與timeoutMs列「逾時→error以TIMEOUT開頭→整組跳過」; 帳本R-AGY-2
+        //(40000為關鍵格: 舊推導timeoutMs減30秒為max(30,10)=30秒, 小於timeoutMs, agy先到時而以exit 0交回截斷輸出)
+        //有效timeoutMs(正整數或其數字字串): 值為floor(秒)+30, 且恆大於timeoutMs; 無效值(0、負數、非整數)回退預設300000→330s;
+        //超過wsemi execCli計時器上限2147483647者外層本就夾至該值, 推導同樣封頂(agy拒收超出Go duration範圍之值, 實測9007199254770s與9223372037s皆exit 2)
         let r = []
-        for (let timeoutMs of [600000, 120000, 5000, undefined]) {
+        let rr = []
+        for (let [timeoutMs, want, effMs] of [
+            [600000, '630s', 600000], [120000, '150s', 120000], [40000, '70s', 40000], [5000, '35s', 5000],
+            [1, '30s', 1], [999, '30s', 999], [1001, '31s', 1001], [39999, '69s', 39999], [40001, '70s', 40001],
+            ['40000', '70s', 40000],
+            [0, '330s', 300000], [-1, '330s', 300000], [1.5, '330s', 300000], [40000.5, '330s', 300000],
+            [2147483647, '2147513s', 2147483647], [9223372007000, '2147513s', 2147483647], [Number.MAX_SAFE_INTEGER, '2147513s', 2147483647],
+            [undefined, '330s', 300000],
+        ]) {
             let opt = { exe: fake.exe }
             if (timeoutMs !== undefined) {
                 opt.timeoutMs = timeoutMs
@@ -115,10 +128,23 @@ describe('dispatchAntigravity', function() {
             let t = await dispatchAntigravity('abc', opt)
             let o = JSON.parse(t.stdout)
             let i = o.args.indexOf('--print-timeout')
-            r.push(o.args[i + 1])
+            let sec = Number(String(o.args[i + 1]).replace(/s$/, ''))
+            r.push([o.args[i + 1], sec * 1000 > effMs])
+            rr.push([want, true])
         }
-        let rr = ['570s', '90s', '30s', '270s'] //600-30, 120-30, max(30,5-30), 預設300-30
         assert.strict.deepEqual(r, rr)
+    })
+
+    it('經遞補層之budgetMs壓縮後, 推導之printTimeout隨壓縮後之timeoutMs走(仍大於實際生效之timeoutMs, 不退回未壓縮之330s)', async function() {
+        //規格: README Timeout階梯「budgetMs把剩餘預算壓進每次嘗試之timeoutMs」與printTimeout列「自動＝timeoutMs＋30s」; 帳本R-AGY-2
+        let r = await dispatchAiFallback('abc', {
+            providers: [{ id: 'agy:echo', kind: 'antigravity', exe: fake.exe, skipPermissions: false }],
+            budgetMs: 45000,
+        })
+        let o = JSON.parse(r.stdout)
+        let sec = Number(String(o.args[o.args.indexOf('--print-timeout') + 1]).replace(/s$/, ''))
+        //壓縮後timeoutMs略小於45000(扣去呼叫前耗時), 故推導值為74~75秒: 大於45秒(外層先逾時)且遠小於未壓縮之330秒
+        assert.strict.deepEqual([r.ok, sec * 1000 > 45000, sec >= 74 && sec <= 75], [true, true, true])
     })
 
     it('printTimeout明確給定時不推導', async function() {
@@ -154,7 +180,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, addDirs: ['c:/a', null, 'c:/b', 123] })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--add-dir', 'c:/a', '--add-dir', 'c:/b', '--print', 'abc']
+        let rr = ['--dangerously-skip-permissions', '--print-timeout', '330s', '--add-dir', 'c:/a', '--add-dir', 'c:/b', '--print', 'abc']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -162,7 +188,7 @@ describe('dispatchAntigravity', function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, extraArgs: ['--output-format', 'json'] })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['--dangerously-skip-permissions', '--print-timeout', '270s', '--add-dir', process.cwd(), '--output-format', 'json', '--print', 'abc']
+        let rr = ['--dangerously-skip-permissions', '--print-timeout', '330s', '--add-dir', process.cwd(), '--output-format', 'json', '--print', 'abc']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -197,9 +223,9 @@ describe('dispatchAntigravity', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在、不存在之.cmd)時不reject, errorType為spawn、code為null且attempts為1', async function() {
-        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3); 不存在之.cmd不重試(帳本R-USERFN-3, wsemi>=1.9.16)
-        let cases = spawnFailCases({ kind: 'antigravity', okExe: fake.exe, badExe: bad.exe })
+    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在、不存在之.cmd、入口缺失之npm shim[Windows])時不reject, errorType為spawn、code為null且attempts為1', async function() {
+        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3); 不存在之.cmd與入口缺失之npm shim不重試(帳本R-USERFN-3, wsemi>=1.9.17; 1.9.16下shim入口缺失為Exit code 1、attempts隨maxRetries而歸exec)
+        let cases = spawnFailCases({ kind: 'antigravity', okExe: fake.exe, badExe: bad.exe, shimNoEntryExe: bad.shimNoEntryExe })
         let r = []
         for (let c of cases) {
             let t = await dispatchAntigravity(c.prompt, c.opt)

@@ -20,6 +20,16 @@ describe('toQuotaWindow', function() {
         assert.strict.deepEqual(r, rr)
     })
 
+    it('usedPercent非有限(Infinity、-Infinity、字串Infinity、1e400)視為未知: usedPercent與remainingPercent為null、severity為空字串, 不被夾成100%或0%而假造用罄或滿額', function() {
+        //規格: toQuotaWindow檔頭「未知時兩者皆為null(不假造100)」「無效視為未知」與severity「usedPercent未知則空字串」; 帳本R-QUOTA-2(三家共用, 非有限值一律視為未知)
+        let r = [Infinity, -Infinity, 'Infinity', '-Infinity', 1e400, '1e400'].map((v) => {
+            let w = toQuotaWindow({ usedPercent: v })
+            return [w.usedPercent, w.remainingPercent, w.severity]
+        })
+        let rr = Array(6).fill([null, null, ''])
+        assert.strict.deepEqual(r, rr)
+    })
+
     it('resetAt接受ISO字串或unix秒數, 一律轉ISO字串並補算resetAfterSeconds', function() {
         let future = Math.floor(Date.now() / 1000) + 3600
         let w1 = toQuotaWindow({ resetAt: future })

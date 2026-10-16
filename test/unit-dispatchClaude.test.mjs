@@ -147,9 +147,9 @@ describe('dispatchClaude', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在、不存在之.cmd)時不reject, errorType為spawn、code為null且attempts為1', async function() {
-        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3); 不存在之.cmd不重試(帳本R-USERFN-3, wsemi>=1.9.16)
-        let cases = spawnFailCases({ kind: 'claude', okExe: fake.exe, badExe: bad.exe })
+    it('子進程未能啟動(存在但無法執行之執行檔、參數或環境變數含空字元、cwd不存在、不存在之.cmd、入口缺失之npm shim[Windows])時不reject, errorType為spawn、code為null且attempts為1', async function() {
+        //規格: README errorType表之spawn列(子進程未能啟動, 不論錯誤碼)與「All functions never reject」; attempts為實際嘗試次數(帳本R-SPAWN-1、R-SPAWN-3); 不存在之.cmd與入口缺失之npm shim不重試(帳本R-USERFN-3, wsemi>=1.9.17; 1.9.16下shim入口缺失為Exit code 1、attempts隨maxRetries而歸exec)
+        let cases = spawnFailCases({ kind: 'claude', okExe: fake.exe, badExe: bad.exe, shimNoEntryExe: bad.shimNoEntryExe })
         let r = []
         for (let c of cases) {
             let t = await dispatchClaude(c.prompt, c.opt)

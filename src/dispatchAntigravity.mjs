@@ -27,22 +27,32 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   (ok:false、code:null、pid:undefined、attempts:1、error為'ENAMETOOLONG: spawn ENAMETOOLONG'),
 //   經attachErrorType歸'spawn'(結構判定, 見getErrorType.mjs), 故本轉接器不再自包try/catch(與另三家CLI轉接器一致)。
 //
-// 【model與effort之衝突規則(實測)】帶檔位之slug(如gemini-3.1-pro-high)與--effort同時給定時,
-//   檔位「不一致」才拒絕(`--model gemini-3.1-pro-high conflicts with --effort=low`, exit 1),
-//   一致(gemini-3.1-pro-high + --effort high)則放行; 基礎slug(如gemini-3.1-pro)搭配effort亦放行。
+// 【model與effort之衝突規則(實測)】帶檔位之slug(如gemini-4-argon-high)與--effort同時給定時,
+//   檔位「不一致」才拒絕(`--model gemini-4-argon-high conflicts with --effort=low`, exit 1; 2026-10-16於agy 1.4.0重測),
+//   一致(gemini-4-argon-high + --effort high)則放行; 基礎slug(如gemini-4-argon, 預設檔位medium)搭配effort亦放行。
 //   本轉接器不預判slug格式(模型清單會演進), 衝突時由agy回報conflicts錯誤。
 //
-// 【雙逾時對齊】agy自身有--print-timeout(預設5m0s), 與execCli之timeoutMs為兩層獨立逾時。
-//   printTimeout未給時由timeoutMs推導並預留30秒緩衝, 令CLI先於外層逾時,
-//   使錯誤訊息來自agy自身而非被外層強殺。
+// 【未給model時由agy決定(2026-10-16以agy 1.4.0實測)】agy預設即Gemini 4 Argon (Medium)(日誌label與額度前後差皆證),
+//   故未給model者會耗用Argon之7天額度; 內建providers條目皆明給model, 不受影響。預設由agy決定、可能隨版本變動, 本套件不維護。
+//
+// 【雙逾時:外層先到, agy自身之print-timeout只作後備(2026-10-16以agy 1.4.0實測改)】agy自身有--print-timeout(1.4.0之--help載明預設0s=等到完成),
+//   與execCli之timeoutMs為兩層獨立逾時。agy自身逾時時**以離開碼0交回部分輸出**(stderr為「[agy] print timeout after Ns with turn in progress;
+//   returning partial output」, stdout為已產出之部分、可能為空), 不是錯誤——原設計令它先於外層到時(舊推導max(30, timeoutMs秒−30), 自agy啟動後起算),
+//   故自然耗時超過該截止點之回合一律被當成ok:true之截斷輸出(連超過timeoutMs者亦然), 遞補層之TIMEOUT分流與冷卻皆不可達(成功還會解除既有冷卻)。
+//   現printTimeout未給時推導為timeoutMs加30秒(timeoutMs超過execCli計時器上限2147483647者同樣封頂), 令外層先逾時(error以TIMEOUT開頭);
+//   agy之自身計時只在外層強殺失效時作後備。行為變更: 自然耗時介於舊截止點與timeoutMs者由截斷改為完整成功, 達timeoutMs者由「部分輸出ok:true」改為TIMEOUT失敗;
+//   仍要部分輸出者明給小於timeoutMs之printTimeout(並自行驗證完整性)。
+//
+// 【權限拒絕(2026-10-16以agy 1.4.0實測)】skipPermissions為false時, 工具需要寫入權限而被擋下, agy以離開碼0回應、stdout為空,
+//   stderr帶說明(`jetski: no output produced — a tool required the "write_file" permission ... auto-denied`); 須以空輸出判別, 不能只看ok。
 
 
 //預設值
 let DEFAULT_EXE = 'agy'
-let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)
+let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
 let MAX_PROMPT_LENGTH = 30000 //命令列上限32767扣除exe路徑與旗標後之保守值
-let PRINT_TIMEOUT_BUFFER_S = 30
-let MIN_PRINT_TIMEOUT_S = 30
+let PRINT_TIMEOUT_BUFFER_S = 30 //agy自身計時較外層晚到之秒數
+let MAX_TIMER_MS = 2147483647 //wsemi execCli計時器上限(外層timeoutMs本就夾至此值); 推導同樣封頂, 免超出agy可解析之Go duration範圍(實測9007199254770s與9223372037s皆exit 2 invalid duration)
 
 
 //本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli
@@ -55,24 +65,24 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  * 特點：
  * prompt作為`--print`旗標之值傳遞而非stdin(agy介面如此，塞stdin會進互動模式卡住)，
  * 故prompt受命令列長度上限約束，超過30000字元回傳錯誤結果物件；
- * model須為`agy models`第一欄之slug(如gemini-3.6-flash-low)，注意agy錯誤訊息列出的是顯示名稱而非slug；
+ * model須為`agy models`第一欄之slug(如gemini-3.8-flash-low)，注意agy錯誤訊息列出的是顯示名稱而非slug；未給model時由agy決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，耗用Argon額度)；
  * 帶檔位之slug(-high/-medium/-low結尾)與effort同時給定且檔位不一致時agy回conflicts錯誤(一致則放行)，
- * effort需agy>=1.1.11，建議搭配不帶檔位之基礎slug(如gemini-3.1-pro)使用；
- * 預設帶`--dangerously-skip-permissions`令非互動print模式不卡權限確認，可給予skipPermissions為false保留權限閘門；
- * agy自身之--print-timeout未給時由timeoutMs推導並預留30秒緩衝，令CLI先於外層逾時；
+ * effort需agy>=1.1.11，建議搭配不帶檔位之基礎slug(如gemini-4-argon)使用；
+ * 預設帶`--dangerously-skip-permissions`令非互動print模式不卡權限確認，可給予skipPermissions為false保留權限閘門(被擋下時agy以離開碼0回應、stdout為空)；
+ * agy自身之--print-timeout未給時由timeoutMs加30秒推導，令外層先逾時(agy自身逾時是離開碼0之部分輸出而非錯誤，見檔頭)；
  * 沿用agy既有OAuth登入狀態(首次須於桌面互動模式完成登入)；
  * 本函數不會reject，一律以結果物件之ok與error欄位回報成敗
  *
  * @param {String} prompt 輸入提示詞字串，作為`--print`旗標之值傳遞，長度上限30000字元
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'agy'
- * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.6-flash-low'、'gemini-3.1-pro-high'，預設''代表不帶`--model`旗標由agy自行決定
- * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶
+ * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.8-flash-low'、'gemini-4-argon-high'，預設''代表不帶`--model`旗標由agy自行決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，會耗用Argon額度；預設可能隨agy版本變動)
+ * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'(部分模型更少，以`agy -p /effort --model <slug> --output-format json`之available為準)，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
- * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'570s')，預設''代表由timeoutMs推導(扣30秒緩衝，下限30秒)
+ * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'630s')，預設''代表由timeoutMs推導(加30秒，恆大於timeoutMs令外層先逾時；agy自身逾時是離開碼0之部分輸出，不是錯誤，故一般無須手動設)
  * @param {Array} [opt.addDirs=自動納入cwd] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`之前，預設[]
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
@@ -84,12 +94,12 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  *
  * let test = async () => {
  *
- *     let r = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.6-flash-low' })
+ *     let r = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.8-flash-low' })
  *     console.log(r.ok, r.stdout.trim())
  *     // => true 完成
  *
  *     //基礎slug搭配effort(不可用帶檔位之slug併用effort)
- *     let r2 = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.1-pro', effort: 'low' })
+ *     let r2 = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-4-argon', effort: 'low' })
  *     console.log(r2.ok)
  *     // => true
  *
@@ -123,7 +133,7 @@ async function dispatchAntigravity(prompt, opt = {}) {
         exe = DEFAULT_EXE
     }
 
-    //model, 無效時整段`--model`旗標不出現, 由agy自行決定使用模型
+    //model, 無效時整段`--model`旗標不出現, 由agy自行決定使用模型(agy 1.4.0實測預設為Gemini 4 Argon (Medium), 見檔頭)
     let model = get(opt, 'model', null)
 
     //effort, 無效時整段`--effort`旗標不出現; 與帶檔位slug之衝突由agy判定(檔位不一致時conflicts錯誤, exit 1)
@@ -138,10 +148,10 @@ async function dispatchAntigravity(prompt, opt = {}) {
     //timeoutMs, 先行取值以供printTimeout推導, 無效回退全套件統一預設300000
     let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
-    //printTimeout, 未給時由timeoutMs推導並預留緩衝, 令agy先於外層逾時而回報自身錯誤訊息
+    //printTimeout, 未給時由timeoutMs加緩衝推導, 令外層先逾時(agy自身逾時為exit 0之部分輸出而非錯誤, 見檔頭)
     let printTimeout = get(opt, 'printTimeout', null)
     if (!isestr(printTimeout)) {
-        printTimeout = `${Math.max(MIN_PRINT_TIMEOUT_S, Math.floor(timeoutMs / 1000) - PRINT_TIMEOUT_BUFFER_S)}s`
+        printTimeout = `${Math.floor(Math.min(timeoutMs, MAX_TIMER_MS) / 1000) + PRINT_TIMEOUT_BUFFER_S}s`
     }
 
     //addDirs, 逐項展開為--add-dir(agy該旗標可重複)

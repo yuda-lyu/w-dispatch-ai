@@ -107,7 +107,7 @@ let test = async () => {
     // => opencode: true 完成
 
     //以antigravity CLI(agy)呼叫, prompt走--print旗標(長度上限30000字元), model須為`agy models`第一欄slug
-    let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.6-flash-low' })
+    let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.8-flash-low' })
     console.log('antigravity:', r3b.ok, r3b.stdout.trim())
     // => antigravity: true 完成
 
@@ -128,7 +128,7 @@ let test = async () => {
         { kind: 'opencode', model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'opencode/big-pickle', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: agnesKeys[0], config: configAgnes, timeoutMs: 180000 },
-        { kind: 'antigravity', model: 'gemini-3.6-flash-low' },
+        { kind: 'antigravity', model: 'gemini-3.8-flash-low' },
     ]
     for (let item of items) {
         let r = await wdi.dispatchAi(item.kind, prompt, item)
@@ -138,7 +138,7 @@ let test = async () => {
         // => dispatchAi opencode/muse-spark-1.3-contributor-free: true 完成
         // => dispatchAi opencode/big-pickle: true 完成
         // => dispatchAi agnes-ai/agnes-2.0-flash: true 完成
-        // => dispatchAi gemini-3.6-flash-low: true 完成
+        // => dispatchAi gemini-3.8-flash-low: true 完成
     }
 
     //未知供應商回傳error結果物件, 不會reject
@@ -190,7 +190,7 @@ let test = async () => {
             },
             { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },
             { id: 'codex:gpt-5.6-luna', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
-            { id: 'agy:gemini-3.6-flash-low', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
+            { id: 'agy:gemini-3.8-flash-low', kind: 'antigravity', model: 'gemini-3.8-flash-low' },
         ],
         budgetMs: 600000,
         onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
@@ -257,13 +257,20 @@ await test()
 26. `dispatchAiFallback`之控制類回調為**同步契約**：`shouldStop`／`coolDetect`回傳 Promise 視同`false`，`onEvent`／`store.set`之 rejection 被承接（此前任一回調之 reject 會使行程結束）；`store.get`拋錯、回傳 Promise 或不可讀之物件時本次以全新狀態執行且**不回寫**（此前以全新狀態寫回，抹除既有游標與冷卻）；`store`本身或`providers`陣列不可讀時不再 reject。
 27. `createFileStore`之`stamp`、`createUsageCounter`之`getDate`／`keyOf`拋錯或回傳 Promise 時退用預設（此前同步拋錯外拋；回傳 Promise 時`stamp`寫入`"at": {}`、`getDate`以`"[object Promise]"`為日期鍵、`keyOf`不計數）；`stamp`回傳不可序列化之值（BigInt、循環參照）時退用預設時間戳（此前整份寫檔靜默失敗）；`getDate`回傳非字串非數值者退用預設日期；`keyOf`回傳非字串者照舊不計數（判型不再執行使用者程式碼）。
 28. 呼叫端物件不可讀（拋錯之 getter、已撤銷之 Proxy）改回`errorType: 'params'`（此前 reject）：四家 CLI 之`env`（`env is not readable: <訊息>`，`attempts: 0`；改寫第 17 條之已知例外，claude／codex／antigravity 於 wsemi 1.9.16 下此前為`spawn`）、REST 三家之`headers`／`body`、`dispatchApiTypesafeSystemone`之`questions`、`dispatchOpencode`之`config`（已撤銷之 Proxy）、`dispatchAiFallback`之條目與`providers`陣列（條目不可讀則該組以`params`整組跳過、續試下一組）、`callAi`之定義表條目；REST 之`body`不可序列化（BigInt、循環參照）改於送出前回`params`（此前歸`fetch`並逐把換金鑰）；REST 之`body`改為送出前序列化一次、重試共用（`toJSON`與 getter 只執行一次），標頭值於送出前以`String()`物化一次（同 fetch 之轉換；轉換拋錯回`params`，以`toString`交出秘密之包裝物件亦納入錯誤訊息之遮蔽）。工作流之規格物件（`runFanout`之各名額規格與`integrate`、`runRolePipeline`之各階段、兩者與`dispatchAiWkf`之`callOpt`、`callAi`之`providers`定義表與`spec`）不可讀時改回該段失敗結果並保留已完成成果（此前 reject，`dispatchAiWkf`之`callOpt`不可讀時更為同步拋錯）；`dispatchAiFallback`啟用冷卻時，條目之讀取改於重排前一次物化（此前`id`之 getter 會被讀兩次、拋錯即 reject），已撤銷之條目不再被悄悄濾除而留下`params`歷程。頂層`prompt`（各轉接器、`dispatchAiFallback`、`callAi`）與`runFanout`之`task`改以原始字串判讀：String 包裝物件取其值照常執行（此前 claude／codex／opencode 經 stdin 寫入而 reject）、空包裝與不可讀者回`params`（此前空包裝可繞過非空檢核）；`dispatchAi`之`kind`為物件時回`params`（此前`toString`拋錯者 reject）；`agents`／`stages`恰含 1 個不可讀元素時與多個元素時同樣逐一回報（此前長度 1 時整輪 reject）；`dispatchAiWkf`之`defaults`不可讀時於組裝期 throw（同`providers`；此前於各綁定函數呼叫時同步拋錯）。依`errorType`計數者（如健康層）之數字會由`spawn`／`fetch`移至`params`。物件以淺層副本讀取一次（自有可列舉屬性，同物件展開），**一般資料物件之送出內容不變**；`providers`條目須為一般物件（原型鏈上之屬性，如 class 之 getter，不再讀取）。
-29. wsemi 1.9.16 連動：不存在之`.cmd`／`.bat`（絕對、相對、只給檔名）由`exec`（離開碼 1、依`maxRetries`重試）改為`spawn`且不重試；`getQuotaCodex`之 app-server 未能啟動由`exit`改為`notfound`；cwd 不存在之訊息改為`ENOENT: cwd is not an existing folder: <cwd>`；只給檔名之批次檔先搜子進程`cwd`（見`exe`列）。npm shim 形狀之`.cmd`而入口缺失者仍為`exec`（見 errorType 表）。
+29. wsemi 1.9.16 連動：不存在之`.cmd`／`.bat`（絕對、相對、只給檔名）由`exec`（離開碼 1、依`maxRetries`重試）改為`spawn`且不重試；`getQuotaCodex`之 app-server 未能啟動由`exit`改為`notfound`；cwd 不存在之訊息改為`ENOENT: cwd is not an existing folder: <cwd>`；只給檔名之批次檔先搜子進程`cwd`（見`exe`列）。npm shim 形狀之`.cmd`而入口缺失者於 wsemi 1.9.16 仍為`exec`，wsemi ≥1.9.17 起改為`spawn`且不重試（見第 35 條）。
 30. 深層匯入者：`src/checkTruncation.mjs`之`safeValidate`維持同步簽章，回傳 Promise 之驗證函數改視為拒絕（此前恆通過；本套件內部改用非同步版）；`judgeTruncated`改為 async。
+
+**1.0.50 起**（agy 型錄與額度結構：Gemini 4 Argon、逾時階梯、格式漂移；wsemi 連動，需 wsemi ≥1.9.17）：
+31. 內建 providers 新增 `agy:gemini-4-argon-high`（經 agy 呼叫 Gemini 4 Argon，檔位 high；唯讀閘門與 `addDirs` 同 `agy:gemini-3.8-flash-high`），排在其後、`agy:claude-sonnet-5-5-high` 之前；**不取代也不刪除** `agy:gemini-3.8-flash-high`（下游以 id 引用）。其額度為 `/usage` 之獨立群組「Gemini 4 Argon」（只有 7 天窗口、無 5 小時窗口），Pro 方案與「Gemini Models」群組分開（2026-10-16 本機以前後對照實測獨立）；Ultra 方案依官方描述計入較大之 Gemini 額度桶（**未驗證**，若屬實則與 3.8 條目共池）。全取者遞補鏈多一條（agy 單次實測 8~20 秒）；以 `pick` 自選者不受影響。全取鏈中四條 agy 條目相鄰，agy 整體卡頓時會連續逾時 4 次（約 4×`timeoutMs`），宜搭配 `budgetMs` 與 `cooldownMs`。**未給 `model` 時 agy 1.4.0 預設即 Gemini 4 Argon (Medium)**（2026-10-16 實測），會耗用 Argon 之額度；內建條目皆明給 `model`，不受影響。
+32. `dispatchAntigravity`：`printTimeout` 未給時之推導值由「`max(30, floor(timeoutMs/1000)−30)` 秒」改為「`floor(min(timeoutMs, 2147483647)/1000)+30` 秒」（預設 300000 時 `--print-timeout` 由 `270s` 改為 `330s`；`2147483647` 為 wsemi `execCli` 計時器上限，外層本就夾至此值，且 agy 拒收超出 Go duration 範圍之值〔`invalid duration`，exit 2，實測 `9007199254770s`、`9223372037s` 皆拒〕，故推導同樣封頂）。原因：agy 自身逾時是**離開碼 0 交回部分輸出**（stderr `[agy] print timeout after Ns with turn in progress; returning partial output`，stdout 為已產出之部分、可能為空），原設計令它先於外層到時，故 `timeoutMs` 大於 30 秒時，**自然耗時超過舊內層截止點（`max(30, floor(timeoutMs/1000)−30)` 秒，自 agy 啟動後起算）的回合一律被截斷並回 `ok: true`**——連超過 `timeoutMs` 者亦然，外層 `TIMEOUT`、整組跳過與冷卻皆不可達（該次「成功」還會解除既有冷卻）。現改由外層先逾時，行為變更為：**自然耗時介於舊內層截止點與 `timeoutMs` 之間的回合，由截斷之部分輸出改為完整成功；自然耗時達 `timeoutMs` 者，由「部分輸出 `ok: true`」改為 `TIMEOUT` 失敗**（`stdout` 只留 500 字元；`maxRetries`>0 時 `TIMEOUT` 會被 `execCli` 重試，每次耗滿 `timeoutMs` 且不受 `budgetMs` 約束；於 `dispatchAiFallback` 中該次嘗試整組跳過，**有明給 `id` 且 `cooldownMs`>0 才記冷卻**，整輪仍可能因 `budgetMs` 用盡而回 `budget`）。仍要部分輸出者，明給小於 `timeoutMs` 之 `printTimeout`（回到舊語意，並自行驗證輸出完整性；`nonempty` 擋不住非空之部分輸出）或以 `onStdout` 串流收集。agy 1.4.0 之 `--print-timeout` 預設為 `0s`（等到完成），文件此前稱預設 5m0s 已不符（舊版預設未驗證）。
+33. `getQuotaAntigravity`／`toQuotaWindow`：①回應無 `groups` 陣列、有群組卻無任何群組帶 `buckets` 陣列、或有桶卻一個窗口也讀不出（`groups`／`buckets`／`id` 改名）者改回 `errorType: 'parse'`（此前 `ok: true` 與 0 個窗口，會被誤認為沒有限額；`withCredits` 已查得之點數仍保留）；`groups: []` 與所有群組 `buckets` 皆空陣列（結構完整）仍為 `ok: true`、`windows: []`＝agy 未回報任何限額（各 `scope` 皆缺席＝未知）；只有部分群組改名者不報錯，表現為該 `scope` 缺席；②`remaining_fraction` 無法解讀（非數值字串、非十進位字串如 `'0x10'`、null、缺鍵、`'Infinity'`、`1e400`）者 `usedPercent`／`remainingPercent` 為 `null` 且 `severity` 為空字串（`disabled: true` 之桶仍為 `disabled`；此前未知者 `severity` 為 `normal`，`Infinity` 類被當成剩餘 100%、`-1e400` 被當成用罄、`'0x10'` 被當成 16）；有限但越界者（`1.7`、`1e306`、`-0.2`）夾至 0~1 再換算；③共享層 `toQuotaWindow` 對非有限 `usedPercent`（`Infinity`、`'Infinity'`、`1e400`、`-Infinity`）改視為未知（`null`、`severity` 空字串；此前被夾成 100%／0%，三家共用，供應商正常回應不受影響）；④群組與窗口隨 agy 方案與型錄變動不需改碼（見額度段）。
+34. 文件：範例 slug `gemini-3.6-flash-low`、`gemini-3.1-pro` 於 agy 1.4.0 已不在型錄（`not recognized as a known model`），改以 `gemini-3.8-flash-low`、`gemini-4-argon`（去掉檔位之基礎 slug，agy 接受、預設檔位 medium，可搭配 `effort`；2026-10-16 以 `/effort` 與生成呼叫實測）；agy 被權限閘門擋下時 `stderr` 帶說明（仍以空輸出判別）；內建 providers 量級感受由「9 條」更正為 22 條。
+35. wsemi 1.9.17 連動：npm shim 形狀之`.cmd`存在而其入口檔缺失（如 npm 套件被部分移除）者，由 wsemi 1.9.16 之「經 cmd.exe 退路啟動、node 報 Cannot find module、`Exit code 1`、帶 pid、依`maxRetries`重試」改為`ENOENT: spawn <入口> ENOENT`（`<入口>`為 shim 內指向之 JS 入口路徑而非`.cmd`本身；`code`為`null`、`attempts`為 1、不重試）。影響：①四家 CLI 轉接器之`errorType`由`exec`改為`spawn`；②`dispatchAiFallback`對此情境由「逐把換組內下一把金鑰」（`next-key`，`errorTypes`為`exec`）改為**整組跳過**（`skip-group`，`errorTypes`為`spawn`），依逐次`next-key`／`skip-group`或`group-exhausted`之`attempted`／`errorTypes`計數者，多金鑰條目之數字會變小；③`getQuotaCodex`（app-server 路徑，原樣轉出 wsemi `execCliJsonRpc`之`errorType`）與`getQuotaAntigravity`（版本把關與`checkVersion: false`之`agyPrint`，依`isSpawnFail`歸類）由`exit`改為`notfound`：`getQuotaAntigravity`之錯誤訊息開頭由`agy --version failed`改為`agy not found or not executable`，`checkVersion: false`時並改附安裝指引；`getQuotaCodex`於`fallbackHttp`為`true`（預設）時照舊改走 HTTP 備援，只有`raw.appServer.errorType`與備援也失敗時訊息所附之 app-server 失敗字樣隨之改變。本套件程式未改（`isSpawnFail`以結構判定自動歸類）。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
-| `exe` | String | 各CLI名稱 | 執行檔名稱或絕對路徑，給予名稱時由系統`PATH`解析；**`.cmd`／`.bat`只給檔名時依 cmd.exe 語意先搜子進程`cwd`再搜`PATH`**（wsemi ≥1.9.16），`cwd`為不可信之工作區時請給絕對路徑（或以`resolveProviders`之`exes`注入）；不存在之`.cmd`／`.bat`為`errorType: 'spawn'`且不重試 |
+| `exe` | String | 各CLI名稱 | 執行檔名稱或絕對路徑，給予名稱時由系統`PATH`解析；**`.cmd`／`.bat`只給檔名時依 cmd.exe 語意先搜子進程`cwd`再搜`PATH`**（wsemi ≥1.9.16），`cwd`為不可信之工作區時請給絕對路徑（或以`resolveProviders`之`exes`注入）；不存在之`.cmd`／`.bat`、npm shim 形狀之`.cmd`而其入口檔缺失者（wsemi ≥1.9.17）皆為`errorType: 'spawn'`且不重試 |
 | `model` | String | `''` | 模型ID，未給予則不帶模型旗標，由CLI自行決定 |
 | `extraArgs` | Array | `[]` | 額外命令列旗標字串陣列，接於固定旗標之後 |
 | `timeoutMs` | Integer | `300000` | 逾時毫秒，逾時將強制關閉子進程及其子孫程序；**全套件統一預設**(所有轉接器與各層一致，單一來源`dfTimeoutMs.mjs`)，由opt傳入即可覆寫 |
@@ -304,12 +311,12 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 #### Options only for dispatchAntigravity:
 | key | type | default | description |
 | --- | --- | --- | --- |
-| `model` | String | `''` | 須為`agy models`**第一欄之slug**（如`gemini-3.6-flash-low`）；agy錯誤訊息列出的是顯示名稱而非slug，勿照抄 |
-| `effort` | String | `''` | `'low'`、`'medium'`、`'high'`，需agy>=1.1.11；建議搭配不帶檔位之基礎slug（如`gemini-3.1-pro`），與帶檔位slug併用且檔位不一致時agy回conflicts錯誤 |
+| `model` | String | `''` | 須為`agy models`**第一欄之slug**（如`gemini-3.8-flash-low`、`gemini-4-argon-high`），或其去掉檔位之基礎slug（如`gemini-4-argon`，agy接受、預設檔位medium，可搭配`effort`；以`agy -p /effort --model <slug> --output-format json`驗證）；agy錯誤訊息列出的是顯示名稱而非slug，勿照抄。**未給時由agy決定，agy 1.4.0實測預設為Gemini 4 Argon (Medium)（耗用Argon之7天額度，預設可能隨agy版本變動）**；內建providers條目皆明給 |
+| `effort` | String | `''` | `'low'`、`'medium'`、`'high'`（以`agy -p /effort --model <slug> --output-format json`之available為準，不耗額度；Gemini 4 Argon與3.8 Flash皆無xhigh／max），需agy>=1.1.11；建議搭配不帶檔位之基礎slug（如`gemini-4-argon`，預設檔位medium），與帶檔位slug併用且檔位不一致時agy回conflicts錯誤 |
 | `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標 |
-| `printTimeout` | String | 由`timeoutMs`推導 | agy自身等待上限（如`'10m'`、`'570s'`），預設`timeoutMs`扣30秒緩衝（下限30秒），令CLI先於外層逾時而回報自身錯誤訊息 |
+| `printTimeout` | String | 由`timeoutMs`推導 | agy自身等待上限（如`'10m'`、`'630s'`），預設`timeoutMs`加30秒，**恆大於`timeoutMs`令外層先逾時**（agy自身逾時是離開碼0之部分輸出、不是錯誤，見行為變更紀錄第32條），一般無須手動設 |
 | `addDirs` | Array | 自動納入cwd | 加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而**不採子進程cwd**，故未給時自動納入有效cwd令檔案可視範圍與其他CLI一致；明示給陣列(含`[]`代表不揭露任何目錄)則完全尊重呼叫端 |
-| `timeoutMs` | Integer | `300000` | 全套件統一預設(恰對齊agy自身print-timeout之5m0s) |
+| `timeoutMs` | Integer | `300000` | 全套件統一預設 |
 
 注意：agy之prompt走`--print`旗標而非stdin（agy介面如此），故prompt長度上限30000字元，超過回傳錯誤結果物件（不reject）。
 
@@ -363,9 +370,9 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | --- | --- | --- |
 | `params` | 參數/設定檢核失敗（進入執行前即被擋） | 全部 |
 | `timeout` | 逾時（execCli強殺或API abort） | 全部 |
-| `spawn` | 子進程未能啟動（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`，不論錯誤碼：執行檔不存在、不存在之`.cmd`／`.bat`（wsemi ≥1.9.16）、非有效執行檔、權限不足、命令列過長、參數或環境變數含空字元、cwd 不存在等） | CLI類 |
+| `spawn` | 子進程未能啟動（execCli 結果之`code`為`null`且帶`pid`鍵而值為`undefined`，不論錯誤碼：執行檔不存在、不存在之`.cmd`／`.bat`（wsemi ≥1.9.16）、npm shim 形狀之`.cmd`而其入口檔缺失（wsemi ≥1.9.17）、非有效執行檔、權限不足、命令列過長、參數或環境變數含空字元、cwd 不存在等） | CLI類 |
 | `validation` | stdout未過`validate` | 全部 |
-| `exec` | CLI非零離開碼之一般執行失敗（未能再機械細分）；已知限制：`exe`為 npm shim 形狀之`.cmd`而其入口檔缺失者，wsemi 仍經 cmd.exe 退路啟動、node 已啟動後才以離開碼 1 結束，亦歸此類而非`spawn`，且依`maxRetries`重試（已交 wsemi；不存在之`.cmd`／`.bat`於 wsemi ≥1.9.16 已歸`spawn`） | CLI類 |
+| `exec` | CLI非零離開碼之一般執行失敗（未能再機械細分） | CLI類 |
 | `http` | HTTP非2xx（`code`為狀態碼） | api類 |
 | `fetch` | 網路層錯誤（DNS／連線拒絕／TLS／無效網址等）；送出前之例外（如金鑰含換行致標頭非法）之訊息會遮蔽標頭值 | api類 |
 | `tool-unsupported` | 模型回tool_calls而api類不支援工具 | api類 |
@@ -463,7 +470,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | 失敗 | 判定 | 處置 |
 | --- | --- | --- |
 | 逾時 | `error`以`TIMEOUT`開頭 | 整組跳過 |
-| 子進程未能啟動 | `errorType === 'spawn'` | 整組跳過（執行檔不存在、非有效執行檔、權限不足、命令列過長、參數含空字元、cwd 不存在等） |
+| 子進程未能啟動 | `errorType === 'spawn'` | 整組跳過（執行檔不存在、npm shim 入口檔缺失、非有效執行檔、權限不足、命令列過長、參數含空字元、cwd 不存在等） |
 | 執行檔不存在等（相容判準） | `error`含`ENOENT` | 整組跳過（亦涵蓋 REST 之`FETCH_ERROR: ENOENT`） |
 | 參數或設定檢核失敗（含 kind 無效、REST 條目缺`baseURL`／`model`／`questions`、opencode 之`config`不可序列化） | `errorType === 'params'` | 整組跳過 |
 | CLI 參數錯誤 | `code === 2` | 整組跳過 |
@@ -569,10 +576,10 @@ let r4 = await wkf.runFanoutPipeline({ task, agents, integrate, stages, check })
 **階梯結構**（由細至粗，數值須嚴格遞增）：
 
 ```alias
-agy --print-timeout（自動＝timeoutMs−30s）
-  < timeoutMs（單次嘗試，統一預設300000）
-    < budgetMs（單一名額之遞補鏈總預算，預設null不限）
-      < 工作流總時長（無獨立參數，由結構推導）
+timeoutMs（單次嘗試，統一預設300000）
+  < budgetMs（單一名額之遞補鏈總預算，預設null不限）
+    < 工作流總時長（無獨立參數，由結構推導）
+（agy --print-timeout＝當次timeoutMs＋30s，不在階梯內：為外層強殺失效時之後備，恆大於timeoutMs令外層先逾時）
 ```
 
 **各參數一覽**：
@@ -580,7 +587,7 @@ agy --print-timeout（自動＝timeoutMs−30s）
 | 參數 | 作用範圍 | 預設 | 逾時後果／備註 |
 | --- | --- | --- | --- |
 | `timeoutMs` | **單次AI嘗試**，所有kind一致（直接呼叫與工作流內皆同一數字） | `300000` | CLI強殺子進程樹／API中止請求；`error`以`TIMEOUT`開頭 → fallback視為**與金鑰無關**，整組跳過（不逐把空耗）；非同步之`validate`（含工作流之`parse`／`check`）計入同一次嘗試（等待上限為剩餘時間，逾時歸`validation`） |
-| `printTimeout` | 僅antigravity，agy自身等待上限 | 自動＝timeoutMs−30s | 令CLI先於外層逾時，錯誤訊息來自agy自身；一般無須手動設 |
+| `printTimeout` | 僅antigravity，agy自身等待上限 | 自動＝timeoutMs＋30s | 後備：令外層先逾時（該次嘗試以`TIMEOUT`失敗、整組跳過；有明給`id`且`cooldownMs`>0才記冷卻；整輪仍可能因`budgetMs`用盡而回`budget`）。agy自身逾時是**離開碼0交回部分輸出**（可能為空）而非錯誤，若令它先到時，慢回合會變成`ok: true`之截斷輸出；一般無須手動設 |
 | `budgetMs` | `dispatchAiFallback`整輪遞補（＝工作流的一個名額／階段） | `null`不限 | 有值時剩餘預算會壓進每次嘗試的timeoutMs；用盡回`budget exhausted`；工作流之`prompt`函式（可為 async）之耗時亦自該階段／整合名額之budgetMs扣除；`maxRetries`>0 時整輪可超出（見 Options for dispatchAiFallback 之`budgetMs`列） |
 | `minAttemptMs` | 搭配budgetMs的開工門檻 | `20000` | 剩餘預算低於此值即不再開工；**無budgetMs時不作用** |
 | 工作流總時長 | `runFanout`／`runRolePipeline`／`runFanoutPipeline` | 無（刻意） | 由結構推導，要上限就設各名額的`budgetMs` |
@@ -594,7 +601,7 @@ agy --print-timeout（自動＝timeoutMs−30s）
 | `runRolePipeline` | Σ各階段（**序列**） | ≈M×K×timeoutMs |
 | `runFanoutPipeline` | 上兩者相加 | ≈(2+M)×K×timeoutMs |
 
-量級感受：內建providers 9條全上陣時，一個名額最壞9×300s＝45min；3階段RolePipeline最壞約2.25小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
+量級感受：內建providers 22條全上陣時，一個名額最壞22×300s＝110min；3階段RolePipeline最壞約5.5小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
 
 **外部調整四層**（細者覆蓋粗者，全部免改套件程式）：
 1. **全域**：`dispatchAiWkf({ defaults: { timeoutMs, budgetMs, minAttemptMs } })`
@@ -696,12 +703,12 @@ r.windows.forEach((w) => console.log(w.key, w.label, w.usedPercent, w.remainingP
 // weekly_scoped 7天(Fable) 15 85 2026-... true normal   ← 帶模型別、實際會先觸頂的窗口
 
 let c = await wdi.getQuotaCodex()        // source: 'codex-app-server'(主) 或 'chatgpt-wham-usage-api'(備援)
-let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows之scope為群組名(Gemini Models / Claude and GPT models)
+let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows之scope為群組顯示名(2026-10-16 Pro方案: Gemini Models / Claude and GPT models / Gemini 4 Argon)
 ```
 
 **email 的真實角色是「比對」不是「查詢」**：三家額度皆綁定本機該 CLI 當前登入之憑證，沒有任何一家提供「給 email 查任意帳號」的公開介面（那會是帳號列舉漏洞）。故 `email` 參數用來核對本機實際登入者——一機多帳號時（實測本機 claude／codex／agy 分屬不同 gmail）不核對就會把甲帳號的額度當成乙的。不符時 `ok:false`、`matched:false`、`errorType:'account'`，但額度資料**仍回傳**（已取得，丟棄只是浪費）。
 
-**結果結構**：`{ ok, provider, email, matched, plan, planTier, source, windows[], credits, raw, error, errorType, durationMs }`；每個窗口 `{ key, label, windowSeconds, usedPercent, remainingPercent, resetAt(ISO), resetAfterSeconds, scope, active, severity }`。`severity` 供應商有給即用，未給則由 `usedPercent` 推導（用罄 `exhausted`／其餘 `normal`）。
+**結果結構**：`{ ok, provider, email, matched, plan, planTier, source, windows[], credits, raw, error, errorType, durationMs }`；每個窗口 `{ key, label, windowSeconds, usedPercent, remainingPercent, resetAt(ISO), resetAfterSeconds, scope, active, severity }`。`severity` 供應商有給即用，未給則由 `usedPercent` 推導（用罄 `exhausted`／其餘 `normal`／`usedPercent` 未知則空字串）；agy 之桶 `disabled: true` 為 `disabled`。
 
 **`key` 是各家原生識別、刻意不統一；跨家比較用 `windowSeconds` 配 `scope`**。統一的是信封（上列欄位）——三家原始欄位確實互異（Claude 給已用 % `utilization`＋ISO `resets_at`；Codex 給 `usedPercent`＋unix 秒 `resetsAt`＋`windowDurationMins`；agy 給**剩餘**比例 `remaining_fraction`＋ISO `reset_time`），全部正規化為 `usedPercent`／`resetAt`／`resetAfterSeconds`／`windowSeconds`。但 `key` 原樣透傳各家自己的窗口識別：
 
@@ -709,11 +716,32 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 | --- | --- | --- |
 | Claude | `session`／`weekly_all`／`weekly_scoped` | Anthropic `limits[].kind` 原值（回退舊欄位時為 `five_hour`／`seven_day_opus` 等欄位名） |
 | Codex | `primary`／`secondary`；巢狀限額為 `code_review:primary`、`<limitId>:primary` | app-server `rateLimits.primary`／`.secondary` 物件名；巢狀者由套件組唯一鍵 |
-| agy | `gemini-5h`／`gemini-weekly`／`3p-5h`／`3p-weekly` | agy `buckets[].id` 原值 |
+| agy | `gemini-5h`／`gemini-weekly`／`3p-5h`／`3p-weekly`／`gemini-argon-wtu-weekly`…（群組與桶隨方案與型錄變動） | agy `buckets[].id` 原值（跨群組不保證唯一，以 `scope`＋`key` 辨識） |
 
-保留原生值可回溯 `raw`，也不必為求一致把 agy 的 4 桶 2 群組硬壓成 2 個。要「跨家找 5 小時窗口」請用 `windowSeconds === 18000`（7 天為 `604800`）配 `scope`，**不要比對 `key` 字串**。
+保留原生值可回溯 `raw`，也不必為求一致把 agy 隨方案變動之各群組各桶（2026-10-16 實測 Pro 方案為 3 群組 5 桶）硬壓成固定個數。要「跨家找 5 小時窗口」請用 `windowSeconds === 18000`（7 天為 `604800`）配 `scope`，**不要比對 `key` 字串**。
 
-**errorType（quota 專用詞彙，與轉接器之 errorType 分開）**：`params`／`notfound`（憑證或執行檔不存在或無法執行、未登入）／`unsupported`（API key 或雲端模式無訂閱額度、agy 版本過舊）／`auth`（權杖被拒）／`forbidden`／`ratelimit`（查詢端點自身之 429，非訂閱額度用罄）／`http`／`parse`／`timeout`／`network`／`toolarge`／`account`（帳號不符）／`exit`／`rpc`。
+**agy 之群組與窗口由 agy 依方案決定，不設定數**（2026-10-16 以 agy 1.4.0 實測）：每個有 `id` 之桶產出一個窗口（`key` 為桶 `id` 原值、`scope` 為群組顯示名）；群組可只有單一窗口，本函數**不補造**不存在之窗口；群組數、群組名、窗口種類改動時不需改碼。該日 Pro 方案為三個群組：`Gemini Models`（`gemini-weekly`／`gemini-5h`）、`Claude and GPT models`（`3p-weekly`／`3p-5h`）、`Gemini 4 Argon`（只有 7 天窗口 `gemini-argon-wtu-weekly`，額度與 Gemini 群組分開；Ultra 方案依官方描述計入 Gemini 群組，**未驗證**）。
+
+| 要點 | 說明 |
+| --- | --- |
+| 不推斷模型與群組之對應 | `/usage` 不載明哪個模型屬哪個群組（群組 `description` 只列人類可讀之家族名，Argon 群組之 `description` 不列任何模型；`/quota` 是 `/usage` 之別名），故窗口一律回出、不過濾；呼叫端自行以 `scope`（群組**顯示名**，可能改名）選取所需群組 |
+| 找不到 `scope`＝未知 | 找不到所需 `scope`（方案無此群組，或用罄後被移除——後者**未驗證**，且與前者輸出相同）須視為「未知」，**不是**「有額度」 |
+| `description` | 群組與桶之 `description` 不進窗口信封，於 `raw.usage.command.data.groups[].description`／`.buckets[].description` 取得；桶之 `description` 隨用量狀態出現（未動用者無），是狀態散文，不可據以推導資料 |
+| 格式漂移 | 回應無 `groups` 陣列、有群組卻無任何群組帶 `buckets` 陣列、或有桶卻一個窗口也讀不出（`groups`／`buckets`／`id` 改名）→ `ok: false`、`errorType: 'parse'`（`withCredits` 已查得之點數仍保留）；`groups: []` 或所有群組 `buckets` 皆空陣列＝agy 未回報任何限額（`ok: true`、`windows: []`；各 `scope` 皆缺席＝未知，不是「無限額」之保證）。**只有部分群組改名者不報錯**，表現為該 `scope` 缺席（無訊號，需自行比對 `raw.usage`） |
+| `window` 字串 | 可解析為秒數者（`weekly`／`5h`／`7d`／`168h` 等）推得 `windowSeconds` 與標籤；無法解析者 `windowSeconds` 為 `null`、標籤退回桶 `name` |
+| `severity` | 比例無法解讀者為空字串，但 `disabled: true` 之桶仍為 `disabled`（停用優先；`disabled` 之語意未驗證）；其餘依 `usedPercent` 推導（用罄 `exhausted`／其餘 `normal`） |
+| 讀數特性 | 未動用窗口（剩餘 100%）之 `resetAt` 為「查詢時刻＋窗口」，隨查詢漂移，不是實際重置時刻；已動用窗口之 `resetAt` 固定；5 小時窗口為滾動，`usedPercent` 可隨時間下降；`usedPercent` 讀數閒置時會在兩個值之間跳動且非單調（2026-10-16 同帳號 50 秒內三次：Gemini 群組 7 天窗口 0.93→0.07→0.93、Argon 3.91→3.39→3.91，幅度可達約 0.5~0.9 個百分點）——勿精算單次耗用，亦勿以單調性做斷言 |
+| `active` | agy 恆為 `false`；需要「群組內最先觸頂之窗口」時，取同一 `scope` 內 `remainingPercent` 最小者 |
+
+**預檢食譜**（派工前先查額度，**不內建於套件**）：`/usage` 約 3~4 秒（單次短呼叫 8~20 秒的兩三成），且讀數有抖動、`scope` 缺席＝未知，故預檢不放進 `dispatchAiFallback`；由呼叫端於整輪開始前查一次（或以 TTL 快取），把「`scope` 存在且該窗口 `remainingPercent` 低於門檻」的 agy 條目自 `providers` 剔除，`scope` 缺席者保留條目。條目到 `scope` 之對應由呼叫端持有（本套件不推斷；`severity` 為 `disabled` 之窗口語意未驗證，須自行決定）：
+
+```alias
+let q = await wdi.getQuotaAntigravity()
+let low = (scope) => q.ok && q.windows.some((w) => w.scope === scope && w.remainingPercent !== null && w.remainingPercent <= 3)
+let providers = all.filter((p) => !(p.id === 'agy:gemini-4-argon-high' && low('Gemini 4 Argon'))) //Argon群組缺席(原因未知: 方案無此群組或用罄後被移除, 皆未驗證)時low()為false→保留條目
+```
+
+**errorType（quota 專用詞彙，與轉接器之 errorType 分開）**：`params`／`notfound`（憑證或執行檔不存在或無法執行、未登入）／`unsupported`（API key 或雲端模式無訂閱額度、agy 版本過舊）／`auth`（權杖被拒）／`forbidden`／`ratelimit`（查詢端點自身之 429，非訂閱額度用罄）／`http`／`parse`（回應無法解讀；agy 之 `/usage` 無 `groups` 陣列或有群組卻讀不出窗口亦歸此）／`timeout`／`network`／`toolarge`／`account`（帳號不符）／`exit`／`rpc`。
 
 | 設計要點 | 說明 |
 | --- | --- |
@@ -733,7 +761,7 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 | `codex` | `sandbox: 'read-only'` | Codex沙箱唯讀模式 | 2026-08-26 於 Codex 0.149.0 實測可執行唯讀命令；前提是 Windows elevated 沙箱之一次性設定已完成，否則所有命令 `blocked by policy`（診斷見「Options only for dispatchCodex」） |
 | `antigravity` | `skipPermissions: false` | 保留agy權限閘門（不送`--dangerously-skip-permissions`） | 2026-08-15 canary實測：無此鎖時要求建檔**會真的落地**；`false`之下寫入被擋且**不卡逾時**（6.4s正常返回）、唯讀工具照常 |
 
-注意agy被權限閘門擋下寫入時回`ok: true`且**stdout為空**（靜默拒絕非報錯）：工作流層無害（空回覆過不了validate而自動遞補），但直接呼叫`dispatchAntigravity`者須以「空輸出」判別被擋，不能只看`ok`。另提示詞層的`NO_SIDE_EFFECT`前綴是「請求」不是「強制」，機械防寫以上表欄位為準。
+注意agy被權限閘門擋下寫入時回`ok: true`且**stdout為空**（非報錯；agy 1.4.0起`stderr`帶`jetski: no output produced — …`說明，仍須以空輸出判別，說明字樣屬agy實作細節、本套件不依其分流）：工作流層無害（空回覆過不了validate而自動遞補），但直接呼叫`dispatchAntigravity`者須以「空輸出」判別被擋，不能只看`ok`。另提示詞層的`NO_SIDE_EFFECT`前綴是「請求」不是「強制」，機械防寫以上表欄位為準。
 
 #### Known design notes:
 - `package.json`**刻意不設**`exports`欄位：wsemi與w-*系列皆為自有套件，呼叫端以按需深層引入(`w-dispatch-ai/src/xxx.mjs`)為既定路線；增設exports會封死此路徑，勿加。
@@ -741,6 +769,7 @@ let a = await wdi.getQuotaAntigravity()  // source: 'agy-print-usage'; windows�
 - `dispatchAiFallback`為單向單輪：全數群組試畢即回傳最後一筆失敗結果與`tried`歷程，不回頭重試已敗的組。跨次執行僅記憶游標，不設金鑰停用清單（理由見上方失敗分流說明）；需跨次跳過特定金鑰時，由呼叫端依`tried`／`onEvent`內之`error`與`stderr`自行決策。要以條目為單位判斷「本次呼叫整組試完仍無成交」者（如健康層據以降序），每收到一次`group-exhausted`事件計一次即可，勿以金鑰數與逐把`next-key`次數重建——事件不帶呼叫識別，並行呼叫跨越一次成交時（游標只在成交時推進，各呼叫起點不同）重建會多計或少計。
 - `shouldStop`**只在嘗試邊界檢查，不中止進行中之嘗試**（不殺子進程、不斷開HTTP請求）：進行中嘗試之強制中止需侵入execCli層與各轉接器，屬已知設計取捨——最小版已把斷線後的損失從「整條鏈」縮成「至多再耗當前這一家」；如有實測場景證明不足再議完整版。
 - CLI類限流簽章**不進套件**：各家字樣（stdout或stderr）不同且隨CLI版本漂移，套件維護簽章表等同養一個自己驗證不了的分類器（與否決金鑰停用清單同一理由）。偵測經`coolDetect`依賴注入，由觀察到字樣的呼叫端維護。
+- agy之非成功結局多為離開碼0（2026-10-16 agy 1.4.0實測）：自身`--print-timeout`到時（stdout為部分輸出，可能為空；現預設推導令外層先逾時，故僅於呼叫端明給`printTimeout`≤`timeoutMs`時才自然發生；`extraArgs`重帶旗標之last-wins為推論未實跑）與權限閘門擋下（stdout空）皆`ok: true`，僅未知模型為離開碼1（`exec`）；故agy條目建議帶`validate: 'nonempty'`。**額度用盡時agy之輸出與離開碼未驗證**，本套件不內建簽章，由呼叫端自維護`coolDetect`（見上條）；未給`model`時agy預設為Gemini 4 Argon (Medium)。
 - `dispatchOpencode`之`key`與`provider`須同時給予才會注入金鑰；只給其一（或範例中`.env`缺鍵導致`key`為`undefined`）時不會報錯，而是靜默沿用CLI既有登入狀態。
 - 範例中之`process.loadEnvFile`需Node.js >= 20.12，僅範例使用，套件本身無此限制。
 - `config`以`OPENCODE_CONFIG_CONTENT`注入後，與使用者既有`opencode.jsonc`為覆蓋或合併關係未經實測確認；建議`config`內含該次調用所需之完整provider定義，不依賴與既有設定檔之合併行為。

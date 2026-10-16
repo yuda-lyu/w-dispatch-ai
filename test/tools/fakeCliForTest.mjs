@@ -79,6 +79,29 @@ process.stdin.on('end', () => {
 
 
 /**
+ * 產生Windows下npm全域安裝之.cmd shim文字，其執行行指向%dp0%\node_modules\<name>\entry.mjs
+ *
+ * @param {String} name 輸入名稱字串，決定入口之相對路徑
+ * @returns {String} 回傳.cmd文字
+ */
+function buildShimCmdText(name) {
+    return [
+        '@ECHO off',
+        'SETLOCAL',
+        'CALL :find_dp0',
+        'SET "_prog=node"',
+        `"%_prog%"  "%dp0%\\node_modules\\${name}\\entry.mjs" %*`,
+        'ENDLOCAL',
+        'EXIT /b %errorlevel%',
+        ':find_dp0',
+        'SET dp0=%~dp0',
+        'EXIT /b',
+        '',
+    ].join('\r\n')
+}
+
+
+/**
  * 產生一支測試用的假CLI，回傳其執行檔路徑與清除函數
  *
  * @param {String} name 輸入假CLI名稱字串，各測試檔須給予不同名稱，避免mocha並行執行時互相干擾
@@ -104,20 +127,7 @@ function createFakeCli(name, entryCode = CODE_ENTRY) {
 
         //Windows, npm全域安裝之.cmd shim形狀
         exe = path.join(fd, `${name}.cmd`)
-        let code = [
-            '@ECHO off',
-            'SETLOCAL',
-            'CALL :find_dp0',
-            'SET "_prog=node"',
-            `"%_prog%"  "%dp0%\\node_modules\\${name}\\entry.mjs" %*`,
-            'ENDLOCAL',
-            'EXIT /b %errorlevel%',
-            ':find_dp0',
-            'SET dp0=%~dp0',
-            'EXIT /b',
-            '',
-        ].join('\r\n')
-        fs.writeFileSync(exe, code, 'utf8')
+        fs.writeFileSync(exe, buildShimCmdText(name), 'utf8')
     }
     else {
 
@@ -150,10 +160,13 @@ function createFakeCli(name, entryCode = CODE_ENTRY) {
  * 產生一個「存在但無法啟動」之執行檔，供測試子進程未能啟動(execCli回code為null且pid為undefined)之路徑
  *
  * Windows為內容非PE格式之.exe(spawn同步拋UNKNOWN)；POSIX為不具執行權限之檔案(spawn發出EACCES)。
- * 錯誤碼隨平台而異，測試只斷言errorType與結構欄位，不斷言錯誤碼
+ * 錯誤碼隨平台而異，測試只斷言errorType與結構欄位，不斷言錯誤碼。
+ * Windows另產「npm shim存在而其入口檔缺失」之.cmd(shimNoEntryExe；文字同createFakeCli之shim，但不建立node_modules/<name>/entry.mjs，
+ * 對應npm套件被部分移除之情境；wsemi>=1.9.17判為ENOENT: spawn <入口> ENOENT，1.9.16為經cmd.exe退路之Exit code 1)；
+ * POSIX無shim解析，shimNoEntryExe為空字串
  *
  * @param {String} name 輸入名稱字串，各測試檔須給予不同名稱，避免mocha並行執行時互相干擾
- * @returns {Object} 回傳物件，內含exe(執行檔絕對路徑字串)、clean(清除產物之函數)
+ * @returns {Object} 回傳物件，內含exe(執行檔絕對路徑字串)、shimNoEntryExe(入口缺失之shim .cmd絕對路徑字串，非Windows為空字串)、clean(清除產物之函數)
  */
 function createUnstartableExe(name) {
     let fd = path.resolve(FD_BASE, name)
@@ -163,6 +176,11 @@ function createUnstartableExe(name) {
     if (process.platform !== 'win32') {
         fs.chmodSync(exe, 0o644)
     }
+    let shimNoEntryExe = ''
+    if (process.platform === 'win32') {
+        shimNoEntryExe = path.join(fd, `${name}-shim-no-entry.cmd`)
+        fs.writeFileSync(shimNoEntryExe, buildShimCmdText(`${name}-shim-no-entry`), 'utf8')
+    }
     let clean = () => {
         fs.rmSync(fd, { recursive: true, force: true })
         try {
@@ -170,7 +188,7 @@ function createUnstartableExe(name) {
         }
         catch {}
     }
-    return { exe, clean }
+    return { exe, shimNoEntryExe, clean }
 }
 
 

@@ -4,7 +4,6 @@ import path from 'path'
 import crypto from 'crypto'
 import get from 'lodash-es/get.js'
 import isestr from 'wsemi/src/isestr.mjs'
-import isearr from 'wsemi/src/isearr.mjs'
 import isbol from 'wsemi/src/isbol.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
 import cdbl from 'wsemi/src/cdbl.mjs'
@@ -24,10 +23,16 @@ import toQuotaResult from './toQuotaResult.mjs'
 //     command:{name:'usage', data:{groups:[{name:'Gemini Models', buckets:[
 //       {id:'gemini-weekly', window:'weekly', remaining_fraction, reset_time, description}, {id:'gemini-5h', window:'5h', ...}]},
 //       {name:'Claude and GPT models', buckets:[{id:'3p-weekly',...},{id:'3p-5h',...}]}]}}}
+//   【群組與窗口由agy依方案決定, 不設定數(2026-10-16以agy 1.4.0再實測)】該日Pro方案為三個群組: 上列兩群組外另有
+//     {name:'Gemini 4 Argon', description:'For paid Pro plans, Argon quota is separate. Higher Argon quota (included as part of the larger
+//     Gemini quota bucket) is available on Ultra plans.', buckets:[{id:'gemini-argon-wtu-weekly', window:'weekly', description:'You have used some ...'}]}——
+//     **只有7天窗口、無5小時窗口**, 且額度與Gemini群組分開(以前後對照實測獨立); Ultra方案依官方描述計入Gemini群組(Ultra實際回應未見, 未驗證)。
+//     群組description只列人類可讀之家族名(Argon群組之description不列任何模型), `/usage`不含「模型→群組」之對應(`/quota`為`/usage`之別名),
+//     故本函數不推斷模型與群組之對應, 窗口一律回出, 由呼叫端以scope(群組顯示名)選取。桶之description隨用量狀態出現, 不進窗口信封(留於raw.usage)。
 //   agy CHANGELOG 1.1.11原文: 「-p "/usage", /quota, /credits ... emit a structured payload under
 //   --output-format json ... without starting an agent turn, spending quota, or leaving a conversation behind」。
-//   帳號email: 同一次spawn加`--log-file <暫存檔>`, log內有`applyAuthResult: email=..., authMethod=consumer`。
-//   耗時實測5~8秒(agy啟動、認證、loadCodeAssist與fetchAvailableModels兩個後端往返), 故預設逾時較寬。
+//   帳號email: 同一次spawn加`--log-file <暫存檔>`, log內有`applyAuthResult: email=..., authMethod=consumer`(1.4.0行尾多`, quotaProject=`, 正則仍相容)。
+//   耗時1.1.27實測5~8秒(agy啟動、認證、loadCodeAssist與fetchAvailableModels兩個後端往返)、1.4.0實測約3~4秒, 預設逾時仍取較寬。
 //
 // 【為何不走Gemini CLI憑證或Code Assist端點】Google已於2026-06-18終止Gemini CLI對個人層之服務;
 //   ~/.gemini/google_accounts.json與oauth_creds.json為舊Gemini CLI所留, 實測其帳號(firsemisphere6)
@@ -48,6 +53,10 @@ let DEFAULT_EXE = 'agy'
 let DEFAULT_TIMEOUT_MS = 60000
 let MIN_VERSION = '1.1.11'
 let INSTALL_HINT = 'see https://antigravity.google/docs/cli/ for install and login' //未能啟動時之指引, 版本把關與agyPrint共用
+
+
+//十進位數字字串(含正負號、小數、科學記號與前後空白); 非此形式之字串(如'0x10'、'0o7'、'0b1')視為未知
+let DECIMAL = /^\s*[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?\s*$/i
 
 
 //各窗口字串對應之秒數; 未列者以正則解析Nh/Nd, 皆不成則null(標籤退回桶名)
@@ -96,7 +105,7 @@ function windowToSeconds(w) {
  *
  * @param {Object} g 輸入群組物件
  * @param {Object} b 輸入桶物件
- * @returns {Object|null} 回傳統一窗口物件, 桶無id或無剩餘比例回傳null
+ * @returns {Object|null} 回傳統一窗口物件, 桶無id回傳null; 無剩餘比例或比例無法解讀(非有限數)仍產出窗口, usedPercent與remainingPercent為null、severity為空字串(不假造; disabled為true者severity仍為disabled)
  */
 function fromBucket(g, b) {
 
@@ -105,11 +114,17 @@ function fromBucket(g, b) {
         return null
     }
 
-    //usedPercent, 由剩餘比例反推; 文件載明可能為數值或字串故一律轉數值
+    //usedPercent, 由剩餘比例反推; 文件載明可能為數值或字串故一律轉數值, 字串只接受十進位形式('0x10'等經Number會被當成數值而假造比例);
+    //Infinity(字串'Infinity'或JSON之1e400)亦通過isnum, 而cdbl(toFinite)會把它換成MAX_VALUE, 推得-Infinity經夾值變成「剩餘100%」(-1e400則假造用罄), 故以原值判有限, 非有限視為未知;
+    //有限但越界者(1.7、1e306、-0.2)先夾至0~1再換算, 免極大值使(1-v)*10^4溢位而與1.7之結果不一致
     let rf = get(b, 'remaining_fraction', null)
     let usedPercent = null
-    if (isnum(rf)) {
-        usedPercent = Math.round((1 - cdbl(rf)) * 100 * 100) / 100
+    if (isnum(rf) && (typeof rf !== 'string' || DECIMAL.test(rf))) {
+        let v = Number(rf)
+        if (Number.isFinite(v)) {
+            v = Math.min(1, Math.max(0, v))
+            usedPercent = Math.round((1 - v) * 100 * 100) / 100
+        }
     }
 
     //scope與label, 群組名為範圍; 窗口秒數可推得時標籤為「5小時(Gemini Models)」, 否則退回桶名
@@ -127,13 +142,10 @@ function fromBucket(g, b) {
     }
     let label = scope === '' ? base : `${base}(${scope})`
 
-    //severity, 用罄與停用須明示; 其餘normal
-    let severity = 'normal'
+    //severity, 停用須明示; 其餘交toQuotaWindow由usedPercent推導(用罄exhausted/其餘normal/比例未知則空字串, 三家一致, 不把「未知」標成normal)
+    let severity = ''
     if (get(b, 'disabled', false) === true) {
         severity = 'disabled'
-    }
-    else if (usedPercent !== null && usedPercent >= 100) {
-        severity = 'exhausted'
     }
 
     return toQuotaWindow({
@@ -163,7 +175,9 @@ async function agyPrint(exe, cmd, o) {
     if (isestr(o.logFile)) {
         args.push('--log-file', o.logFile)
     }
-    args.push('-p', cmd, '--output-format', 'json', '--print-timeout', `${Math.max(5, Math.ceil(o.timeoutMs / 1000))}s`)
+    //--print-timeout恆>=外層timeoutMs(ceil且下限5秒; 同execCli計時器上限2147483647封頂, 免超出agy可解析之duration範圍),
+    //且agy計時自其啟動完成後才起算, 故外層必先到時(真agy加--print-timeout 1s仍完整回3群組, 2026-10-16實測); 與dispatchAntigravity之+30s推導同一原則
+    args.push('-p', cmd, '--output-format', 'json', '--print-timeout', `${Math.max(5, Math.ceil(Math.min(o.timeoutMs, 2147483647) / 1000))}s`)
 
     let r = await execCli(exe, args, { timeoutMs: o.timeoutMs, cwd: o.cwd })
 
@@ -213,7 +227,10 @@ async function agyPrint(exe, cmd, o) {
  * 以agy自身之print模式取得額度(官方、無頭、不碰憑證)：`agy -p "/usage" --output-format json`，
  * 並以同一次執行之`--log-file`取得登入帳號email。
  * 額度綁定本機agy之登入憑證，email參數之作用為比對——不符時ok為false且matched為false；
- * 未給email時不比對。本函數不會reject，一律以結果物件之ok與error欄位回報成敗
+ * 未給email時不比對。本函數不會reject，一律以結果物件之ok與error欄位回報成敗。
+ * 群組與窗口由agy依方案決定、不設定數：每個有id之桶產出一個窗口(key為桶id原值、scope為群組顯示名)，群組可只有單一窗口(例如2026-10-16 agy 1.4.0之「Gemini 4 Argon」群組只有7天窗口)，不補造不存在之窗口；
+ * `/usage`不載明模型與群組之對應，本函數不推斷，窗口一律回出，呼叫端以scope尋找所需群組，找不到須視為未知而非有額度；
+ * 回應無groups陣列、有群組卻無任何群組帶buckets陣列、或有桶卻一個窗口也讀不出時視為格式已變，回ok為false且errorType為parse(withCredits已查得之點數仍保留)；groups為空陣列或所有群組buckets皆空陣列＝agy未回報任何限額(ok為true、windows為空，各scope皆缺席＝未知)；只有部分群組改名者不報錯，表現為該scope缺席
  *
  * @param {String} [email=''] 輸入欲查詢之帳號email字串，預設''代表不比對而直接回報本機當前帳號
  * @param {Object} [opt={}] 輸入設定物件，預設{}
@@ -222,7 +239,7 @@ async function agyPrint(exe, cmd, o) {
  * @param {Boolean} [opt.withCredits=false] 輸入是否另執行`/credits`取得G1點數餘額布林值，會多一次約5秒之啟動，預設false
  * @param {String} [opt.cwd=os.tmpdir()] 輸入子進程工作目錄字串，預設系統暫存目錄以免在專案目錄留下痕跡
  * @param {Number} [opt.timeoutMs=60000] 輸入單次agy執行之逾時毫秒正整數，預設60000(agy啟動加兩個後端往返實測5~8秒)
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok、provider('antigravity')、email(agy登入帳號)、matched、plan(空字串，/usage不提供方案別)、planTier(空字串)、source('agy-print-usage')、windows(每群組之5小時與7天窗口，scope為群組名)、credits(withCredits時為{remainingCredits, upgradeUri}，否則null)、raw(含agy版本、authMethod、原始回應)、error、errorType、durationMs，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok、provider('antigravity')、email(agy登入帳號)、matched、plan(空字串，/usage不提供方案別)、planTier(空字串)、source('agy-print-usage')、windows(agy回報之各群組各桶窗口，通常為5小時與7天，群組可只有其一，scope為群組顯示名；severity比例無法解讀時為空字串，disabled為true之桶為disabled)、credits(withCredits時為{remainingCredits, upgradeUri}，否則null)、raw(含agy版本、authMethod、原始回應)、error、errorType、durationMs，本函數不會reject
  * @example
  * //need agy cli (>=1.1.11) logged in
  *
@@ -233,7 +250,8 @@ async function agyPrint(exe, cmd, o) {
  *     console.log(r.ok, r.email)
  *     // => true firsemisphere@gmail.com
  *     console.log(r.windows.map((w) => `${w.label}:${w.remainingPercent}%`).join(' '))
- *     // => 7天(Gemini Models):85% 5小時(Gemini Models):90% 7天(Claude and GPT models):100% 5小時(Claude and GPT models):100% (即時值)
+ *     // => 7天(Gemini Models):85% 5小時(Gemini Models):90% 7天(Claude and GPT models):100% 5小時(Claude and GPT models):100% 7天(Gemini 4 Argon):99% (即時值; Argon群組只有7天窗口)
+ *     let argon = r.windows.filter((w) => w.scope === 'Gemini 4 Argon') //以scope(群組顯示名)選取; 空陣列代表未知(例如方案無此群組), 不是有額度
  * }
  * test()
  *
@@ -358,14 +376,20 @@ async function getQuotaAntigravity(email = '', opt = {}) {
         })
     }
 
-    //windows
+    //windows, 同時記錄結構之辨識(有無群組帶buckets陣列、有無桶)供漂移判定
     let windows = []
     let groups = get(ru.data, 'groups', null)
-    if (isearr(groups)) {
+    let anyBucketsArray = false
+    let anyBucketItems = false
+    if (Array.isArray(groups)) {
         for (let g of groups) {
             let buckets = get(g, 'buckets', null)
-            if (!isearr(buckets)) {
+            if (!Array.isArray(buckets)) {
                 continue
+            }
+            anyBucketsArray = true
+            if (buckets.length > 0) {
+                anyBucketItems = true
             }
             for (let b of buckets) {
                 let w = fromBucket(g, b)
@@ -376,12 +400,35 @@ async function getQuotaAntigravity(email = '', opt = {}) {
         }
     }
 
-    //credits
+    //credits(先於漂移判定組好, 漂移時仍保留已查得之點數)
     let credits = null
     if (rc !== null) {
         credits = rc.ok
             ? { remainingCredits: get(rc.data, 'remaining_credits', null), upgradeUri: get(rc.data, 'upgrade_uri', '') }
             : { error: rc.error }
+    }
+
+    //格式漂移, 以「結構辨識得到與否」判(不以窗口數判): 無groups陣列、有群組卻無任何群組帶buckets陣列、或有桶卻一個窗口也讀不出(groups/buckets/id改名),
+    //靜默回ok:true會被誤認為「沒有任何限額」, 故回parse; groups為空陣列或所有群組buckets皆空陣列, 結構完整, 視為agy未回報任何限額, 照常ok(不臆造);
+    //只有部分群組改名者不報錯, 表現為該scope缺席(見README額度段)
+    let drift = ''
+    if (!Array.isArray(groups)) {
+        drift = 'no groups array'
+    }
+    else if (groups.length > 0 && !anyBucketsArray) {
+        drift = `${groups.length} group(s) without a buckets array`
+    }
+    else if (anyBucketItems && windows.length === 0) {
+        drift = 'buckets present but none has a readable id'
+    }
+    if (drift !== '') {
+        return fin({
+            email: emailHave,
+            credits,
+            error: `agy /usage returned no readable quota window (${drift}); its payload format may have changed`,
+            errorType: 'parse',
+            raw: { version, authMethod, description: get(ru.data, 'description', ''), usage: ru.raw, credits: rc !== null ? get(rc, 'raw', null) : null },
+        })
     }
 
     return fin({
