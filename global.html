@@ -446,7 +446,7 @@ console.log(dfQuotaTimeoutMs)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dfTimeoutMs.mjs.html">dfTimeoutMs.mjs</a>, <a href="dfTimeoutMs.mjs.html#line23">line 23</a>
+        <a href="dfTimeoutMs.mjs.html">dfTimeoutMs.mjs</a>, <a href="dfTimeoutMs.mjs.html#line24">line 24</a>
     </li></ul></dd>
     
 
@@ -698,7 +698,7 @@ console.log(dfTimeoutMs)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line160">line 160</a>
+        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line172">line 172</a>
     </li></ul></dd>
     
 
@@ -7391,11 +7391,11 @@ await test()
 <p>特點：
 prompt作為<code>--print</code>旗標之值傳遞而非stdin(agy介面如此，塞stdin會進互動模式卡住)，
 故prompt受命令列長度上限約束，超過30000字元回傳錯誤結果物件；
-model須為<code>agy models</code>第一欄之slug(如gemini-3.6-flash-low)，注意agy錯誤訊息列出的是顯示名稱而非slug；
+model須為<code>agy models</code>第一欄之slug(如gemini-3.8-flash-low)，注意agy錯誤訊息列出的是顯示名稱而非slug；未給model時由agy決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，耗用Argon額度)；
 帶檔位之slug(-high/-medium/-low結尾)與effort同時給定且檔位不一致時agy回conflicts錯誤(一致則放行)，
-effort需agy&gt;=1.1.11，建議搭配不帶檔位之基礎slug(如gemini-3.1-pro)使用；
-預設帶<code>--dangerously-skip-permissions</code>令非互動print模式不卡權限確認，可給予skipPermissions為false保留權限閘門；
-agy自身之--print-timeout未給時由timeoutMs推導並預留30秒緩衝，令CLI先於外層逾時；
+effort需agy&gt;=1.1.11，建議搭配不帶檔位之基礎slug(如gemini-4-argon)使用；
+預設帶<code>--dangerously-skip-permissions</code>令非互動print模式不卡權限確認，可給予skipPermissions為false保留權限閘門(被擋下時agy以離開碼0回應、stdout為空)；
+agy自身之--print-timeout未給時由timeoutMs加30秒推導，令外層先逾時(agy自身逾時是離開碼0之部分輸出而非錯誤，見檔頭)；
 沿用agy既有OAuth登入狀態(首次須於桌面互動模式完成登入)；
 本函數不會reject，一律以結果物件之ok與error欄位回報成敗</p></li></ul></dd>
     
@@ -7403,7 +7403,7 @@ agy自身之--print-timeout未給時由timeoutMs推導並預留30秒緩衝，令
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAntigravity.mjs.html">dispatchAntigravity.mjs</a>, <a href="dispatchAntigravity.mjs.html#line107">line 107</a>
+        <a href="dispatchAntigravity.mjs.html">dispatchAntigravity.mjs</a>, <a href="dispatchAntigravity.mjs.html#line117">line 117</a>
     </li></ul></dd>
     
 
@@ -7456,12 +7456,12 @@ import dispatchAntigravity from './src/dispatchAntigravity.mjs'
 
 let test = async () => {
 
-    let r = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.6-flash-low' })
+    let r = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.8-flash-low' })
     console.log(r.ok, r.stdout.trim())
     // => true 完成
 
     //基礎slug搭配effort(不可用帶檔位之slug併用effort)
-    let r2 = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-3.1-pro', effort: 'low' })
+    let r2 = await dispatchAntigravity('請只回覆兩個字：完成', { model: 'gemini-4-argon', effort: 'low' })
     console.log(r2.ok)
     // => true
 
@@ -7679,7 +7679,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入模型slug字串，須為<code>agy models</code>第一欄之slug，例如'gemini-3.6-flash-low'、'gemini-3.1-pro-high'，預設''代表不帶<code>--model</code>旗標由agy自行決定</p></td>
+            <td class="description last"><p>輸入模型slug字串，須為<code>agy models</code>第一欄之slug，例如'gemini-3.8-flash-low'、'gemini-4-argon-high'，預設''代表不帶<code>--model</code>旗標由agy自行決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，會耗用Argon額度；預設可能隨agy版本變動)</p></td>
         </tr>
 
     
@@ -7719,7 +7719,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入推理深度字串，可選'low'、'medium'、'high'，需agy&gt;=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶</p></td>
+            <td class="description last"><p>輸入推理深度字串，可選'low'、'medium'、'high'(部分模型更少，以<code>agy -p /effort --model &lt;slug&gt; --output-format json</code>之available為準)，需agy&gt;=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶</p></td>
         </tr>
 
     
@@ -7799,7 +7799,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入agy自身等待上限字串(如'10m'、'570s')，預設''代表由timeoutMs推導(扣30秒緩衝，下限30秒)</p></td>
+            <td class="description last"><p>輸入agy自身等待上限字串(如'10m'、'630s')，預設''代表由timeoutMs推導(加30秒，恆大於timeoutMs令外層先逾時；agy自身逾時是離開碼0之部分輸出，不是錯誤，故一般無須手動設)</p></td>
         </tr>
 
     
@@ -7919,7 +7919,7 @@ await test()
                 </td>
             
 
-            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000(恰對齊agy自身print-timeout預設5m0s)</p></td>
+            <td class="description last"><p>輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000</p></td>
         </tr>
 
     
@@ -13635,7 +13635,7 @@ test()</code></pre>
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line101">line 101</a>
+        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line110">line 110</a>
     </li></ul></dd>
     
 
@@ -13774,7 +13774,7 @@ test()</code></pre>
 
         
 <div class="param-desc">
-    <p>回傳統一窗口物件, 桶無id或無剩餘比例回傳null</p>
+    <p>回傳統一窗口物件, 桶無id回傳null; 無剩餘比例或比例無法解讀(非有限數)仍產出窗口, usedPercent與remainingPercent為null、severity為空字串(不假造; disabled為true者severity仍為disabled)</p>
 </div>
 
 
@@ -15399,13 +15399,16 @@ console.log(getErrorType({ error: 'Exit code 1' }))
 <p>以agy自身之print模式取得額度(官方、無頭、不碰憑證)：<code>agy -p &quot;/usage&quot; --output-format json</code>，
 並以同一次執行之<code>--log-file</code>取得登入帳號email。
 額度綁定本機agy之登入憑證，email參數之作用為比對——不符時ok為false且matched為false；
-未給email時不比對。本函數不會reject，一律以結果物件之ok與error欄位回報成敗</p></li></ul></dd>
+未給email時不比對。本函數不會reject，一律以結果物件之ok與error欄位回報成敗。
+群組與窗口由agy依方案決定、不設定數：每個有id之桶產出一個窗口(key為桶id原值、scope為群組顯示名)，群組可只有單一窗口(例如2026-10-16 agy 1.4.0之「Gemini 4 Argon」群組只有7天窗口)，不補造不存在之窗口；
+<code>/usage</code>不載明模型與群組之對應，本函數不推斷，窗口一律回出，呼叫端以scope尋找所需群組，找不到須視為未知而非有額度；
+回應無groups陣列、有群組卻無任何群組帶buckets陣列、或有桶卻一個窗口也讀不出時視為格式已變，回ok為false且errorType為parse(withCredits已查得之點數仍保留)；groups為空陣列或所有群組buckets皆空陣列＝agy未回報任何限額(ok為true、windows為空，各scope皆缺席＝未知)；只有部分群組改名者不報錯，表現為該scope缺席</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line241">line 241</a>
+        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line259">line 259</a>
     </li></ul></dd>
     
 
@@ -15461,7 +15464,8 @@ let test = async () => {
     console.log(r.ok, r.email)
     // => true firsemisphere@gmail.com
     console.log(r.windows.map((w) => `${w.label}:${w.remainingPercent}%`).join(' '))
-    // => 7天(Gemini Models):85% 5小時(Gemini Models):90% 7天(Claude and GPT models):100% 5小時(Claude and GPT models):100% (即時值)
+    // => 7天(Gemini Models):85% 5小時(Gemini Models):90% 7天(Claude and GPT models):100% 5小時(Claude and GPT models):100% 7天(Gemini 4 Argon):99% (即時值; Argon群組只有7天窗口)
+    let argon = r.windows.filter((w) => w.scope === 'Gemini 4 Argon') //以scope(群組顯示名)選取; 空陣列代表未知(例如方案無此群組), 不是有額度
 }
 test()</code></pre>
 
@@ -15826,7 +15830,7 @@ test()</code></pre>
 
         
 <div class="param-desc">
-    <p>回傳Promise，resolve回傳結果物件，內含ok、provider('antigravity')、email(agy登入帳號)、matched、plan(空字串，/usage不提供方案別)、planTier(空字串)、source('agy-print-usage')、windows(每群組之5小時與7天窗口，scope為群組名)、credits(withCredits時為{remainingCredits, upgradeUri}，否則null)、raw(含agy版本、authMethod、原始回應)、error、errorType、durationMs，本函數不會reject</p>
+    <p>回傳Promise，resolve回傳結果物件，內含ok、provider('antigravity')、email(agy登入帳號)、matched、plan(空字串，/usage不提供方案別)、planTier(空字串)、source('agy-print-usage')、windows(agy回報之各群組各桶窗口，通常為5小時與7天，群組可只有其一，scope為群組顯示名；severity比例無法解讀時為空字串，disabled為true之桶為disabled)、credits(withCredits時為{remainingCredits, upgradeUri}，否則null)、raw(含agy版本、authMethod、原始回應)、error、errorType、durationMs，本函數不會reject</p>
 </div>
 
 
@@ -19626,7 +19630,7 @@ providers與table同源產出故必然一致；
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>import resolveProviders from './src/resolveProviders.mjs'import readEnvFile from './src/readEnvFile.mjs'import providersAll from './src/providers.mjs'//金鑰放.env(變數值以逗號分隔多把), 以readEnvFile讀成物件, 不污染process.envlet env = readEnvFile('./.env')//全取: envVar展開為keys, 缺環境變數者列入skippedlet { providers, table, skipped } = resolveProviders(providersAll, { env })console.log(providers.length, skipped)// => 17 []//pick打錯字時, missing附拼寫提示hints(最接近之可用id)let rm = resolveProviders(providersAll, { env, pick: ['poolside/laguna-s-2.1'] })console.log(rm.missing, rm.hints)// => [ 'poolside/laguna-s-2.1' ] { 'poolside/laguna-s-2.1': 'poolside:laguna-s-2.1' }//自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallbacklet r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] })console.log(r2.providers.map((p) => p.id))// => [ 'agnes:agnes-3.0-flash', 'claude:sonnet' ]//後處理: exes逐kind注入執行檔、patch逐id覆寫欄位, 陣列與table同步生效let r3 = resolveProviders(providersAll, {    env,    pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'],    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },    patch: { 'claude:sonnet': { timeoutMs: 360000 } },})console.log(r3.table['claude:sonnet'].exe, r3.table['claude:sonnet'].timeoutMs)// => 'C:/Users/x/.local/bin/claude.exe' 360000//table可直接餵dispatchAiWkf之providers定義表//let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })</code></pre>
+    <pre class="prettyprint"><code>import resolveProviders from './src/resolveProviders.mjs'import readEnvFile from './src/readEnvFile.mjs'import providersAll from './src/providers.mjs'//金鑰放.env(變數值以逗號分隔多把), 以readEnvFile讀成物件, 不污染process.envlet env = readEnvFile('./.env')//全取: envVar展開為keys, 缺環境變數者列入skippedlet { providers, table, skipped } = resolveProviders(providersAll, { env })console.log(providers.length, skipped)// => 22 []//pick打錯字時, missing附拼寫提示hints(最接近之可用id)let rm = resolveProviders(providersAll, { env, pick: ['poolside/laguna-s-2.1'] })console.log(rm.missing, rm.hints)// => [ 'poolside/laguna-s-2.1' ] { 'poolside/laguna-s-2.1': 'poolside:laguna-s-2.1' }//自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallbacklet r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] })console.log(r2.providers.map((p) => p.id))// => [ 'agnes:agnes-3.0-flash', 'claude:sonnet' ]//後處理: exes逐kind注入執行檔、patch逐id覆寫欄位, 陣列與table同步生效let r3 = resolveProviders(providersAll, {    env,    pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'],    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },    patch: { 'claude:sonnet': { timeoutMs: 360000 } },})console.log(r3.table['claude:sonnet'].exe, r3.table['claude:sonnet'].timeoutMs)// => 'C:/Users/x/.local/bin/claude.exe' 360000//table可直接餵dispatchAiWkf之providers定義表//let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })</code></pre>
 
 
 
@@ -23819,14 +23823,14 @@ console.log(toQuotaScopedLabel(18000, ''))
     <dd class="tag-description"><ul class="dummy"><li><p>將各家額度窗口正規化為統一結構</p>
 <p>resetAt可給ISO字串或unix秒數(整數)，一律轉為ISO字串；
 resetAt與resetAfterSeconds任一有值即自動補算另一；
-usedPercent夾至0~100，remainingPercent由其推得，未知時兩者皆為null(不假造100)；
+usedPercent夾至0~100，remainingPercent由其推得，未知(含非有限數)時兩者皆為null(不假造100)；
 label未給時由windowSeconds推導，故供應商調整窗口長度時標籤自動跟著正確</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_toQuotaWindow.mjs.html">quota/toQuotaWindow.mjs</a>, <a href="quota_toQuotaWindow.mjs.html#line60">line 60</a>
+        <a href="quota_toQuotaWindow.mjs.html">quota/toQuotaWindow.mjs</a>, <a href="quota_toQuotaWindow.mjs.html#line61">line 61</a>
     </li></ul></dd>
     
 
@@ -24330,7 +24334,7 @@ console.log(w.label, w.remainingPercent)
                 </td>
             
 
-            <td class="description last"><p>輸入嚴重度字串，例如'normal'、'warning'、'exhausted'，預設''代表由usedPercent推導(用罄為'exhausted'、其餘'normal'、usedPercent未知則'')</p></td>
+            <td class="description last"><p>輸入嚴重度字串，例如'normal'、'warning'、'exhausted'、'disabled'(agy之桶停用)，預設''代表由usedPercent推導(用罄為'exhausted'、其餘'normal'、usedPercent未知則'')</p></td>
         </tr>
 
     
@@ -24928,7 +24932,7 @@ console.log(w.label, w.remainingPercent)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line71">line 71</a>
+        <a href="quota_getQuotaAntigravity.mjs.html">quota/getQuotaAntigravity.mjs</a>, <a href="quota_getQuotaAntigravity.mjs.html#line80">line 80</a>
     </li></ul></dd>
     
 
@@ -25088,7 +25092,7 @@ console.log(w.label, w.remainingPercent)
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Oct 16 2026 12:58:12 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Fri Oct 16 2026 19:14:10 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
