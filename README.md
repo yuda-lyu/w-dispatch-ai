@@ -267,6 +267,7 @@ await test()
 34. 文件：範例 slug `gemini-3.6-flash-low`、`gemini-3.1-pro` 於 agy 1.4.0 已不在型錄（`not recognized as a known model`），改以 `gemini-3.8-flash-low`、`gemini-4-argon`（去掉檔位之基礎 slug，agy 接受、預設檔位 medium，可搭配 `effort`；2026-10-16 以 `/effort` 與生成呼叫實測）；agy 被權限閘門擋下時 `stderr` 帶說明（仍以空輸出判別）；內建 providers 量級感受由「9 條」更正為 22 條。
 35. wsemi 1.9.17 連動：npm shim 形狀之`.cmd`存在而其入口檔缺失（如 npm 套件被部分移除）者，由 wsemi 1.9.16 之「經 cmd.exe 退路啟動、node 報 Cannot find module、`Exit code 1`、帶 pid、依`maxRetries`重試」改為`ENOENT: spawn <入口> ENOENT`（`<入口>`為 shim 內指向之 JS 入口路徑而非`.cmd`本身；`code`為`null`、`attempts`為 1、不重試）。影響：①四家 CLI 轉接器之`errorType`由`exec`改為`spawn`；②`dispatchAiFallback`對此情境由「逐把換組內下一把金鑰」（`next-key`，`errorTypes`為`exec`）改為**整組跳過**（`skip-group`，`errorTypes`為`spawn`），依逐次`next-key`／`skip-group`或`group-exhausted`之`attempted`／`errorTypes`計數者，多金鑰條目之數字會變小；③`getQuotaCodex`（app-server 路徑，原樣轉出 wsemi `execCliJsonRpc`之`errorType`）與`getQuotaAntigravity`（版本把關與`checkVersion: false`之`agyPrint`，依`isSpawnFail`歸類）由`exit`改為`notfound`：`getQuotaAntigravity`之錯誤訊息開頭由`agy --version failed`改為`agy not found or not executable`，`checkVersion: false`時並改附安裝指引；`getQuotaCodex`於`fallbackHttp`為`true`（預設）時照舊改走 HTTP 備援，只有`raw.appServer.errorType`與備援也失敗時訊息所附之 app-server 失敗字樣隨之改變。本套件程式未改（`isSpawnFail`以結構判定自動歸類）。
 36. 內建 providers 新增 `oc:opencode/beam-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目；context 1M），排在 `oc:opencode/step-5-preview-free` 之後、`agy:` 之前；其 REST 遭免費層閘門擋下（403），故無 `zen:` 版。同時移除 `oc:opencode/muse-spark-1.3-contributor-free`：該免費變體已自 opencode CLI 模型清單消失、呼叫即敗，官方文件改列付費之 `muse-spark-1.3`。以此 id 做 `pick` 者會落入 `missing`（無替代之免費 muse，`hints` 所示僅為字串最接近者）；全取者遞補鏈條數不變（仍 22 條），但原排第一之 opencode 免費條目改為 `oc:opencode/big-pickle`。文件與 JSDoc 範例之 opencode 免費模型同步由 muse-spark-1.3 改為 beam-free（2026-10-18 以 opencode 1.19.3 實跑）。
+37. 內建 providers 新增 `oc:opencode/deepseek-v4.1-flash-free`、`oc:opencode/glm-5.3-flash-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目；context 皆 200K），排在 `oc:opencode/beam-free` 之後、`agy:` 之前；兩者之 REST 遭免費層閘門擋下（403），故無 `zen:` 版。**glm-5.3-flash-free 上游不穩**（2026-10-18 共 10 次中 4 次於約 80 秒後回 `Upstream request failed: Endpoint is unavailable`），全取者輪到它而失敗時約多耗 80 秒才換家。同時移除 `oc:opencode/ling-3.1-flash-free`、`oc:opencode/cat-jam-free`、`oc:opencode/step-5-preview-free`：三者已自 opencode CLI 模型清單與官方文件消失，呼叫回 `UnknownError`。以這三個 id 做 `pick` 者會落入 `missing`（無替代模型，`hints` 所示僅為字串最接近者）。內建 providers 由 22 條改為 21 條（量級感受隨之更正）。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -602,7 +603,7 @@ timeoutMs（單次嘗試，統一預設300000）
 | `runRolePipeline` | Σ各階段（**序列**） | ≈M×K×timeoutMs |
 | `runFanoutPipeline` | 上兩者相加 | ≈(2+M)×K×timeoutMs |
 
-量級感受：內建providers 22條全上陣時，一個名額最壞22×300s＝110min；3階段RolePipeline最壞約5.5小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
+量級感受：內建providers 21條全上陣時，一個名額最壞21×300s＝105min；3階段RolePipeline最壞約5.3小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
 
 **外部調整四層**（細者覆蓋粗者，全部免改套件程式）：
 1. **全域**：`dispatchAiWkf({ defaults: { timeoutMs, budgetMs, minAttemptMs } })`

@@ -176,6 +176,10 @@
 //     移除oc:opencode/muse-spark-1.3-contributor-free: 已自CLI清單(--refresh)消失, 匿名CLI呼叫1.8s即敗(Exit code 1);
 //     官方文件〈Models〉〈Pricing〉改列付費之muse-spark-1.3($1.25/$4.25)、免費段已無muse——免費變體終止而非暫時故障。
 //     日後免費變體重新上架且實測可通時, 依收錄檢核重收即可。
+//     同日稍晚(使用者指示)新增oc:opencode/deepseek-v4.1-flash-free、glm-5.3-flash-free: 官方文件〈Pricing〉皆Free、
+//     端點/chat/completions, CLI清單(--refresh)有; REST匿名與第1把金鑰各2次皆403 FreeTierError, 故只收oc:版(實測見兩條)。
+//     移除oc:opencode/ling-3.1-flash-free、cat-jam-free、step-5-preview-free: 三者皆已自CLI清單(--refresh)與官方文件消失,
+//     依條目呼叫各2次皆1.8~1.9s即回UnknownError「Unexpected server error」(同時滿足先例之兩條件)。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
@@ -238,7 +242,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           muse-spark-1.2(2026-10-03已移除)/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無;
 //           2026-10-03新收之ling-3.1-flash、longcat-2.5-preview亦有high(同日所收fledge-alpha已於10-13移除), opencode 1.18.34;
 //           2026-10-13新收之cat-jam(另有xhigh/max)、step-5-preview亦有high, opencode 1.18.35;
-//           2026-10-18新收之beam(另有xhigh/max)亦有high、同日移除muse-spark-1.3, opencode 1.19.3),
+//           2026-10-18新收之beam(另有xhigh/max)亦有high、同日移除muse-spark-1.3, opencode 1.19.3;
+//           同日新收之deepseek-v4.1-flash、glm-5.3-flash為low/high/max亦有high, 同日移除ling-3.1-flash、cat-jam、step-5-preview),
 //           無檔位之條目不帶。同日實測space-bunny之variant low/high推理token為18/71, opencode.db之訊息記錄variant。
 //  REST     body.reasoning_effort: 原僅zen:space-bunny-free帶(該條2026-10-13已移除, 現無內建REST條目帶此欄)——
 //           opencode模型目錄宣告其high檔即{reasoningEffort:'high'}
@@ -341,25 +346,11 @@ let providers = [
         //且不以資料訓練(與big-pickle及各*-free模型之「可能用於改進模型」不同)。同模型之zen:REST版已於2026-10-13移除
         //(免費層閘門之例外收回, 見檔頭), 本條為此模型唯一收錄路徑
     },
-    //以下兩條2026-10-03新增(使用者指示; 原三條, fledge-alpha-free已於2026-10-13下架並移除, 見檔頭漂移紀錄):
-    //官方v1/v2文件、CLI清單(--refresh)與/zen/v1/models皆有, 〈Pricing〉全Free,
+    //以下一條2026-10-03新增(使用者指示; 原三條, fledge-alpha-free已於2026-10-13、ling-3.1-flash-free已於2026-10-18下架並移除,
+    //見檔頭漂移紀錄): 官方v1/v2文件、CLI清單(--refresh)與/zen/v1/models皆有, 〈Pricing〉全Free,
     //端點/chat/completions; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError(免費層閘門, 見檔頭)。
     //匿名CLI實測皆以opencode 1.18.34、variant high(opencode.db記錄確認): 簡答、推理題(答對)、read工具讀相對路徑(正確)、
     //要求寫檔(被OC_READONLY擋下未落地)四項皆過
-    {
-        id: 'oc:opencode/ling-3.1-flash-free',
-        model: 'opencode/ling-3.1-flash-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //CLI目錄release_date 2026-09-29; 推理模型, context 262144、輸出上限32768、僅文字輸入。
-        //實測: 簡答19.6s、推理題14.9s、讀檔13.3s、寫檔金絲雀17.8s。
-        //官方〈Privacy〉載明免費期間所收資料可能用於改進模型, 敏感內容勿走此條
-    },
     {
         id: 'oc:opencode/longcat-2.5-preview-free',
         model: 'opencode/longcat-2.5-preview-free',
@@ -374,42 +365,7 @@ let providers = [
         //實測: 簡答12.0s、推理題13.1s、讀檔21.6s、寫檔金絲雀16.1s。
         //官方〈Privacy〉載明其供應商零保留且不以資料訓練(同space-bunny)
     },
-    //以下兩條2026-10-13新增(使用者指示): 官方文件〈Pricing〉皆Free、端點/chat/completions, CLI清單(--refresh)與/models皆有;
-    //REST不收zen:版——同日新舊基底×匿名/第1把金鑰各2次皆403 FreeTierError(免費層閘門, 見檔頭)。
-    //匿名CLI實測皆以opencode 1.18.35、variant high(opencode.db記錄確認): 簡答、推理題(答對)、read工具讀相對路徑(正確)、
-    //要求寫檔(被OC_READONLY擋下未落地)四項皆過
-    {
-        id: 'oc:opencode/cat-jam-free',
-        model: 'opencode/cat-jam-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //CLI目錄release_date 2026-10-12; 推理模型, context 262144、輸出上限131072、僅文字輸入; 檔位low~max(另有xhigh/max)。
-        //實測: 簡答6.1s、推理題5.6s、讀檔7.0s、寫檔金絲雀9.4s。官方說明為限時免費之stealth模型(團隊藉此收集回饋改進模型),
-        //〈Privacy〉載明免費期間所收資料可能用於改進模型, 敏感內容勿走此條
-    },
-    {
-        id: 'oc:opencode/step-5-preview-free',
-        model: 'opencode/step-5-preview-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //CLI目錄release_date 2026-09-16; 推理模型, context 1M、輸出上限65536、可輸入圖片與影片; 檔位low/medium/high。
-        //實測: 簡答8.8s、推理題25.6s、讀檔14.7s、寫檔金絲雀8.2s。
-        //官方〈Privacy〉載明其供應商零保留且不以資料訓練(同space-bunny、longcat)。
-        //【注意: 極短答案可能回空字串卻ok:true(假成功)】同日以「只回覆兩個字：完成」共測14次: 10次正確、3次空、1次答非所問
-        //(「I can't share the system prompt…」), 空回覆集中於同一時段(其後連8次正確); opencode.db顯示空的那3次把答案寫進
-        //reasoning而正文0 token(目錄標其推理走reasoning_content欄位)。需推理之題目5/5與讀檔皆正常。呼叫端宜帶
-        //validate(如'nonempty')令空回覆判失敗而換家(execCli之nonempty遇空字串回OUTPUT_VALIDATION_FAILED, 遞補層即整組跳過)
-    },
+    //(2026-10-13新增之oc:opencode/cat-jam-free、step-5-preview-free已於2026-10-18下架並移除, 見檔頭漂移紀錄)
     {
         id: 'oc:opencode/beam-free',
         model: 'opencode/beam-free',
@@ -426,6 +382,37 @@ let providers = [
         //匿名CLI實測(opencode 1.19.3、variant high): 簡答4.9s、推理題4.4s答對、read工具讀相對路徑6.3s正確、
         //要求寫檔被OC_READONLY擋下未落地(write工具不在清單、bash自動拒絕; 此時回空字串而ok:true, 呼叫端宜帶validate)。
         //官方說明為限時免費; 〈Privacy〉載明輸入不用於訓練、為安全理由保留30天
+    },
+    //以下兩條2026-10-18新增(使用者指示): 官方文件〈Models〉〈Pricing〉皆列Free(另有同名付費版deepseek-v4.1-flash、glm-5.3-flash,
+    //id不帶-free, 未收)、端點/chat/completions, CLI清單(--refresh)有; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError。
+    //官方說明皆為限時免費、供應商零保留且不以資料訓練。匿名CLI實測皆以opencode 1.19.3、variant high
+    {
+        id: 'oc:opencode/deepseek-v4.1-flash-free',
+        model: 'opencode/deepseek-v4.1-flash-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //CLI目錄release_date 2026-09-10; 推理模型, context 200000、輸出上限32000、可輸入圖片; 檔位low/high/max。
+        //實測: 簡答6.9s、推理題6.5s答對、讀檔8.6s正確、寫檔金絲雀6.9s被OC_READONLY擋下未落地(回空字串而ok:true)
+    },
+    {
+        id: 'oc:opencode/glm-5.3-flash-free',
+        model: 'opencode/glm-5.3-flash-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //CLI目錄release_date 2026-08-26; 推理模型, context 200000、輸出上限32000、可輸入圖片/影片/PDF; 檔位low/high/max。
+        //實測: 簡答9.5~20.6s、推理題14.3s答對、讀檔10.2~22.0s正確、寫檔金絲雀97.8s被OC_READONLY擋下未落地。
+        //【注意: 上游不穩】同日共10次中4次於75~81s後失敗(stderr: Upstream request failed: Endpoint is unavailable, exec失敗),
+        //屬暫時失敗故仍收錄(依檔頭之保留哲學), 並排在opencode免費條目之末; 全取者遇此每次約多耗80s才換家
     },
     {
         id: 'agy:gemini-3.8-flash-high',
