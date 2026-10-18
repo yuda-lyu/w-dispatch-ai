@@ -47,7 +47,7 @@ let test = async () => {
     // => opencode: true 完成
 
     //以antigravity CLI(agy)呼叫, prompt走--print旗標(長度上限30000字元), model須為`agy models`第一欄slug
-    let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.6-flash-low' })
+    let r3b = await wdi.dispatchAntigravity(prompt, { model: 'gemini-3.8-flash-low' })
     console.log('antigravity:', r3b.ok, r3b.stdout.trim())
     // => antigravity: true 完成
 
@@ -68,7 +68,7 @@ let test = async () => {
         { kind: 'opencode', model: 'opencode/beam-free', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'opencode/big-pickle', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: agnesKeys[0], config: configAgnes, timeoutMs: 180000 },
-        { kind: 'antigravity', model: 'gemini-3.6-flash-low' },
+        { kind: 'antigravity', model: 'gemini-3.8-flash-low' },
     ]
     for (let item of items) {
         let r = await wdi.dispatchAi(item.kind, prompt, item)
@@ -78,7 +78,7 @@ let test = async () => {
         // => dispatchAi opencode/beam-free: true 完成
         // => dispatchAi opencode/big-pickle: true 完成
         // => dispatchAi agnes-ai/agnes-2.0-flash: true 完成
-        // => dispatchAi gemini-3.6-flash-low: true 完成
+        // => dispatchAi gemini-3.8-flash-low: true 完成
     }
 
     //未知供應商回傳error結果物件, 不會reject
@@ -130,7 +130,7 @@ let test = async () => {
             },
             { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },
             { id: 'codex:gpt-5.6-luna', kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
-            { id: 'agy:gemini-3.6-flash-low', kind: 'antigravity', model: 'gemini-3.6-flash-low' },
+            { id: 'agy:gemini-3.8-flash-low', kind: 'antigravity', model: 'gemini-3.8-flash-low' },
         ],
         budgetMs: 600000,
         onEvent: (ev) => console.log('  event:', ev.type, ev.keyId, ev.error || ''),
