@@ -109,7 +109,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'opencode'
- * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/muse-spark-1.3-contributor-free'，預設''代表不帶`-m`旗標
+ * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/beam-free'，預設''代表不帶`-m`旗標
  * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，預設''代表沿用CLI既有登入狀態
  * @param {String} [opt.provider=''] 輸入key所屬provider名稱字串，須與key同時給予才會注入，且須與model為同一組，預設''
  * @param {Boolean} [opt.useStoredAuth=true] 輸入未注入金鑰時是否沿用本機auth.json之登入布林值，false代表注入空憑證令本次以匿名存取(適用opencode之免費模型，避免結果隨本機登入帳號而異)；已同時給key與provider時不作用，預設true
@@ -130,13 +130,13 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * let test = async () => {
  *
  *     //沿用CLI既有登入狀態(auth.json)
- *     let r1 = await dispatchOpencode('請只回覆兩個字：完成', { model: 'opencode/muse-spark-1.3-contributor-free' })
+ *     let r1 = await dispatchOpencode('請只回覆兩個字：完成', { model: 'opencode/beam-free' })
  *     console.log(r1.ok, r1.stdout.includes('完成'))
  *     // => true true
  *
  *     //不沿用本機登入之匿名存取(opencode自家免費模型建議如此, 見檔頭【Zen免費層閘門】)
  *     let r2 = await dispatchOpencode('請只回覆兩個字：完成', {
- *         model: 'opencode/muse-spark-1.3-contributor-free',
+ *         model: 'opencode/beam-free',
  *         useStoredAuth: false,
  *     })
  *     console.log(r2.ok)

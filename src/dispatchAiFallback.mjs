@@ -337,9 +337,9 @@ function isKeyIndependentFail(r) {
  *                 keys: ['sk-aaa', 'sk-bbb'], //多把金鑰, 某把失敗自動換下一把
  *             },
  *             {
- *                 id: 'oc:opencode/muse-spark-1.3-contributor-free', //CLI版(有工具, 較慢)
+ *                 id: 'oc:opencode/beam-free', //CLI版(有工具, 較慢)
  *                 kind: 'opencode',
- *                 model: 'opencode/muse-spark-1.3-contributor-free',
+ *                 model: 'opencode/beam-free',
  *                 useStoredAuth: false, //opencode自家免費模型以匿名存取, 不沿用本機auth.json之登入
  *                 timeoutMs: 180000,
  *             },

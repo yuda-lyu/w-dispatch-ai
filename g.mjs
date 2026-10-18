@@ -42,7 +42,7 @@ let test = async () => {
 
     //以opencode CLI呼叫, 未給key與provider即沿用CLI既有登入狀態(auth.json);
     //opencode自家免費模型另建議帶useStoredAuth:false以匿名存取, 免得結果隨本機登入帳號之工作區設定而異
-    let r3 = await wdi.dispatchOpencode(prompt, { model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false, timeoutMs: 180000 })
+    let r3 = await wdi.dispatchOpencode(prompt, { model: 'opencode/beam-free', useStoredAuth: false, timeoutMs: 180000 })
     console.log('opencode:', r3.ok, r3.stdout.trim())
     // => opencode: true 完成
 
@@ -65,7 +65,7 @@ let test = async () => {
     let items = [
         { kind: 'claude', model: 'sonnet' },
         { kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
-        { kind: 'opencode', model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false, timeoutMs: 180000 },
+        { kind: 'opencode', model: 'opencode/beam-free', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'opencode/big-pickle', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: agnesKeys[0], config: configAgnes, timeoutMs: 180000 },
         { kind: 'antigravity', model: 'gemini-3.6-flash-low' },
@@ -75,7 +75,7 @@ let test = async () => {
         console.log('dispatchAi ' + item.model + ':', r.ok, r.stdout.trim())
         // => dispatchAi sonnet: true 完成
         // => dispatchAi gpt-5.6-luna: true 完成
-        // => dispatchAi opencode/muse-spark-1.3-contributor-free: true 完成
+        // => dispatchAi opencode/beam-free: true 完成
         // => dispatchAi opencode/big-pickle: true 完成
         // => dispatchAi agnes-ai/agnes-2.0-flash: true 完成
         // => dispatchAi gemini-3.6-flash-low: true 完成

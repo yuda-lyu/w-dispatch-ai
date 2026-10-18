@@ -170,6 +170,12 @@
 //     移除zen:space-bunny-free: 免費層閘門之例外已收回(見閘門段), 屬政策性失效而非暫時故障, 依2026-09-22之原則不保留;
 //     同模型之oc:版不受影響且仍收錄。日後政策放寬時依收錄檢核重收即可。
 //     端點基底改名為/inference/v1(見權威來源段); zen:jev-1.13-free同日改用新基底。
+//   2026-10-18之漂移(opencode 1.19.3):
+//     新增oc:opencode/beam-free(使用者指示): 官方文件〈Pricing〉Free、端點/chat/completions, CLI清單(--refresh)有;
+//     REST匿名與第1把金鑰各2次皆403 FreeTierError, 故只收oc:版(實測數據見該條)。
+//     移除oc:opencode/muse-spark-1.3-contributor-free: 已自CLI清單(--refresh)消失, 匿名CLI呼叫1.8s即敗(Exit code 1);
+//     官方文件〈Models〉〈Pricing〉改列付費之muse-spark-1.3($1.25/$4.25)、免費段已無muse——免費變體終止而非暫時故障。
+//     日後免費變體重新上架且實測可通時, 依收錄檢核重收即可。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
@@ -231,7 +237,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //  opencode --variant: 僅部分模型有檔位, 以`opencode models <provider> --verbose`之variants查(同日opencode 1.18.33:
 //           muse-spark-1.2(2026-10-03已移除)/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無;
 //           2026-10-03新收之ling-3.1-flash、longcat-2.5-preview亦有high(同日所收fledge-alpha已於10-13移除), opencode 1.18.34;
-//           2026-10-13新收之cat-jam(另有xhigh/max)、step-5-preview亦有high, opencode 1.18.35),
+//           2026-10-13新收之cat-jam(另有xhigh/max)、step-5-preview亦有high, opencode 1.18.35;
+//           2026-10-18新收之beam(另有xhigh/max)亦有high、同日移除muse-spark-1.3, opencode 1.19.3),
 //           無檔位之條目不帶。同日實測space-bunny之variant low/high推理token為18/71, opencode.db之訊息記錄variant。
 //  REST     body.reasoning_effort: 原僅zen:space-bunny-free帶(該條2026-10-13已移除, 現無內建REST條目帶此欄)——
 //           opencode模型目錄宣告其high檔即{reasoningEffort:'high'}
@@ -292,19 +299,7 @@ let providers = [
     },
     //oc:opencode/*免費模型: 2026-09-18起改為匿名免費存取(不帶envVar、useStoredAuth:false), 理由見檔頭
     //【Zen免費層閘門】——帶金鑰反而依該金鑰所屬工作區之模型開關而異(第1把實測Model access is disabled)
-    {
-        id: 'oc:opencode/muse-spark-1.3-contributor-free',
-        model: 'opencode/muse-spark-1.3-contributor-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //2026-09-03實測6.1s(opencode CLI 1.18.27)。註: 同日同模型走zen REST回HTTP 500,
-        //僅CLI路徑可用——同模型不同路徑屬不同供應商之實例(故未增zen:對應條目)
-    },
+    //(原首條oc:opencode/muse-spark-1.3-contributor-free已於2026-10-18移除, 見檔頭漂移紀錄)
     {
         id: 'oc:opencode/big-pickle',
         model: 'opencode/big-pickle',
@@ -414,6 +409,23 @@ let providers = [
         //(「I can't share the system prompt…」), 空回覆集中於同一時段(其後連8次正確); opencode.db顯示空的那3次把答案寫進
         //reasoning而正文0 token(目錄標其推理走reasoning_content欄位)。需推理之題目5/5與讀檔皆正常。呼叫端宜帶
         //validate(如'nonempty')令空回覆判失敗而換家(execCli之nonempty遇空字串回OUTPUT_VALIDATION_FAILED, 遞補層即整組跳過)
+    },
+    {
+        id: 'oc:opencode/beam-free',
+        model: 'opencode/beam-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //2026-10-18新增(使用者指示): 官方文件〈Models〉與〈Pricing〉皆列(Free|Free|Free|-、端點/chat/completions), CLI清單(--refresh)有;
+        //REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError(免費層閘門, 見檔頭)。
+        //CLI目錄release_date 2026-10-05; 推理模型, context 1M(1048576)、輸出上限131072、僅文字輸入; 檔位low~max(另有xhigh/max)。
+        //匿名CLI實測(opencode 1.19.3、variant high): 簡答4.9s、推理題4.4s答對、read工具讀相對路徑6.3s正確、
+        //要求寫檔被OC_READONLY擋下未落地(write工具不在清單、bash自動拒絕; 此時回空字串而ok:true, 呼叫端宜帶validate)。
+        //官方說明為限時免費; 〈Privacy〉載明輸入不用於訓練、為安全理由保留30天
     },
     {
         id: 'agy:gemini-3.8-flash-high',

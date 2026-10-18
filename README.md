@@ -102,7 +102,7 @@ let test = async () => {
 
     //以opencode CLI呼叫, 未給key與provider即沿用CLI既有登入狀態(auth.json);
     //opencode自家免費模型另建議帶useStoredAuth:false以匿名存取, 免得結果隨本機登入帳號之工作區設定而異
-    let r3 = await wdi.dispatchOpencode(prompt, { model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false, timeoutMs: 180000 })
+    let r3 = await wdi.dispatchOpencode(prompt, { model: 'opencode/beam-free', useStoredAuth: false, timeoutMs: 180000 })
     console.log('opencode:', r3.ok, r3.stdout.trim())
     // => opencode: true 完成
 
@@ -125,7 +125,7 @@ let test = async () => {
     let items = [
         { kind: 'claude', model: 'sonnet' },
         { kind: 'codex', model: 'gpt-5.6-luna', sandbox: 'read-only' },
-        { kind: 'opencode', model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false, timeoutMs: 180000 },
+        { kind: 'opencode', model: 'opencode/beam-free', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'opencode/big-pickle', useStoredAuth: false, timeoutMs: 180000 },
         { kind: 'opencode', model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: agnesKeys[0], config: configAgnes, timeoutMs: 180000 },
         { kind: 'antigravity', model: 'gemini-3.8-flash-low' },
@@ -135,7 +135,7 @@ let test = async () => {
         console.log('dispatchAi ' + item.model + ':', r.ok, r.stdout.trim())
         // => dispatchAi sonnet: true 完成
         // => dispatchAi gpt-5.6-luna: true 完成
-        // => dispatchAi opencode/muse-spark-1.3-contributor-free: true 完成
+        // => dispatchAi opencode/beam-free: true 完成
         // => dispatchAi opencode/big-pickle: true 完成
         // => dispatchAi agnes-ai/agnes-2.0-flash: true 完成
         // => dispatchAi gemini-3.8-flash-low: true 完成
@@ -266,6 +266,7 @@ await test()
 33. `getQuotaAntigravity`／`toQuotaWindow`：①回應無 `groups` 陣列、有群組卻無任何群組帶 `buckets` 陣列、或有桶卻一個窗口也讀不出（`groups`／`buckets`／`id` 改名）者改回 `errorType: 'parse'`（此前 `ok: true` 與 0 個窗口，會被誤認為沒有限額；`withCredits` 已查得之點數仍保留）；`groups: []` 與所有群組 `buckets` 皆空陣列（結構完整）仍為 `ok: true`、`windows: []`＝agy 未回報任何限額（各 `scope` 皆缺席＝未知）；只有部分群組改名者不報錯，表現為該 `scope` 缺席；②`remaining_fraction` 無法解讀（非數值字串、非十進位字串如 `'0x10'`、null、缺鍵、`'Infinity'`、`1e400`）者 `usedPercent`／`remainingPercent` 為 `null` 且 `severity` 為空字串（`disabled: true` 之桶仍為 `disabled`；此前未知者 `severity` 為 `normal`，`Infinity` 類被當成剩餘 100%、`-1e400` 被當成用罄、`'0x10'` 被當成 16）；有限但越界者（`1.7`、`1e306`、`-0.2`）夾至 0~1 再換算；③共享層 `toQuotaWindow` 對非有限 `usedPercent`（`Infinity`、`'Infinity'`、`1e400`、`-Infinity`）改視為未知（`null`、`severity` 空字串；此前被夾成 100%／0%，三家共用，供應商正常回應不受影響）；④群組與窗口隨 agy 方案與型錄變動不需改碼（見額度段）。
 34. 文件：範例 slug `gemini-3.6-flash-low`、`gemini-3.1-pro` 於 agy 1.4.0 已不在型錄（`not recognized as a known model`），改以 `gemini-3.8-flash-low`、`gemini-4-argon`（去掉檔位之基礎 slug，agy 接受、預設檔位 medium，可搭配 `effort`；2026-10-16 以 `/effort` 與生成呼叫實測）；agy 被權限閘門擋下時 `stderr` 帶說明（仍以空輸出判別）；內建 providers 量級感受由「9 條」更正為 22 條。
 35. wsemi 1.9.17 連動：npm shim 形狀之`.cmd`存在而其入口檔缺失（如 npm 套件被部分移除）者，由 wsemi 1.9.16 之「經 cmd.exe 退路啟動、node 報 Cannot find module、`Exit code 1`、帶 pid、依`maxRetries`重試」改為`ENOENT: spawn <入口> ENOENT`（`<入口>`為 shim 內指向之 JS 入口路徑而非`.cmd`本身；`code`為`null`、`attempts`為 1、不重試）。影響：①四家 CLI 轉接器之`errorType`由`exec`改為`spawn`；②`dispatchAiFallback`對此情境由「逐把換組內下一把金鑰」（`next-key`，`errorTypes`為`exec`）改為**整組跳過**（`skip-group`，`errorTypes`為`spawn`），依逐次`next-key`／`skip-group`或`group-exhausted`之`attempted`／`errorTypes`計數者，多金鑰條目之數字會變小；③`getQuotaCodex`（app-server 路徑，原樣轉出 wsemi `execCliJsonRpc`之`errorType`）與`getQuotaAntigravity`（版本把關與`checkVersion: false`之`agyPrint`，依`isSpawnFail`歸類）由`exit`改為`notfound`：`getQuotaAntigravity`之錯誤訊息開頭由`agy --version failed`改為`agy not found or not executable`，`checkVersion: false`時並改附安裝指引；`getQuotaCodex`於`fallbackHttp`為`true`（預設）時照舊改走 HTTP 備援，只有`raw.appServer.errorType`與備援也失敗時訊息所附之 app-server 失敗字樣隨之改變。本套件程式未改（`isSpawnFail`以結構判定自動歸類）。
+36. 內建 providers 新增 `oc:opencode/beam-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目；context 1M），排在 `oc:opencode/step-5-preview-free` 之後、`agy:` 之前；其 REST 遭免費層閘門擋下（403），故無 `zen:` 版。同時移除 `oc:opencode/muse-spark-1.3-contributor-free`：該免費變體已自 opencode CLI 模型清單消失、呼叫即敗，官方文件改列付費之 `muse-spark-1.3`。以此 id 做 `pick` 者會落入 `missing`（無替代之免費 muse，`hints` 所示僅為字串最接近者）；全取者遞補鏈條數不變（仍 22 條），但原排第一之 opencode 免費條目改為 `oc:opencode/big-pickle`。文件與 JSDoc 範例之 opencode 免費模型同步由 muse-spark-1.3 改為 beam-free（2026-10-18 以 opencode 1.19.3 實跑）。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |

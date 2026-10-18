@@ -69,7 +69,7 @@ import { readCallerObj } from './callUserFn.mjs'
  * let wkf = dispatchAiWkf({
  *     providers: {
  *         'agnes:agnes-3.0-flash': { kind: 'api-openai-compat', baseURL: 'https://apihub.agnes-ai.com/v1', model: 'agnes-3.0-flash', keys: ['sk-xxx'] },
- *         'oc:opencode/muse-spark-1.3-contributor-free': { kind: 'opencode', model: 'opencode/muse-spark-1.3-contributor-free', useStoredAuth: false },
+ *         'oc:opencode/beam-free': { kind: 'opencode', model: 'opencode/beam-free', useStoredAuth: false },
  *         'claude:sonnet': { kind: 'claude', model: 'sonnet' },
  *         'claude:opus': { kind: 'claude', model: 'opus' },
  *         'codex:gpt-5.6-luna': { kind: 'codex', model: 'gpt-5.6-luna' },
