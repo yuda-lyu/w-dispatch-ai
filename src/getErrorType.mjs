@@ -39,9 +39,11 @@ import isestr from 'wsemi/src/isestr.mjs'
 //                      HTTP 200但本體非JSON時error另為'INVALID_RESPONSE: body is not JSON (...)'(附位元組資訊,
 //                      遞補層整組跳過; 見describeNonJsonBody.mjs), 「JSON缺欄位」則仍換金鑰
 //   'incomplete'       回應未完整: 截斷(chat/completions之finish_reason為length/content_filter、
-//                      Responses API之status為incomplete; 結果另帶truncated:true, 規則見checkTruncation.mjs)
-//                      與Responses API之其餘非completed狀態(如failed; truncated:false)。僅api類;
-//                      半截內容預設不當成功回傳, 呼叫端明示acceptTruncated才可放行(2026-09-24起兩轉接器同規則)
+//                      Responses API之status為incomplete、Anthropic Messages API之stop_reason為max_tokens; 結果另帶truncated:true, 規則見checkTruncation.mjs)
+//                      與Responses API之其餘非completed狀態(如failed; truncated:false)、Messages API之pause_turn(truncated:false)。僅api類;
+//                      半截內容預設不當成功回傳, 呼叫端明示acceptTruncated才可放行(2026-09-24起三轉接器同規則)
+//   'refusal'          模型拒答(僅api-anthropic: HTTP 200但stop_reason為refusal, 安全分類器所為; 2026-10-24起)。error以'REFUSED:'開頭並帶stop_details.category,
+//                      stdout為已輸出之部分文字、stderr為stop_details; 屬模型/請求性質, 同請求換金鑰必然再被拒, 不重試且遞補層整組跳過
 //   'aborted'          shouldStop中止(僅dispatchAiFallback)
 //   'budget'           時間預算用盡(僅dispatchAiFallback)
 

@@ -46,9 +46,9 @@ describe('providers', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('envVar命名皆為大寫底線格式, 訂閱登入態條目(claude/codex)無envVar', function() {
+    it('envVar命名皆為大寫底線格式, 訂閱登入態條目(claude/codex, 不含以Anthropic API金鑰計費之claude-api:條目)無envVar', function() {
         let withVar = providers.filter((p) => p.envVar !== undefined)
-        let subs = providers.filter((p) => ['claude', 'codex'].includes(p.kind))
+        let subs = providers.filter((p) => ['claude', 'codex'].includes(p.kind) && !p.id.startsWith('claude-api:'))
         let r = [
             withVar.every((p) => /^[A-Z][A-Z0-9_]*$/.test(p.envVar)),
             subs.every((p) => p.envVar === undefined),
@@ -69,6 +69,37 @@ describe('providers', function() {
         let idx = providers.map((p, i) => p.kind === 'api-typesafe-systemone' ? i : -1).filter((i) => i >= 0)
         let r = [idx.length > 0, idx.every((i) => i < providers.length - 1)]
         let rr = [true, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('Anthropic API金鑰條目: claude-api:(CLI, 要工具)與anthropic:(REST, 純文字)各opus-5.5/sonnet-5.5/haiku-5.5, 全用完整模型ID、envVar為ANTHROPIC_KEYS(不得用ANTHROPIC_API_KEY)', function() {
+        //規格: README「Claude以API金鑰計費」——.env變數名ANTHROPIC_KEYS; 不得以ANTHROPIC_API_KEY當envVar, 以免使用端誤載入process.env而令Claude Code全面改用API計費
+        let models = { 'opus-5.5': 'claude-opus-5-5', 'sonnet-5.5': 'claude-sonnet-5-5', 'haiku-5.5': 'claude-haiku-5-5' }
+        let cli = providers.filter((p) => p.id.startsWith('claude-api:'))
+        let rest = providers.filter((p) => p.id.startsWith('anthropic:'))
+        let r = [
+            cli.map((p) => [p.id, p.kind, p.model, p.envVar]),
+            rest.map((p) => [p.id, p.kind, p.model, p.envVar]),
+            providers.filter((p) => /ANTHROPIC/.test(p.envVar || '')).every((p) => p.envVar === 'ANTHROPIC_KEYS'),
+            providers.some((p) => p.envVar === 'ANTHROPIC_API_KEY'),
+        ]
+        let rr = [
+            Object.keys(models).map((k) => [`claude-api:${k}`, 'claude', models[k], 'ANTHROPIC_KEYS']),
+            Object.keys(models).map((k) => [`anthropic:${k}`, 'api-anthropic', models[k], 'ANTHROPIC_KEYS']),
+            true,
+            false,
+        ]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('Anthropic API金鑰條目為計費條目: 六條集中於清單末端(先claude-api:後anthropic:), 全取遞補時最後才耗用API額度, 不先於訂閱與免費條目', function() {
+        let n = providers.length
+        let tail = providers.slice(n - 6).map((p) => p.id)
+        let r = [tail, providers.slice(0, n - 6).some((p) => p.envVar === 'ANTHROPIC_KEYS')]
+        let rr = [
+            ['claude-api:opus-5.5', 'claude-api:sonnet-5.5', 'claude-api:haiku-5.5', 'anthropic:opus-5.5', 'anthropic:sonnet-5.5', 'anthropic:haiku-5.5'],
+            false,
+        ]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -136,6 +167,11 @@ describe('providers', function() {
             }
             if (p.kind === 'opencode') {
                 return flagValues(p.extraArgs, '--variant').every((v) => v === 'high')
+            }
+            if (p.kind === 'api-anthropic') {
+                //Messages API之effort以output_config.effort表示(未給時Opus 5.5/Haiku 5.5之API預設為medium), 條目必明給high; 不得以thinking關閉
+                let th = p.body && p.body.thinking
+                return p.effort === 'high' && !(th && th.type === 'disabled')
             }
             let body = p.body || {}
             let thinkingOff = !!body.chat_template_kwargs && body.chat_template_kwargs.enable_thinking === false

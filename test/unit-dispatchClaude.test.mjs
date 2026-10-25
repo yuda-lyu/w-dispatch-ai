@@ -139,7 +139,7 @@ describe('dispatchClaude', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('無key概念, 給予key與provider亦不注入OPENCODE_AUTH_CONTENT', async function() {
+    it('給予key與provider時不注入OPENCODE_AUTH_CONTENT(key改為注入子進程之ANTHROPIC_API_KEY, 見unit-dispatchClaudeKey)', async function() {
         let t = await dispatchClaude('abc', { exe: fake.exe, key: 'sk-abc', provider: 'opencode' })
         let o = JSON.parse(t.stdout)
         let r = [t.ok, o.env.OPENCODE_AUTH_CONTENT]

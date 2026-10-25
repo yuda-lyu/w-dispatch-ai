@@ -28,7 +28,8 @@ import describeNonJsonBody from './describeNonJsonBody.mjs'
 // 【與CLI轉接器之差異】prompt走HTTP body無命令列長度限制; 錯誤依HTTP狀態碼精確分流
 //   (401/403金鑰、429限流、5xx服務端), 不再依賴stderr字串猜測; 純completion無agentic
 //   能力(不讀檔不跑指令), 天然無寫檔風險。
-//   注意: claude與codex走訂閱帳號登入態而非API金鑰, 無法比照, 仍須CLI轉接器。
+//   注意: codex走訂閱帳號登入態而非API金鑰, 無法比照, 仍須CLI轉接器; claude預設亦走訂閱登入態(CLI),
+//   2026-10-24起另有以Anthropic Console API金鑰計費之兩條路: dispatchClaude帶key(要工具)與dispatchApiAnthropic(純文字REST)。
 //
 // 【本轉接器不支援工具, 需要工具請改用CLI類kind(2026-08-11實測後之決策)】
 //   閘道端零內建工具: 實測Zen與Agnes皆對`tools:[{type:'web_search'}]`回400並要求

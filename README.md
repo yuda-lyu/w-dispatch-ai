@@ -32,15 +32,16 @@ Note:
 #### Functions:
 | function | description |
 | --- | --- |
-| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'`、`'api-openai-responses'`、`'api-typesafe-systemone'` |
+| `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'`、`'api-openai-responses'`、`'api-anthropic'`、`'api-typesafe-systemone'` |
 | `dispatchAiFallback(prompt, opt)` | call ai with an ordered provider list, auto rotating keys within a group and falling back to the next group |
 | `dispatchAiWkf(opt)` | workflow factory: inject a named provider table once, returns bound `callAi`／`runFanout`／`runRolePipeline`／`runFanoutPipeline` |
 | `dispatchOpencode(prompt, opt)` | call an ai model by opencode cli, supports per-call api key and provider config |
-| `dispatchClaude(prompt, opt)` | call a claude model by claude code cli |
+| `dispatchClaude(prompt, opt)` | call a claude model by claude code cli (subscription login by default; give `opt.key` to bill an Anthropic Console API key instead, see "Claude以API金鑰計費") |
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
 | `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
 | `dispatchApiOpenaiResponses(prompt, opt)` | same, but for the OpenAI **Responses API** (`/responses`) — required by model families that are not served on `/chat/completions` (e.g. OpenCode Zen's muse-spark and GPT families) |
+| `dispatchApiAnthropic(prompt, opt)` | call a claude model by direct fetch to the **Anthropic Messages API** (`POST /v1/messages`, `x-api-key` + `anthropic-version`), text generation only, billed to an Anthropic Console API key (`.env` `ANTHROPIC_KEYS`) |
 | `dispatchApiTypesafeSystemone(prompt, opt)` | call TypeSafe's **jev** decision model (`POST /v1/systemone`): not text generation — the prompt is the state to evaluate and `opt.questions` defines typed yes/no, choice and score questions; returns typed `answers` with probabilities (API only, TypeSafe has no cli) |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
 | `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
@@ -271,6 +272,15 @@ await test()
 38. 內建 providers 新增 `oc:opencode/nemotron-3-ultra-free`、`oc:opencode/nemotron-3.5-lightning-free`、`oc:opencode/nemotron-3.5-super-vl-free`（匿名免費存取、防寫同其餘 `oc:opencode/*` 條目；只有 super-vl 有檔位而帶 `--variant high`，另兩條無檔位不帶），排在 `oc:opencode/glm-5.3-flash-free` 之後、`agy:` 之前（額度少且偏慢，故置於 opencode 免費條目之末）；三者之 REST 遭免費層閘門擋下（403），故無 `zen:` 版。官方載明為 NVIDIA 免費端點、僅供試用，**勿送個人或機密資料**。全取者遞補鏈多三條，內建 providers 由 21 條改為 24 條（量級感受隨之更正）。
 39. 內建 providers 以 `oc:opencode/minimax-m3.1-flash-free` 取代 `oc:opencode/space-bunny-free`：opencode 之 stealth 模型 Space Bunny 恢復真名為 MiniMax M3.1 Flash Free，`space-bunny-free` 已自 CLI 模型清單與官方文件消失、呼叫回 `UnknownError`。新條目置於原位（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），全取者遞補順序與條數不變（仍 24 條）；以舊 id 做 `pick` 者會落入 `missing`，請改用新 id。上下文實測約 1M（以預設設定至 949K token 仍正確作答）；REST 遭免費層閘門擋下（403），故無 `zen:` 版。
 
+**未發布（預計 1.0.56 起）**（Anthropic Console API 金鑰計費：CLI 帶 key 與新 kind `api-anthropic`；皆為新增，**既有 provider 條目與 kind 之行為不變**，下列僅供依賴方檢查列舉式比對與錯誤分類）：
+40. `dispatchClaude` 新增選用參數 `key`：給有效字串才改以 API 金鑰計費（子進程環境設 `ANTHROPIC_API_KEY`、移除 `ANTHROPIC_AUTH_TOKEN`／`CLAUDE_CODE_USE_*`／`CLAUDE_CODE_OAUTH_TOKEN`／`ANTHROPIC_PROFILE`／`ANTHROPIC_FEDERATION_RULE_ID`，並遮蔽結果中的 key，見「Claude以API金鑰計費」）；**未給或非字串時行為與此前完全相同**（env 原樣交 execCli、結果不遮蔽）。此前 `key` 屬「未知鍵」被原樣轉傳 execCli 而無作用（`OWN_KEYS` 不含），現在起給字串即有上述作用——曾對 `claude` 條目誤給 `key`（例如把 `opencode` 條目的金鑰欄位整包展開）者，請檢查。
+41. 新增 kind `api-anthropic`（`dispatchApiAnthropic`，直呼 `POST /v1/messages`）：`Object.keys(adapters)`／`WDispatchAi.KINDS` 由 7 個變 8 個（插在 `api-openai-responses` 與 `api-typesafe-systemone` 之間）；`dispatchAi` 對未知 kind 之錯誤訊息 `(available: …)` 清單相應多 `api-anthropic`；`WDispatchAi` 多匯出 `dispatchApiAnthropic`。依賴上述清單做完整比對者請更新。
+42. 新增 `errorType: 'refusal'`（僅 `api-anthropic`：HTTP 200 且 `stop_reason` 為 `refusal`）：失敗、不重試，`dispatchAiFallback` 視為與金鑰無關而**整組跳過**；依 `errorType` 做監控或分類者請納入。HTTP 非 2xx 之結果另帶 `apiErrorType`（取自錯誤本體 `error.type`）。
+43. `redactText.mjs` 新增匯出 `maskApiKeys`（遮蔽 `sk-ant-` 樣式）、`redactApiKeyText`（先遮蔽指定機密值再遮蔽樣式）與 `createStreamRedactor`（串流遮蔽器，處理被切在兩塊之間的機密值）；既有 `redactText`／`secretHeaderValues` 行為不變。
+44. 內建 providers 新增 6 條：`claude-api:opus-5.5`／`claude-api:sonnet-5.5`／`claude-api:haiku-5.5`（kind `claude`，`envVar: 'ANTHROPIC_KEYS'`）與 `anthropic:opus-5.5`／`anthropic:sonnet-5.5`／`anthropic:haiku-5.5`（kind `api-anthropic`，`envVar: 'ANTHROPIC_KEYS'`），六條依序集中於清單末端（`poolside:laguna-s-2.1` 之後，先 CLI 後 REST）。**全取（不給 `pick`）且 `.env` 有 `ANTHROPIC_KEYS` 者，這 6 條會進入遞補鏈並耗用 API 額度（計費）**；沒有該變數則進 `skipped`，行為與此前相同。需要避免者以 `pick` 自選。`resolveProviders` 輸出之 `providers.length`、`skipped` 因而可能多 6 項。
+45. 文件：新增「Claude以API金鑰計費」與「Options only for dispatchApiAnthropic」；`dispatchAiFallback` 之 `keys` 說明、`adapters.mjs` 選型判準與 `getErrorType.mjs` 之 errorType 一覽同步補述。
+46. `dispatchClaude` 給 `key` 時，子進程環境額外移除**繼承自 `process.env` 之父 Claude Code session 連結變數**：前綴 `CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_` 與完整名稱 `CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`（保留 `CLAUDE_CODE_GIT_BASH_PATH`；`opt.env` 明確傳入者保留）。原因：在 Claude Code 工作階段內呼叫時（例如 agent 派工），子 `claude`（2.1.302 實測）會因這些變數沿用父 session 登入而無視 `ANTHROPIC_API_KEY`（`apiKeySource=none`，實走訂閱額度）。**未給 key 時行為不變**（不移除任何變數）。**影響**：給 key 且依賴「繼承自 shell 之 `CLAUDE_CODE_*` 使用者設定」（如 `CLAUDE_CODE_EFFORT_LEVEL`、`CLAUDE_CODE_USE_POWERSHELL_TOOL`、`CLAUDE_CODE_TMPDIR`）者，請改由 `opt.env` 明確傳入；見「Claude以API金鑰計費」。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -296,6 +306,7 @@ await test()
 #### Options only for dispatchClaude:
 | key | type | default | description |
 | --- | --- | --- | --- |
+| `key` | String | `''` | Anthropic Console之API金鑰（`sk-ant-…`）。**給予有效字串即以API金鑰計費**（與Claude訂閱額度分開計費）：只在**該次子進程**之環境設`ANTHROPIC_API_KEY`（不寫入`process.env`、不進命令列），並自該子進程環境移除會優先於它或與之衝突之憑證變數（`ANTHROPIC_AUTH_TOKEN`、`CLAUDE_CODE_USE_BEDROCK`／`VERTEX`／`FOUNDRY`／`MANTLE`／`ANTHROPIC_AWS`、`CLAUDE_CODE_OAUTH_TOKEN`、`ANTHROPIC_PROFILE`、`ANTHROPIC_FEDERATION_RULE_ID`；`opt.env`中同名者亦移除），**另移除繼承自`process.env`之父Claude Code session連結變數**（前綴`CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_`與`CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`；保留`CLAUDE_CODE_GIT_BASH_PATH`；`opt.env`明確傳入者保留，見下方「在 Claude Code 工作階段內呼叫時」），結果之`stdout`／`stderr`／`error`與`onStdout`／`onStderr`回調收到之文字遮蔽該key（`stderr`／`error`／stderr 回調與失敗之`stdout`另遮蔽`sk-ant-`樣式）；key 含 NUL 字元回`INVALID_KEY`。未給或非有效字串＝沿用登入態，行為與無此參數時完全相同。經`dispatchAiFallback`時由條目之`keys`逐把注入（`claude-api:`條目）。詳見下方「Claude以API金鑰計費」 |
 | `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標，`false`代表保留CLI權限閘門（見上方Security說明）。`extraArgs` **勿帶 `--bare`**：bare 模式不讀 OAuth 登入會直接認證失敗，且官方預告 `--bare` 將成為 `-p` 之預設（屆時訂閱條目會一併失效，見 `dispatchClaude.mjs` 檔頭）；帶 `--restricted` 時本欄須為 `false`（restricted 拒絕 bypassPermissions，2026-09-23 實測同時帶即報錯） |
 
 #### Options only for dispatchCodex:
@@ -330,7 +341,10 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | 這次呼叫要做的事 | 選用 | 理由 |
 | --- | --- | --- |
 | 讀本機檔案、grep、執行指令、抓網頁、寫檔 | **CLI類**：`opencode`／`claude`／`codex`／`antigravity` | CLI本身是agentic harness，自帶完整工具迴圈，呼叫端什麼都不必做 |
-| 摘要、分析、改寫、翻譯、產出JSON（素材皆已在prompt內） | **API類**：`api-openai-compat` | 免安裝免登入，且實測較快（Agnes：API 1~2.5s vs CLI 4~6s） |
+| 摘要、分析、改寫、翻譯、產出JSON（素材皆已在prompt內） | **API類**：`api-openai-compat`／`api-openai-responses`／`api-anthropic` | 免安裝免登入，且實測較快（Agnes：API 1~2.5s vs CLI 4~6s） |
+| Claude、要工具、走**訂閱額度** | `claude`（不給`key`；內建`claude:`條目） | 沿用本機登入態 |
+| Claude、要工具、走**Anthropic API金鑰計費** | `claude` + `key`（內建`claude-api:`條目） | 見下方「Claude以API金鑰計費」 |
+| Claude、純文字、走**Anthropic API金鑰計費** | `api-anthropic`（內建`anthropic:`條目） | 直呼Messages API，不受Claude Code版本與憑證優先序影響 |
 
 **API類不支援工具，且不會自建工具迴圈**——實測（2026-08-11）閘道端零內建工具：Zen與Agnes對 `tools:[{type:'web_search'}]` 皆回400並要求 `function.parameters`，即只接受「呼叫端自行定義且自行執行」的function工具。協定層雖支援function calling（Zen之 `nemotron-3-ultra-free` 與Agnes皆實測回 `finish_reason:'tool_calls'`），但工具的定義、執行、錯誤處理與安全邊界全須自行實作維護，等同重造CLI已提供的harness。故模型回 `tool_calls` 時本套件一律以 `TOOL_CALLS_UNSUPPORTED` 回報失敗，不假裝成功。
 
@@ -345,7 +359,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `/v1/chat/completions` | `api-openai-compat` | deepseek／glm／kimi／minimax／nemotron／ling／mimo 等 |
 | `/v1/responses` | `api-openai-responses` | muse-spark 系、GPT 系、Grok 系 |
 | `/v1/systemone` | `api-typesafe-systemone` | jev 系（TypeSafe System One 決策模型，須給 `questions`） |
-| `/v1/messages` | 本套件無（改用 `opencode` CLI kind） | Claude 系、Qwen 系 |
+| `/v1/messages` | Anthropic 官方端點用 `api-anthropic`；Zen 之 `/messages` 是否相容未驗證，仍改用 `opencode` CLI kind | Claude 系、Qwen 系 |
 | `/v1/models/<id>` | 本套件無（改用 `opencode` CLI kind） | Gemini 系 |
 
 實測佐證：`muse-spark-1.2/1.3` 走 `/chat/completions` 連續 10 次 500，同金鑰同模型改打 `/responses` 立即 200；且 1.2 於 2026-08-21 曾以 `/chat/completions` 成功——**閘道會事後改路由，「以前能用」不構成「現在該能用」**。完整診斷流程見 [src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 檔頭。
@@ -386,6 +400,70 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `budget` | 時間預算用盡 | fallback層 |
 
 僅涵蓋**機械可判**者：CLI類之其餘失敗（額度上限／金鑰無效／服務端錯誤，各家字樣不同且隨版本漂移）一律歸`exec`，套件不維護簽章表（與否決金鑰停用清單同一理由）——需細分時以`coolDetect`式注入自判，或依`tried`內之`error`與`stderr`自行決策。
+
+#### Options only for dispatchApiAnthropic:
+直呼 Anthropic Messages API（`POST <baseURL>/v1/messages`），僅供純文字生成；需要工具請用`claude`（給`key`）。請求形狀：標頭`x-api-key`（金鑰，**非**`Authorization: Bearer`）、`anthropic-version: 2023-06-01`、`Content-Type: application/json`、`Accept-Encoding: identity`；本體`{ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }], system?, output_config?: { effort } }`（**不送**`temperature`／`top_p`／`top_k`／`thinking`／`stream`／`tools`）。
+| key | type | default | description |
+| --- | --- | --- | --- |
+| `model` | String | 必填 | 模型ID，如`claude-opus-5-5`、`claude-sonnet-5-5`、`claude-haiku-5-5`（完整ID，不加日期後綴） |
+| `key` | String | `''` | API金鑰（`sk-ant-…`，`.env`慣用`ANTHROPIC_KEYS`），置於`x-api-key`標頭，省略代表不帶（直連官方端點會401） |
+| `baseURL` | String | `https://api.anthropic.com` | 基底網址（不含`/v1`，尾端`/v1`會被去除），將接上`/v1/messages` |
+| `system` | String | `''` | system提示詞，置於頂層`system`欄位 |
+| `effort` | String | `''` | `low`／`medium`／`high`／`xhigh`／`max`，以`output_config.effort`送出；其他值視為未給。未給時API依模型預設（Opus 5.5與Haiku 5.5為`medium`、Sonnet 5.5為`high`），內建`anthropic:`條目明給`high` |
+| `body` | Object | `{}` | 額外請求本體（`max_tokens`、`thinking`、`output_config`、`fallbacks`等），同名鍵覆寫預設。Opus 5.5／Sonnet 5.5／Haiku 5.5皆為自適應思考（省略`thinking`即開）：Opus 5.5不可關閉思考（`disabled`與`budget_tokens`在任何effort皆400）、Sonnet 5.5的`disabled`為400（須`between_tools`）、三者皆不接受非預設之`temperature`／`top_p`／`top_k`。思考token計入`max_tokens`，長輸出請放寬 |
+| `headers` | Object | `{}` | 額外請求標頭，同名鍵（**不分大小寫**）覆寫預設標頭而不重複送出；如`{ 'anthropic-beta': '…' }` |
+| `timeoutMs`／`maxRetries`／`retryDelayMs`／`validate`／`acceptTruncated` | | | 同`dispatchApiOpenaiCompat`。4xx（429除外）、截斷、拒答不重試；429／5xx（含529）／網路錯誤／逾時依`maxRetries`線性退避重試 |
+
+**`stop_reason`處置**：`end_turn`／`stop_sequence`／未知值＝正常結束；`max_tokens`＝截斷，預設失敗（`errorType: 'incomplete'`、`truncated: true`、不重試，思考耗盡而無可見輸出者即使`acceptTruncated`亦失敗）；`refusal`＝安全分類器拒答（HTTP 200），失敗（`errorType: 'refusal'`、`error: 'REFUSED: stop_reason=refusal (category=…)'`、部分文字在`stdout`、`stop_details`在`stderr`，不重試，遞補層**整組跳過**由下一條目接手）；`tool_use`＝`tool-unsupported`；`pause_turn`＝`incomplete`（非截斷）。回傳之`finishReason`為`stop_reason`小寫原值。
+**HTTP錯誤**皆`errorType: 'http'`、`code`為狀態碼，另帶`apiErrorType`（取自錯誤本體`error.type`：`invalid_request_error`400／`authentication_error`401／`billing_error`402／`permission_error`403／`not_found_error`404／`request_too_large`413／`rate_limit_error`429／`api_error`500／`timeout_error`504／`overloaded_error`529）。
+
+#### Claude以API金鑰計費（`ANTHROPIC_KEYS`；CLI與REST兩條路）:
+使用者持有 Anthropic Console 之 API 額度時（與 Claude Pro／Max 訂閱額度**分開計費**），本套件有兩條路，金鑰來源相同——`.env` 的 **`ANTHROPIC_KEYS`**（逗號分隔多把）：
+
+| | CLI（要工具） | REST（純文字） |
+| --- | --- | --- |
+| kind | `claude` + `key` | `api-anthropic` |
+| 內建條目（`resolveProviders`） | `claude-api:opus-5.5`／`claude-api:sonnet-5.5`／`claude-api:haiku-5.5` | `anthropic:opus-5.5`／`anthropic:sonnet-5.5`／`anthropic:haiku-5.5` |
+| 能力 | Claude Code 工具迴圈（唯讀白名單同`claude:`條目：`--tools Read,Glob,Grep --strict-mcp-config`） | 純文字、無寫檔能力 |
+| 金鑰去向 | 該次子進程環境之`ANTHROPIC_API_KEY` | `x-api-key`標頭 |
+| 與訂閱條目關係 | 與`claude:`同CLI、不同計費路徑，屬不同供應商 | — |
+
+```alias
+import wdi from 'w-dispatch-ai'
+
+//.env:  ANTHROPIC_KEYS=sk-ant-api03-aaaa,sk-ant-api03-bbbb   ← 變數名固定為ANTHROPIC_KEYS
+let env = wdi.readEnvFile('./.env') //不污染process.env
+let { providers, skipped } = wdi.resolveProviders(wdi.providers, {
+    env,
+    pick: ['anthropic:haiku-5.5', 'claude-api:haiku-5.5'], //缺ANTHROPIC_KEYS時這幾條進skipped, 不throw
+})
+let r = await wdi.dispatchAiFallback('請只回覆兩個字：完成', { providers, cooldownMs: 600000 })
+console.log(r.ok, r.stdout, r.providerId, r.keyIndex) //keyIndex為實際使用之金鑰索引, 金鑰本身不出現在回傳、tried與事件
+```
+
+**計費提醒——勿把 Console 金鑰設成全域 `ANTHROPIC_API_KEY`（亦勿用它當`.env`變數名）**：Claude Code 在`-p`模式「一律使用」環境中的`ANTHROPIC_API_KEY`，設成全域或載入`process.env`後，本機**全部** Claude Code（含`claude:`訂閱條目與你自己的工作階段）都會改走 API 計費。本套件內建條目因而只認`ANTHROPIC_KEYS`，金鑰只在該次呼叫由`dispatchClaude`注入子進程。內建單價（claude-api 技能快取，2026-10-06，每百萬 token 輸入／輸出）：Opus 5.5 $4／$20、Sonnet 5.5 $2／$10、Haiku 5.5 $0.10／$0.50（提示詞 ≤100K tokens；超過為 $0.50／$2.50）。內建`claude-api:`與`anthropic:`六條集中於`providers`清單末端，全取遞補時最後才耗用 API 額度（仍建議以`pick`自選，不要全取）。
+
+**CLI 金鑰模式的憑證優先序（2026-10-24 查官方 authentication 文件）**：Claude Code 同時有多種憑證時依序擇一：①雲端供應商選擇器（`CLAUDE_CODE_USE_BEDROCK`／`VERTEX`／`FOUNDRY`／`MANTLE`／`ANTHROPIC_AWS`）②`ANTHROPIC_AUTH_TOKEN`③`ANTHROPIC_API_KEY`④`apiKeyHelper`⑤`CLAUDE_CODE_OAUTH_TOKEN`⑥Anthropic profile／federation⑦訂閱 OAuth（`/login`）。故給`key`時，子進程環境會移除①②（高於③者，殘留即蓋過 key）與⑤⑥（縱深防禦）。環境變數處理不到、仍可能蓋過 key 者：使用者`settings.json`之`env`區塊重設上列變數、已登入之 gateway 工作階段、`ANTHROPIC_BASE_URL`把請求導向他處（key 會被送往那個端點）；`apiKeyHelper`序位低於③，不會蓋過 key——所以**「確實走 API 金鑰」須以輸出驗證，不以設定推定**：
+
+- **CLI**：`extraArgs` 加 `['--output-format', 'stream-json', '--verbose']`，取 stdout 中第一個`{"type":"system","subtype":"init",…}`事件之`apiKeySource`：值為`ANTHROPIC_API_KEY`＝走 API 金鑰；`none`＝以登入態／bearer／雲端供應商認證（**未走 API 金鑰**，須查是否有 gateway 登入、`settings.json` 的`env`或 managed settings）；`apiKeyHelper`／`/login managed key`＝他種金鑰。官方四值：`ANTHROPIC_API_KEY`｜`apiKeyHelper`｜`/login managed key`｜`none`。**`apiKeySource` 是「走 API 金鑰」的必要條件而非充分條件**：它只證明來源種類，不證明是「本次傳入的那把 key」或預期的 Console／端點（例如`settings.json`的`env`另設了`ANTHROPIC_API_KEY`、或`ANTHROPIC_BASE_URL`導向他處時，來源仍顯示`ANTHROPIC_API_KEY`），故另須由 Console 之用量／費用頁（對應該把 key 所屬組織與工作區）核對。
+- **REST**：錯誤時`apiErrorType`與`code`如上；成功時`usage`為 API 回傳之 token 用量（只有 API 金鑰路徑有可靠用量），並可由 Console 用量確認。
+
+**在 Claude Code 工作階段內呼叫時：繼承之父 session 連結變數（2026-10-25，Claude Code 2.1.302 實測）**：若呼叫端本身跑在 Claude Code 工作階段內（例如由 agent 派工），子進程會繼承父 session 注入之連結變數（`CLAUDECODE`、`CLAUDE_CODE_CHILD_SESSION`、`CLAUDE_CODE_ENTRYPOINT`、`CLAUDE_CODE_MESSAGING_SOCKET`、`CLAUDE_CODE_MESSAGING_TOKEN`、`CLAUDE_CODE_SESSION_ID`、`CLAUDE_AGENT_SDK_VERSION`、`CLAUDE_PID`、`CLAUDE_EFFORT` 等），子`claude`因而**沿用父 session 之登入而無視`ANTHROPIC_API_KEY`**——`apiKeySource`為`none`、實際走訂閱額度，即使 key 已正確注入。實測（主控）：全部繼承＋`ANTHROPIC_API_KEY`→`none`；移除繼承之`CLAUDE_CODE_*`、`CLAUDE_AGENT_SDK_VERSION`、`CLAUDE_PID`、`CLAUDE_EFFORT`後→`ANTHROPIC_API_KEY`（stderr 並出現 claude.ai connectors 因`ANTHROPIC_API_KEY`優先而停用之訊息）。官方 env-vars 文件只載明這些變數「由 Claude Code 設定」，未載明巢狀 session 如何沿用登入，**亦未逐一隔離是哪個變數所致**（可用實測腳本之`--bisect`找出），所以本套件以前綴規則整批處理：
+
+- **給`key`時**，`dispatchClaude`自子進程環境移除**繼承自`process.env`**之：前綴`CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_`，以及完整名稱`CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`（Windows 名稱不分大小寫）；只作用於該次子進程，不動`process.env`。
+- **例外保留**：`CLAUDE_CODE_GIT_BASH_PATH`。依官方文件，`CLAUDE_CODE_*`絕大多數是行為偏好（`CLAUDE_CODE_TMPDIR`、`CLAUDE_CODE_SHELL`、`CLAUDE_CODE_USE_POWERSHELL_TOOL`、`CLAUDE_CODE_EFFORT_LEVEL`、`CLAUDE_CODE_SUBAGENT_MODEL`、`CLAUDE_CODE_PLUGIN_*`等），子進程缺它們只是回到預設；唯一「缺了即可能無法啟動」者是 Windows 上 Git Bash 不在`PATH`時用來找它之`CLAUDE_CODE_GIT_BASH_PATH`（此判斷依文件，未實測）。`CLAUDE_CONFIG_DIR`不在上述前綴內，原樣繼承。
+- **呼叫端以`opt.env`明確傳入者保留**（同名以呼叫端值為準，值為`undefined`者維持移除）：要讓子進程保有某個使用者設定（如`CLAUDE_CODE_EFFORT_LEVEL`、`CLAUDE_CODE_USE_POWERSHELL_TOOL`），請由`opt.env`傳入。憑證類（`CLAUDE_CODE_USE_*`、`CLAUDE_CODE_OAUTH_TOKEN`等）不在此列，仍一律移除。
+- **未給`key`時完全不處理**（繼承之連結變數照舊流入，行為與此前相同）。
+- 這是令 key「有機會勝出」之必要修正而非證明；是否確實走 API 金鑰仍依上節以`apiKeySource==='ANTHROPIC_API_KEY'`（必要）加 Console 用量（充分）驗證。
+
+**額度不足／限流之辨識（官方錯誤碼；本套件撰寫時不得發真實請求，未以真實額度不足實測）**：
+- REST（`anthropic:`）：`429 rate_limit_error`（含用量級別月花費上限，該情形無`retry-after`且持續失敗）→ 遞補層內建冷卻觸發（`cooldownMs>0`時降序至鏈尾）並換下一把金鑰；`402 billing_error`、`401 authentication_error`（金鑰無效／撤銷）、`403 permission_error`、`400 invalid_request_error`（官方：亦用於組織或工作區自訂花費上限；第三方回報額度不足的訊息為「Your credit balance is too low to access the Anthropic API」）→ 皆換下一把金鑰，不冷卻。`529 overloaded_error`／`5xx`依`maxRetries`重試。
+- CLI（`claude-api:`）：Claude Code 把 API 錯誤印成文字（stdout 或 stderr 視版本），本套件**不維護簽章表**（見 Known design notes）；要冷卻請以`coolDetect`注入，例如 `coolDetect: (r) => r.errorType !== 'validation' && /credit balance is too low|rate_limit_error|API Error: 429|overloaded/i.test(r.stdout + '\n' + r.stderr)`（字樣取自第三方回報與官方錯誤型別名，**未實測，使用端觀察到實際字樣後調整**）。未注入時失敗仍換下一把金鑰。
+- 兩條路之`refusal`（REST）：整組跳過，不逐把重打。
+
+**金鑰不外洩的範圍與已知限制**：key 只置於該次子進程環境（CLI）或`x-api-key`標頭（REST）；回傳物件（`stdout`／`stderr`／`error`）、`tried`、事件、`FETCH_ERROR`訊息、HTTP 錯誤本體、非 JSON 診斷之回應標頭值、呼叫端`validate`之例外訊息、啟動前 params 錯誤之外來例外訊息一律遮蔽 key 本身，並遮蔽`sk-ant-`樣式（殘段與他把金鑰）；成功之`stdout`為模型輸出，只遮蔽 key 本身（REST 為本次全部機密標頭值），不動合法出現的`sk-ant-…`範例字樣。**CLI 之`onStdout`／`onStderr`回調**（例如把串流寫入`stdout.log`）在 key 模式下收到的是已遮蔽文字：key 被切在兩塊之間以「尾端保留」處理，故尾端可能晚一塊、於結束時補送（stdout 回調只遮蔽 key，stderr 回調另遮蔽`sk-ant-`樣式）。**不在遮蔽範圍／已知限制**：`validate`函數收到的是未遮蔽之原始輸出（它需要原文判斷）；長度不足 6 字元之 key 不遮蔽；`usage`、`finishReason`為伺服器回傳值原樣透傳；CLI 子進程（模型）自身若能讀取其環境（如以 Read 工具讀`/proc/self/environ`，Windows 無此檔）則可能在其輸出中帶出 key，輸出經上述遮蔽不會回到呼叫端，但 CLI 自己的 session 紀錄（`~/.claude/projects`）可能含該輸出——唯讀白名單（`--tools Read,Glob,Grep`）下風險限於讀檔類工具。另：key 含 NUL 字元時 CLI 回`INVALID_KEY`（`errorType: 'exec'`，遞補層換下一把）。
+
+**計費來源的無聲切換（已知限制，不修）**：`dispatchAiFallback`／`resolveProviders` 既有契約是「條目沒有有效`keys`＝沿用登入態」（`keys: []`、全為無效元素，或`resolveProviders`之`patch`把`keys`設空）。內建`claude-api:`條目若被呼叫端以這種方式清空金鑰，會等同`claude:`訂閱條目（改耗訂閱額度）而非失敗；缺`ANTHROPIC_KEYS`時則由`resolveProviders`正確地 skipped。`claude-api:`（CLI）與`anthropic:`（REST）共用同一組`ANTHROPIC_KEYS`與同一 Console 額度，遞補層之游標與冷卻按條目 id 各自獨立：一條遇 429 冷卻，不會自動冷卻其餘五條。
 
 #### Options only for dispatchApiTypesafeSystemone:
 [TypeSafe](https://typesafe.ai) 的 **jev** 是「System One」決策模型：**不產生文字**，而是對一段內容（state）回答你定義的型別化問題，每題回傳受限於你給的選項之答案與機率。官方只提供 API 與 Python／JavaScript SDK，**沒有 CLI**，故本套件只有 API 版（`kind: 'api-typesafe-systemone'`）。權威文件：[API reference](https://docs.typesafe.ai/api)。
@@ -640,7 +718,7 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
 ```alias
 import wdi from 'w-dispatch-ai'
 
-//金鑰放.env(OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS, 逗號分隔多把), 以readEnvFile讀成物件——
+//金鑰放.env(OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS/ANTHROPIC_KEYS, 逗號分隔多把), 以readEnvFile讀成物件——
 //不用process.loadEnvFile: 那會把金鑰塞進process.env, 多專案並行時互相覆蓋
 let env = wdi.readEnvFile('./.env')
 
@@ -677,6 +755,8 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```
 
 **內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（原僅 `zen:space-bunny-free`，該條已於 2026-10-13 移除，現無內建 REST 條目帶此欄），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效。
+
+**Anthropic API 金鑰條目（2026-10-24 起，`claude-api:`×3 與 `anthropic:`×3）**：`envVar` 為 `ANTHROPIC_KEYS`（**不是** `ANTHROPIC_API_KEY`，理由與用法見「Claude以API金鑰計費」）；思考強度同樣 high——`claude-api:` 為 `--effort high`，`anthropic:` 為條目欄位 `effort: 'high'`（轉為 `output_config.effort`；Opus 5.5 與 Haiku 5.5 之 API 預設為 medium，故必須明給）。
 
 **推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；內建之 `poolside:laguna-s-2.1`（開啟思考）即用 32768。
 

@@ -6,9 +6,21 @@
 //
 // 【id命名】依「路徑:模型」規則(詳dispatchAiFallback.mjs檔頭之id設計規則):
 //   oc:＝經opencode CLI(有工具、較慢) / agy:＝antigravity CLI / claude:/codex:＝訂閱登入態CLI
+//   claude-api:＝經Claude Code CLI但以Anthropic Console之API金鑰計費(有工具; 與claude:同CLI、不同計費路徑故為不同供應商, envVar ANTHROPIC_KEYS)
 //   zen:/agnes:/poolside:＝REST直呼(免CLI免登入、快, 純文字生成)
+//   anthropic:＝REST直呼Anthropic Messages API(純文字生成, 以Console之API金鑰計費, envVar ANTHROPIC_KEYS)
 //   typesafe:＝REST直呼之決策模型(非文字生成, 須給questions, 見該條註解)
-//   同一模型之CLI版與REST版屬不同供應商(能力與額度池皆不同), 故各為一條。
+//   同一模型之CLI版與REST版屬不同供應商(能力與故障域不同; 額度池多半也不同), 故各為一條。
+//   例外: claude-api:(CLI)與anthropic:(REST)同用ANTHROPIC_KEYS、共享同一Console額度與帳務, 僅游標與冷卻狀態按條目id各自獨立——
+//   一條遇429冷卻不會自動冷卻其他五條, 全取時同批金鑰可能被六條逐條重探(計費), 建議以pick自選。
+//
+// 【Anthropic API金鑰條目(claude-api:與anthropic:共6條, 2026-10-24新增)】計費條目, 集中於清單末端(全取遞補時最後才輪到, 先CLI後REST):
+//   - 金鑰一律放.env的ANTHROPIC_KEYS(逗號分隔多把), 經readEnvFile讀入、resolveProviders依envVar展開; 缺則該6條自動skipped。
+//     「不得」用ANTHROPIC_API_KEY當.env變數名或設為全域環境變數: Claude Code在-p模式「一律使用」它, 本機全部Claude Code(含claude:訂閱條目與使用者自己的工作階段)會因而改走API計費;
+//     本檔條目刻意只認ANTHROPIC_KEYS, 金鑰只在該次呼叫由dispatchClaude注入子進程環境(見dispatchClaude.mjs檔頭)。
+//   - 要工具(讀檔、grep)用claude-api:(CLI, 防寫白名單同claude:條目); 純文字用anthropic:(REST, 免CLI, 天然無寫檔能力)。
+//   - 限流與額度: REST類429由遞補層內建冷卻觸發; 額度不足/限流之字樣見各條目註解與README「Claude以API金鑰計費」。
+//   - 確認「確實走API金鑰」: CLI類以`--output-format stream-json --verbose`之首個system/init事件apiKeySource須為'ANTHROPIC_API_KEY'(必要條件, 充分條件另核對Console用量); REST類以回應之usage與Console用量。
 //
 // ══════════════════════════════════════════════════════════════════════════════
 // 【OpenCode Zen 接入方式——動 zen:條目前必讀, 免得又把「打錯端點」誤判成「模型壞了」】
@@ -64,7 +76,8 @@
 //     ① 該model id在 /inference/v1/models(舊基底/zen/v1/models同) 清單內;
 //     ② 依官方文件端點欄挑對kind: /chat/completions → api-openai-compat;
 //        /responses → api-openai-responses; /systemone → api-typesafe-systemone(須給questions);
-//        /messages與/models/<id> 本套件尚無對應kind,
+//        /models/<id> 本套件尚無對應kind(/messages雖已有api-anthropic[2026-10-24起], 但它依Anthropic官方協定[x-api-key、anthropic-version]撰寫,
+//        Zen之/messages端點是否接受同樣標頭與本體未驗證, 在實測前不得收為zen:條目),
 //        不得硬收為既有kind(必失敗), 需要時改收其opencode CLI版(oc:);
 //     ③ 實測至少連續數次200(端點時斷時續者仍可收, 但須於條目註解記錄可用率, 見ling條)。
 //
@@ -257,6 +270,9 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           (@ai-sdk/openai-compatible轉為此欄), 與oc:版同參數。agnes接受此欄但同日兩題各兩輪推理token無一致差異,
 //           視為未生效故不帶(其預設即會思考, usage可見推理token)。poolside之思考為開關(chat_template_kwargs.enable_thinking)
 //           而非檔位, 同日由關改開(見該條); jev(systemone)為決策模型無此概念。
+//  anthropic: REST(kind api-anthropic)  條目欄位effort(轉為body.output_config.effort, 2026-10-24): 未給時API依模型預設——Opus 5.5與Haiku 5.5為medium(非high)、
+//           Sonnet 5.5為high——故三條皆明給EFFORT; 三模型皆為自適應思考(省略thinking即開), Opus 5.5不可關閉, 條目不送thinking也不得以disabled關閉(上方測試守門)。
+//           claude-api:(CLI)同claude:條目以--effort表示。
 //  agy      以模型slug之檔位表示(gemini-3.8-flash-high、gemini-4-argon-high、claude-sonnet-5-5-high、claude-opus-5-5-high), 不另帶--effort
 //           (與slug檔位不一致時agy報conflicts)。各模型可選檔位因模型而異(2026-10-16: Gemini 4 Argon與3.8 Flash皆為low/medium/high, 無xhigh/max),
 //           以`agy -p /effort --model <slug> --output-format json`之available查(不耗額度; Git Bash下須加MSYS_NO_PATHCONV=1,
@@ -391,6 +407,10 @@ let providers = [
         //匿名CLI實測(opencode 1.19.3、variant high): 簡答4.9s、推理題4.4s答對、read工具讀相對路徑6.3s正確、
         //要求寫檔被OC_READONLY擋下未落地(write工具不在清單、bash自動拒絕; 此時回空字串而ok:true, 呼叫端宜帶validate)。
         //官方說明為限時免費; 〈Privacy〉載明輸入不用於訓練、為安全理由保留30天
+        //【脈絡長度(2026-10-23實測, opencode 1.19.3)】支援完整1M: 以針在乾草堆(針在開頭、問題在結尾; 本機覆寫limit令伺服器自判)
+        //經CLI實測, 伺服器回報總token 499775/799358/949411/1039300皆答對(14~33s); 1099300時伺服器明確回
+        //「maximum context length is 1048576 tokens」——與型錄一致, 故不覆寫limit。opencode每次自帶約3.2萬token之系統提示。
+        //證據: opensrcOper dhist/20261023185913
     },
     //以下兩條2026-10-18新增(使用者指示): 官方文件〈Models〉〈Pricing〉皆列Free(另有同名付費版deepseek-v4.1-flash、glm-5.3-flash,
     //id不帶-free, 未收)、端點/chat/completions, CLI清單(--refresh)有; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError。
@@ -466,10 +486,19 @@ let providers = [
         useStoredAuth: false,
         config: {
             permission: OC_READONLY,
+            //伺服器實際上限約1,000,000 token(低於型錄1048576, 見下), 覆寫limit令opencode於伺服器拒絕前先在本機自動壓縮脈絡
+            provider: { opencode: { models: { 'nemotron-3.5-super-vl-free': { limit: { context: 1000000, input: 950000, output: 131072 } } } } },
         },
         extraArgs: OC_EFFORT,
         //CLI目錄release_date 2026-10-15; 推理模型, context 1M(1048576)、輸出上限131072、可輸入圖片; 檔位none/minimal/low/medium/high/xhigh。
         //實測(variant high): 簡答8.3s、推理題10.1s、讀檔9.1s、寫檔金絲雀14.1s
+        //【脈絡長度(2026-10-23實測, opencode 1.19.3)】實際上限約1,000,000(略低於型錄): 以針在乾草堆經CLI實測(本機覆寫limit令伺服器自判),
+        //伺服器回報總token 499213/798962/948277/990071/999964皆答對(48~112s); 約101萬與104萬時伺服器6~7s即回
+        //AI_APICallError「Bad Request」(訊息未言明溢位)。若沿用型錄值, 多步對話之脈絡長到100萬~104.8萬之間時opencode不會先壓縮而直接失敗,
+        //故本條目覆寫limit: context 1000000、input 950000、output沿用型錄131072——opencode之本機壓縮門檻(依版本取input或context扣output,
+        //兩者皆低於伺服器上限)於某步用量超過後、下一步前壓縮; 單一則即超過約100萬之提示詞仍會送出而被拒(10-19 deepseek實測壓縮為事後觸發),
+        //呼叫端須自控單則長度。覆寫之效果只實證「設定可被接受」(見證據), 大脈絡下之壓縮行為未實測。
+        //opencode每次自帶約3.8萬token之系統提示。證據: opensrcOper dhist/20261023185913
     },
     {
         id: 'agy:gemini-3.8-flash-high',
@@ -618,6 +647,67 @@ let providers = [
         //不帶此欄即為開啟(推理829、27.6s); false時推理0、3.8s但一題正整數邊長矩形題答錯(12,3,6), true時答對(3,3,3、20.7s)。
         //reasoning_effort於false時HTTP 400、true時接受但推理token無一致差異, 故不帶。開思考後推理token計入max_tokens,
         //依README「推理模型請放寬body.max_tokens」由8192改32768(同日實測接受, 列10縣市題用538)
+    },
+
+    //══ 以下六條為「計費條目」(Anthropic Console之API金鑰, 全取遞補時最後才輪到; 先CLI後REST) ══
+    //claude-api:三條(2026-10-24新增, 使用者指示): Claude Code CLI + Anthropic Console之API金鑰計費(與上方claude:訂閱條目同CLI、不同計費路徑, 故為不同供應商)。
+    //key由resolveProviders自.env的ANTHROPIC_KEYS展開、dispatchAiFallback逐把注入, dispatchClaude只放進該次子進程環境並移除其他憑證變數與繼承之父Claude Code session連結變數(於Claude Code工作階段內呼叫時, 否則子claude沿用父登入而無視key; 見該檔檔頭);
+    //防寫白名單與強度同claude:條目(CLAUDE_READONLY、CLAUDE_EFFORT)。模型寫完整ID(API計費下別名隨CLI版本漂移, 固定ID令計費與行為可預期)。
+    //官方定價(claude-api技能快取, 2026-10-06)每百萬token: Opus 5.5 $4/$20、Sonnet 5.5 $2/$10、Haiku 5.5 $0.10/$0.50(提示詞≤100K tokens)。
+    //驗證確實走API金鑰: extraArgs加['--output-format','stream-json','--verbose'], 首個system/init事件之apiKeySource須為'ANTHROPIC_API_KEY'。
+    //限流/額度不足: CLI類無內建簽章(見dispatchAiFallback檔頭); 失敗時換下一把金鑰, 要冷卻請以coolDetect注入字樣(建議見README「Claude以API金鑰計費」)。
+    //--effort high於opus/sonnet/haiku三模型是否皆被Claude Code 2.1.302接受: 本檔撰寫時未發真實請求實測, 由主控實測回填。
+    {
+        id: 'claude-api:opus-5.5',
+        model: 'claude-opus-5-5',
+        kind: 'claude',
+        envVar: 'ANTHROPIC_KEYS',
+        extraArgs: [...CLAUDE_READONLY, ...CLAUDE_EFFORT],
+    },
+    {
+        id: 'claude-api:sonnet-5.5',
+        model: 'claude-sonnet-5-5',
+        kind: 'claude',
+        envVar: 'ANTHROPIC_KEYS',
+        extraArgs: [...CLAUDE_READONLY, ...CLAUDE_EFFORT],
+    },
+    {
+        id: 'claude-api:haiku-5.5',
+        model: 'claude-haiku-5-5',
+        kind: 'claude',
+        envVar: 'ANTHROPIC_KEYS',
+        extraArgs: [...CLAUDE_READONLY, ...CLAUDE_EFFORT],
+    },
+    //anthropic:三條(2026-10-24新增, 使用者指示): REST直呼Anthropic Messages API(POST https://api.anthropic.com/v1/messages), 純文字生成、以Console之API金鑰計費。
+    //envVar ANTHROPIC_KEYS(同claude-api:條目; 勿用ANTHROPIC_API_KEY, 理由見檔頭【Anthropic API金鑰條目】)。置於清單末端: 全取遞補時最後才耗用API額度。
+    //協定與各模型限制(完整見dispatchApiAnthropic.mjs檔頭【思考與effort】): 皆自適應思考(省略thinking即開, 條目不送thinking)、effort明給high(Opus 5.5與Haiku 5.5之API預設為medium)、
+    //無temperature/top_p/top_k、思考token計入max_tokens(預設16000; 長輸出請於條目或呼叫層覆寫body.max_tokens)。stop_reason處置: max_tokens截斷預設失敗、refusal失敗且整組跳過。
+    //限流/額度(官方錯誤碼): 429 rate_limit_error由遞補層內建冷卻觸發; 402 billing_error、401 authentication_error(金鑰無效/撤銷)、403 permission_error、
+    //400 invalid_request_error(含組織自訂花費上限; 第三方回報額度不足亦為此碼:「Your credit balance is too low to access the Anthropic API」)皆換下一把金鑰。
+    //定價(claude-api技能快取, 2026-10-06)每百萬token: Opus 5.5 $4/$20、Sonnet 5.5 $2/$10、Haiku 5.5 $0.10/$0.50(提示詞≤100K tokens)。本檔撰寫時未發真實請求, 實測由主控回填。
+    {
+        id: 'anthropic:opus-5.5',
+        model: 'claude-opus-5-5',
+        kind: 'api-anthropic',
+        envVar: 'ANTHROPIC_KEYS',
+        effort: EFFORT,
+        //Opus 5.5: 思考不可關閉(disabled與budget_tokens皆400), effort預設medium故明給high; 1M脈絡、輸出上限128K
+    },
+    {
+        id: 'anthropic:sonnet-5.5',
+        model: 'claude-sonnet-5-5',
+        kind: 'api-anthropic',
+        envVar: 'ANTHROPIC_KEYS',
+        effort: EFFORT,
+        //Sonnet 5.5: thinking disabled回400(關思考須用between_tools, 本條目不關); effort預設high(各級重新校準, 與Sonnet 5不同)
+    },
+    {
+        id: 'anthropic:haiku-5.5',
+        model: 'claude-haiku-5-5',
+        kind: 'api-anthropic',
+        envVar: 'ANTHROPIC_KEYS',
+        effort: EFFORT,
+        //Haiku 5.5: 預設開自適應思考; effort預設medium故明給high; 不支援伺服器端fallbacks(帶則400); 提示詞超過100K tokens單價改為$0.50/$2.50
     },
 
 ]

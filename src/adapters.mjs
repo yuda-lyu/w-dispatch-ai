@@ -4,6 +4,7 @@ import dispatchCodex from './dispatchCodex.mjs'
 import dispatchAntigravity from './dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from './dispatchApiOpenaiCompat.mjs'
 import dispatchApiOpenaiResponses from './dispatchApiOpenaiResponses.mjs'
+import dispatchApiAnthropic from './dispatchApiAnthropic.mjs'
 import dispatchApiTypesafeSystemone from './dispatchApiTypesafeSystemone.mjs'
 
 
@@ -15,10 +16,19 @@ import dispatchApiTypesafeSystemone from './dispatchApiTypesafeSystemone.mjs'
 //     所謂工具即: 讀取本機檔案、grep搜尋、執行shell指令、抓取網頁、寫檔。
 //     CLI本身是agentic harness, 自帶完整工具迴圈, 呼叫端什麼都不必做。
 //
-//   純文字生成 → 用API類kind(api-openai-compat)
+//   純文字生成 → 用API類kind(api-openai-compat / api-openai-responses / api-anthropic)
 //     所謂純文字即: 摘要、分析、改寫、翻譯、產出JSON——所有素材都已在prompt內,
 //     模型只需讀prompt再輸出文字, 全程不需要碰外部世界。
 //     免安裝CLI、免預先登入, 且實測比CLI快(agnes: API 1~2.5s vs CLI 4~6s)。
+//
+//   ★ Claude有兩條路, 計費與能力皆不同(2026-10-24) ★
+//     ① 要工具: kind claude(Claude Code CLI)——
+//        未給key: 沿用本機登入態, 走Claude「訂閱額度」(providers.mjs之claude:條目);
+//        給key: 以Anthropic Console之API金鑰計費(providers.mjs之claude-api:條目, .env的ANTHROPIC_KEYS),
+//        key只注入該次子進程, 其他憑證變數自子進程環境移除(詳dispatchClaude.mjs檔頭)。
+//     ② 純文字: kind api-anthropic(直呼POST /v1/messages)——一律以API金鑰計費(providers.mjs之anthropic:條目, 同ANTHROPIC_KEYS),
+//        免CLI、不受Claude Code版本與憑證優先序影響(詳dispatchApiAnthropic.mjs檔頭)。
+//     勿把Console金鑰設為全域環境變數ANTHROPIC_API_KEY: Claude Code在-p模式「一律使用」它, 本機全部Claude Code會因而改走API計費。
 //
 // ══ 為何API類不自建工具迴圈(2026-08-11實測後之決策, 勿再自行推翻) ══
 //
@@ -58,7 +68,7 @@ import dispatchApiTypesafeSystemone from './dispatchApiTypesafeSystemone.mjs'
  * import adapters from './src/adapters.mjs'
  *
  * console.log(Object.keys(adapters))
- * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-typesafe-systemone']
+ * // => ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-anthropic', 'api-typesafe-systemone']
  *
  */
 let adapters = {
@@ -68,6 +78,7 @@ let adapters = {
     'antigravity': dispatchAntigravity,
     'api-openai-compat': dispatchApiOpenaiCompat,
     'api-openai-responses': dispatchApiOpenaiResponses,
+    'api-anthropic': dispatchApiAnthropic,
     'api-typesafe-systemone': dispatchApiTypesafeSystemone,
 }
 

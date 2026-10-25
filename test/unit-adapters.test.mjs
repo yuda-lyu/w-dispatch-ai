@@ -8,6 +8,7 @@ import dispatchCodex from '../src/dispatchCodex.mjs'
 import dispatchAntigravity from '../src/dispatchAntigravity.mjs'
 import dispatchApiOpenaiCompat from '../src/dispatchApiOpenaiCompat.mjs'
 import dispatchApiOpenaiResponses from '../src/dispatchApiOpenaiResponses.mjs'
+import dispatchApiAnthropic from '../src/dispatchApiAnthropic.mjs'
 import dispatchApiTypesafeSystemone from '../src/dispatchApiTypesafeSystemone.mjs'
 
 
@@ -15,13 +16,13 @@ describe('adapters', function() {
 
     it('對照表鍵名即為可用之供應商種類', function() {
         let r = keys(adapters)
-        let rr = ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-typesafe-systemone']
+        let rr = ['opencode', 'claude', 'codex', 'antigravity', 'api-openai-compat', 'api-openai-responses', 'api-anthropic', 'api-typesafe-systemone']
         assert.strict.deepEqual(r, rr)
     })
 
     it('各鍵值皆為函數', function() {
         let r = map(keys(adapters), (k) => typeof adapters[k])
-        let rr = ['function', 'function', 'function', 'function', 'function', 'function', 'function']
+        let rr = ['function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -33,9 +34,10 @@ describe('adapters', function() {
             adapters.antigravity === dispatchAntigravity,
             adapters['api-openai-compat'] === dispatchApiOpenaiCompat,
             adapters['api-openai-responses'] === dispatchApiOpenaiResponses,
+            adapters['api-anthropic'] === dispatchApiAnthropic,
             adapters['api-typesafe-systemone'] === dispatchApiTypesafeSystemone,
         ]
-        let rr = [true, true, true, true, true, true, true]
+        let rr = [true, true, true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 

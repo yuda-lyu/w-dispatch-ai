@@ -20,7 +20,7 @@ import { callHookSync, readCallerObj, errMsg, asText } from './callUserFn.mjs'
 //
 // 【失敗分流】只分兩路:
 //   與金鑰無關之失敗(TIMEOUT/子進程未能啟動(errorType spawn)/參數或設定檢核失敗(errorType params, 含未知kind)/
-//   CLI參數錯誤(離開碼2)/驗證失敗/截斷/工具不支援/本體非JSON) → 整組跳過——
+//   CLI參數錯誤(離開碼2)/驗證失敗/截斷/工具不支援/本體非JSON/模型拒答(errorType refusal, api-anthropic)) → 整組跳過——
 //   同組各金鑰共用同一exe、cwd、旗標與model, 換金鑰必然再敗一次, 純屬空耗;
 //   子進程未能啟動與參數檢核失敗改依errorType判定(2026-10-14起; 此前只認error含ENOENT與未知kind字樣,
 //   致非有效執行檔UNKNOWN/EFTYPE、權限EPERM、命令列過長ENAMETOOLONG、參數含空字元、REST條目缺baseURL/model逐把空耗);
@@ -44,7 +44,7 @@ import { callHookSync, readCallerObj, errMsg, asText } from './callUserFn.mjs'
 //   (使用端實測: 一次107秒的多階段請求中72秒耗在重複踩同一組429, 啟用冷卻後降至15秒)。
 //   設計與「金鑰停用清單」(已否決)的關鍵差異: 以「條目」為單位、短視窗、且「只降序不移除」
 //   ——冷卻中的條目移到鏈尾而非移除, 前面全敗時照樣會被嘗試, 故不存在把已恢復服務冰住的問題;
-//   任一次成功立即解除。內建觸發限於限流(HTTP 429, 僅api-openai-compat可靠偵測; CLI類之
+//   任一次成功立即解除。內建觸發限於限流(HTTP 429, 僅REST類api-*可靠偵測; CLI類之
 //   限流埋在stderr文字中, 各家字樣不同且隨版本漂移, 本套件不維護簽章表)與逾時(TIMEOUT開頭,
 //   各kind皆可)兩類——其餘失敗已有換金鑰換家機制處理, 納入反而誤傷。
 //   CLI類限流之偵測採依賴注入: 呼叫端於實測中觀察到穩定字樣時, 以coolDetect(r)=>Boolean
@@ -284,6 +284,11 @@ function isKeyIndependentFail(r) {
         return true
     }
 
+    //模型拒答(api-anthropic: HTTP 200但stop_reason為refusal, 安全分類器對該請求之判定), 屬模型/請求性質, 同請求換金鑰必然再被拒
+    if (errorType === 'refusal') {
+        return true
+    }
+
     return false
 }
 
@@ -304,7 +309,7 @@ function isKeyIndependentFail(r) {
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Array} opt.providers 輸入供應商條目物件陣列，順序即優先序。各條目除下列鍵外，其餘鍵(kind、model、exe、provider、config、sandbox、timeoutMs等)即該條目之opt原樣透傳對應轉接器
  * @param {String} [opt.providers[].id=條目索引字串] 輸入群組識別字串，游標以此為鍵、亦為日誌標籤，本套件不解讀其內容。須區分到「模型」而非只到「廠商」(如'claude:sonnet'而非'claude')，同一模型經不同路徑取得時須帶上路徑(如'poolside:laguna-s-2.1'與'or:poolside/laguna-s-2.1:free')，且務必唯一。省略時回退為陣列索引字串——索引是位置不是身分，日後插入條目會令後續條目繼承他人游標進度，故正式設定一律明給。詳見本檔檔頭之id設計規則
- * @param {Array} [opt.providers[].keys=[]] 輸入同一服務之多把API key字串陣列，逐次注入輪替(kind為opencode時須同時於條目給予provider)，省略代表沿用CLI既有登入狀態之單一虛擬金鑰
+ * @param {Array} [opt.providers[].keys=[]] 輸入同一服務之多把API key字串陣列，逐次注入輪替(kind為opencode時須同時於條目給予provider；kind為claude時各把即Anthropic API金鑰，只注入該次子進程環境、以API計費，見dispatchClaude；kind為api-anthropic時置於x-api-key標頭)，省略代表沿用CLI既有登入狀態之單一虛擬金鑰
  * @param {*} [opt.providers[].meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳對應轉接器——條目其餘鍵一律原樣轉傳，自有欄位放此鍵可與轉傳機制永久絕緣，預設undefined
  * @param {Number} [opt.budgetMs=null] 輸入整輪遞補之時間上限毫秒正整數，剩餘預算會壓進每次呼叫之timeoutMs，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入單次嘗試之最低剩餘預算毫秒正整數，剩餘低於此值即停止嘗試回報budget exhausted，預設20000

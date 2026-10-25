@@ -70,7 +70,7 @@ describe('resolveProviders', function() {
     })
 
     it('可展開套件內建providers.mjs(以模擬env驗證, 不依賴真實.env)', function() {
-        let fakeEnv = { OPENCODE_KEYS: 'sk-1,sk-2', AGNES_KEYS: 'sk-3', POOLSIDE_KEYS: 'sk-4', TYPESAFE_KEYS: 'apikey_5' }
+        let fakeEnv = { OPENCODE_KEYS: 'sk-1,sk-2', AGNES_KEYS: 'sk-3', POOLSIDE_KEYS: 'sk-4', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_KEYS: 'sk-ant-6' }
         let { providers, skipped } = resolveProviders(providersAll, { env: fakeEnv })
         let r = [
             providers.length === providersAll.length, //各envVar皆有值 → 無停用
@@ -79,6 +79,29 @@ describe('resolveProviders', function() {
             providers.filter((p) => Array.isArray(p.keys)).length > 0,
         ]
         let rr = [true, 0, true, true]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('Anthropic API金鑰條目(claude-api:與anthropic:共6條)只認ANTHROPIC_KEYS: 缺則全數skipped, 且不把ANTHROPIC_API_KEY當金鑰來源(避免使用端誤將Console金鑰載入全域而令Claude Code全面改用API計費)', function() {
+        let ids = ['claude-api:opus-5.5', 'claude-api:sonnet-5.5', 'claude-api:haiku-5.5', 'anthropic:opus-5.5', 'anthropic:sonnet-5.5', 'anthropic:haiku-5.5']
+        let envOnlyApiKey = { OPENCODE_KEYS: 'sk-1', AGNES_KEYS: 'sk-3', POOLSIDE_KEYS: 'sk-4', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_API_KEY: 'sk-ant-api03-MUST-NOT-BE-USED' }
+        let a = resolveProviders(providersAll, { env: envOnlyApiKey })
+        let b = resolveProviders(providersAll, { env: { ...envOnlyApiKey, ANTHROPIC_KEYS: ' sk-ant-api03-K1 , sk-ant-api03-K2,' } })
+        let pick = resolveProviders(providersAll, { env: { ANTHROPIC_KEYS: 'sk-ant-api03-K1' }, pick: ['anthropic:haiku-5.5', 'claude-api:haiku-5.5', 'claude:sonnet'] })
+        let r = [
+            a.skipped.filter((s) => ids.includes(s.id)).map((s) => [s.id, s.envVar]),
+            a.providers.some((p) => ids.includes(p.id)),
+            JSON.stringify(a.providers).includes('MUST-NOT-BE-USED'),
+            b.providers.filter((p) => ids.includes(p.id)).map((p) => [p.id, p.keys, p.envVar]),
+            pick.providers.map((p) => [p.id, p.kind, p.keys]),
+        ]
+        let rr = [
+            ids.map((id) => [id, 'ANTHROPIC_KEYS']),
+            false,
+            false,
+            ids.map((id) => [id, ['sk-ant-api03-K1', 'sk-ant-api03-K2'], undefined]),
+            [['anthropic:haiku-5.5', 'api-anthropic', ['sk-ant-api03-K1']], ['claude-api:haiku-5.5', 'claude', ['sk-ant-api03-K1']], ['claude:sonnet', 'claude', undefined]],
+        ]
         assert.strict.deepEqual(r, rr)
     })
 
