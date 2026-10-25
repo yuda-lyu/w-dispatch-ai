@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>probeAnthropicKeys.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">probeAnthropicKeys.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import isarr from 'wsemi/src/isarr.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import strTruncate from 'wsemi/src/strTruncate.mjs'
+import castPintOr from './castPintOr.mjs'
+import splitKeys from './splitKeys.mjs'
+import { errField, errMsg } from './callUserFn.mjs'
+import { redactApiKeyText } from './redactText.mjs'
+import { classifyRestFailure, classifyFetchError } from './failureKind.mjs'
+
+
+// probeAnthropicKeys.mjs — 對每把Anthropic金鑰送一個極小請求, 回報「此刻能否呼叫」與每分鐘限額標頭
+//
+// 【只判斷「此刻能否呼叫」, 不查餘額】Anthropic一般API金鑰沒有查詢餘額(剩餘額度)的端點(Admin API之用量與費用報告須Admin金鑰, 屬組織層, 不在本函數範圍);
+//   本函數只送POST /v1/messages { max_tokens: 1 }並依回應分類。費用極小(輸入約8個token＋輸出1個token, 預設claude-haiku-5-5約0.000001美元量級)。
+//   「ok」不代表額度充足, 只代表此刻這一次呼叫成功; 沒額度時(餘額歸零或達花費上限)才會轉為'no-credit'。
+//
+// 【分類(kind)】'ok'｜'no-credit'｜'key-invalid'｜'no-permission'｜'rate-limit'｜'overloaded'｜'network'｜'other'
+//   分類規則與遞補層共用failureKind.mjs之classifyRestFailure(HTTP狀態碼、error.type、訊息); 'other'含404(模型不存在或無權使用)、400(非額度類)、500。
+//
+// 【每分鐘限額標頭(limits)】取自回應之anthropic-ratelimit-{requests|tokens|input-tokens|output-tokens}-{limit|remaining|reset}與retry-after
+//   (platform.claude.com/docs/en/api/rate-limits「Response headers」, 2026-10-25查證): limit與remaining為數值，reset為RFC 3339字串；缺席之組為null。
+//   成功回應與429皆可能帶；401/402/403通常不帶。
+//
+// 【金鑰不外洩】回傳只含序號(index)與長度(length)，不含金鑰本體、不含其任何片段；錯誤訊息(detail)先經redactApiKeyText(精確遮蔽該把金鑰＋sk-ant-樣式)；
+//   不寫log、不印出。fetch可注入以利測試(不發真實請求)。
+//
+// 【不reject】任何失敗(含fetch拋錯、非JSON本體)皆以該把之kind回報。
+
+
+//預設值
+let DEFAULT_BASE_URL = 'https://api.anthropic.com'
+let DEFAULT_MODEL = 'claude-haiku-5-5'
+let ANTHROPIC_VERSION = '2023-06-01'
+let DEFAULT_TIMEOUT_MS = 20000
+
+//每分鐘限額標頭之組名 → 標頭名中段
+let LIMIT_GROUPS = {
+    requests: 'requests',
+    tokens: 'tokens',
+    inputTokens: 'input-tokens',
+    outputTokens: 'output-tokens',
+}
+
+
+/**
+ * 由回應標頭取每分鐘限額資訊
+ *
+ * @param {Object} headers 輸入Headers物件(具get方法)，缺席或不可讀時回傳全null
+ * @returns {Object} 回傳物件，內含limits(各組{limit,remaining,reset}或null)與retryAfterSec(數值或null)
+ */
+function readLimitHeaders(headers) {
+    let hget = (name) => {
+        try {
+            let v = headers.get(name)
+            return isestr(v) ? v : null
+        }
+        catch {
+            return null
+        }
+    }
+    let toNum = (s) => {
+        if (s === null || s.trim() === '') {
+            return null
+        }
+        let n = Number(s)
+        return Number.isFinite(n) ? n : null
+    }
+    let limits = {}
+    for (let [k, mid] of Object.entries(LIMIT_GROUPS)) {
+        let limit = toNum(hget(`anthropic-ratelimit-${mid}-limit`))
+        let remaining = toNum(hget(`anthropic-ratelimit-${mid}-remaining`))
+        let reset = hget(`anthropic-ratelimit-${mid}-reset`)
+        limits[k] = (limit === null &amp;&amp; remaining === null &amp;&amp; reset === null) ? null : { limit, remaining, reset }
+    }
+    return { limits, retryAfterSec: toNum(hget('retry-after')) }
+}
+
+
+/**
+ * 對單一金鑰送極小請求並分類(內部使用；dispatchClaude之「沒額度」交叉確認亦用本函數)
+ *
+ * @param {String} key 輸入Anthropic API金鑰字串
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試，預設全域fetch
+ * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串(尾端/v1與斜線會去除)，預設官方端點
+ * @param {String} [opt.model='claude-haiku-5-5'] 輸入模型ID字串，預設claude-haiku-5-5(最便宜)
+ * @param {Number} [opt.timeoutMs=20000] 輸入逾時毫秒正整數，預設20000
+ * @returns {Promise} 回傳Promise，resolve回傳物件，內含kind(分類字串)、ok(kind是否為'ok')、status(HTTP狀態碼，無回應為null)、apiErrorType(錯誤本體error.type，無為'')、detail(錯誤訊息，已遮蔽金鑰，截斷至200字元，成功為'')、limits(每分鐘限額標頭)、retryAfterSec(retry-after秒數，無為null)、durationMs(耗時毫秒)，本函數不會reject
+ */
+async function probeAnthropicKey(key, opt = {}) {
+    let t0 = Date.now()
+    try {
+        return await probeOnce(key, opt)
+    }
+    catch (err) {
+
+        //最後防線: 注入之fetch回傳畸形物件(res.ok／headers／text拋錯)等, 一律以該把other回報, 不reject
+        return {
+            kind: 'other',
+            ok: false,
+            status: null,
+            apiErrorType: '',
+            detail: strTruncate(redactApiKeyText(errMsg(err), [key]), 200),
+            limits: null,
+            retryAfterSec: null,
+            durationMs: Date.now() - t0,
+        }
+    }
+}
+
+
+/**
+ * probeAnthropicKey之實作(可能拋錯，由外層攔截)
+ *
+ * @param {String} key 輸入Anthropic API金鑰字串
+ * @param {Object} opt 輸入設定物件，同probeAnthropicKey
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件
+ */
+async function probeOnce(key, opt) {
+    let t0 = Date.now()
+    let mk = (patch) => ({
+        kind: 'other',
+        ok: false,
+        status: null,
+        apiErrorType: '',
+        detail: '',
+        limits: null,
+        retryAfterSec: null,
+        durationMs: Date.now() - t0,
+        ...patch,
+    })
+
+    let fetchFn = get(opt, 'fetch', null)
+    if (!isfun(fetchFn)) {
+        fetchFn = (typeof fetch === 'function') ? fetch : null
+    }
+    if (fetchFn === null) {
+        return mk({ detail: 'fetch is not available' })
+    }
+    let baseURL = get(opt, 'baseURL', null)
+    if (!isestr(baseURL)) {
+        baseURL = DEFAULT_BASE_URL
+    }
+    let url = baseURL.replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1/messages'
+    let model = get(opt, 'model', null)
+    if (!isestr(model)) {
+        model = DEFAULT_MODEL
+    }
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    let red = (s) => strTruncate(redactApiKeyText(s, [key]), 200)
+
+    let controller = new AbortController()
+    let timer = setTimeout(() => {
+        controller.abort()
+    }, timeoutMs)
+    let res = null
+    let txt = ''
+    try {
+        res = await fetchFn(url, {
+            method: 'POST',
+            headers: {
+                'x-api-key': key,
+                'anthropic-version': ANTHROPIC_VERSION,
+                'Content-Type': 'application/json',
+                'Accept-Encoding': 'identity',
+            },
+            body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+            signal: controller.signal,
+        })
+        txt = await res.text()
+    }
+    catch (err) {
+        clearTimeout(timer)
+
+        //例外之讀取一律防禦(帶拋錯getter之物件不得使本函數reject; 2026-10-25外審#10): 逾時＝network; 其餘依classifyFetchError(有cause.code＝network、標頭值非法＝key-invalid、其餘other)
+        let isAbort = errField(err, 'name') === 'AbortError'
+        let cause = errField(err, 'cause.code')
+        let msg = isAbort ? `TIMEOUT after ${timeoutMs / 1000}s` : (cause !== '' ? cause : errMsg(err))
+        return mk({ kind: isAbort ? 'network' : classifyFetchError(err), detail: red(msg) })
+    }
+    clearTimeout(timer)
+
+    let { limits, retryAfterSec } = readLimitHeaders(res.headers)
+    let hasLimits = Object.values(limits).some((v) => v !== null)
+
+    //限額標頭之文字欄位(reset)來自伺服器, 一律遮蔽金鑰並截斷(2026-10-25外審#1: 不得因伺服器回顯而經limits回傳金鑰)
+    for (let k of Object.keys(limits)) {
+        if (limits[k] !== null &amp;&amp; isestr(limits[k].reset)) {
+            limits[k].reset = strTruncate(redactApiKeyText(limits[k].reset, [key]), 64)
+        }
+    }
+    let base = { status: res.status, limits: hasLimits ? limits : null, retryAfterSec }
+
+    if (res.ok) {
+        return mk({ ...base, kind: 'ok', ok: true })
+    }
+
+    //錯誤本體
+    let apiErrorType = ''
+    let message = ''
+    let errorCode = ''
+    try {
+        let ej = JSON.parse(txt)
+        apiErrorType = String(get(ej, 'error.type', '') || '')
+        message = String(get(ej, 'error.message', '') || '')
+        errorCode = String(get(ej, 'error.details.error_code', '') || '')
+    }
+    catch {}
+    let kind = classifyRestFailure({ status: res.status, apiErrorType, message, errorCode })
+    if (kind === 'context-too-long') {
+        kind = 'other' //探測之極小請求不會脈絡過長(僅閘道之413等), 值域不納入此類
+    }
+    return mk({ ...base, kind, apiErrorType: strTruncate(redactApiKeyText(apiErrorType, [key]), 80), detail: red(message) })
+}
+
+
+/**
+ * 對每把Anthropic API金鑰送極小請求(max_tokens: 1)，回報每把「此刻能否呼叫」之分類與每分鐘限額標頭
+ *
+ * 特點：
+ * 只判斷「此刻能否呼叫」——Anthropic一般API金鑰沒有查詢餘額之端點，本函數無法回報剩餘額度；
+ * 每把一個請求(預設claude-haiku-5-5，費用極小)，依序執行不並行；
+ * 回傳只含序號與長度，不含金鑰本體或任何片段，錯誤訊息遮蔽金鑰；
+ * 分類與遞補層共用同一規則(HTTP狀態碼、error.type與訊息)，'no-credit'含餘額不足與花費上限；
+ * fetch可注入(測試不發真實請求)；
+ * 本函數不會reject
+ *
+ * @param {Array|String} keys 輸入金鑰字串陣列；亦可直接給`ANTHROPIC_KEYS`之原始字串(以逗號分隔，分號視同逗號，同resolveProviders)
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試，預設全域fetch
+ * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串，預設官方端點
+ * @param {String} [opt.model='claude-haiku-5-5'] 輸入探測用模型ID字串，預設claude-haiku-5-5
+ * @param {Number} [opt.timeoutMs=20000] 輸入單把逾時毫秒正整數，預設20000
+ * @returns {Promise} 回傳Promise，resolve回傳物件，內含model(探測用模型)、results(逐把結果陣列，各項含index、length、kind、ok、status、apiErrorType、detail、limits、retryAfterSec、durationMs；kind為'ok'｜'no-credit'｜'key-invalid'｜'no-permission'｜'rate-limit'｜'overloaded'｜'network'｜'other')、summary(各kind之把數物件，另含total)，本函數不會reject
+ * @example
+ * //need network
+ *
+ * import wdi from 'w-dispatch-ai'
+ *
+ * let test = async () => {
+ *
+ *     //金鑰自.env的ANTHROPIC_KEYS取得(readEnvFile不污染process.env)
+ *     let env = wdi.readEnvFile('./.env')
+ *     let r = await wdi.probeAnthropicKeys(env.ANTHROPIC_KEYS)
+ *     console.log(r.summary)
+ *     // => { total: 2, ok: 1, 'no-credit': 1 }
+ *     console.log(r.results.map((x) => [x.index, x.length, x.kind]))
+ *     // => [ [ 0, 108, 'ok' ], [ 1, 108, 'no-credit' ] ]
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function probeAnthropicKeys(keys, opt = {}) {
+    let list = []
+    if (isestr(keys)) {
+        list = splitKeys(keys).keys
+    }
+    else if (isarr(keys)) {
+        list = keys
+    }
+    let model = get(opt, 'model', null)
+    if (!isestr(model)) {
+        model = DEFAULT_MODEL
+    }
+    let popt = isobj(opt) ? opt : {}
+
+    let results = []
+    for (let i = 0; i &lt; list.length; i++) {
+        let key = list[i]
+        if (!isestr(key)) {
+            results.push({ index: i, length: 0, kind: 'other', ok: false, status: null, apiErrorType: '', detail: 'invalid key (not a non-empty string)', limits: null, retryAfterSec: null, durationMs: 0 })
+            continue
+        }
+        let p = await probeAnthropicKey(key, popt)
+        results.push({ index: i, length: key.length, ...p })
+    }
+
+    let summary = { total: results.length }
+    for (let r of results) {
+        summary[r.kind] = (summary[r.kind] || 0) + 1
+    }
+    return { model, results, summary }
+}
+
+
+export default probeAnthropicKeys
+export { probeAnthropicKey, readLimitHeaders }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Oct 25 2026 14:17:49 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
