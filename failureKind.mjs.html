@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>failureKind.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">failureKind.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import isarr from 'wsemi/src/isarr.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import { errField, errMsg } from './callUserFn.mjs'
+
+
+// failureKind.mjs — Anthropic失敗結果之細分類(failureKind)單一來源
+//
+// 【為何需要】errorType只機械分「http/fetch/exec/timeout…」, 同為HTTP 400就分不出「沒額度」與「脈絡過長」,
+//   遞補層因而對兩者一律「換下一把金鑰」: 沒額度時把所有金鑰輪過一遍(誤判額度用盡), 脈絡過長時換金鑰結果必然相同(空耗)。
+//   failureKind是另加的欄位(errorType照舊不動, 兩者並存), 僅api-anthropic與claude帶key之失敗結果帶之, 其餘kind無此欄。
+//
+// 【failureKind一覽】
+//   'no-credit'         沒額度: 402 billing_error、400訊息「Your credit balance is too low…」、使用者自設花費上限之400
+//                       (「You have reached your specified (workspace) API usage limits」)、用量級別月花費上限之429
+//                       (error.details.error_code為enforced_spend_limit_reached, 訊息「You have reached your API usage limits…」)
+//   'context-too-long'  脈絡過長: 400訊息「prompt is too long: N tokens > M maximum」、413 request_too_large; CLI字樣「Prompt is too long」
+//   'rate-limit'        限流: 429 rate_limit_error(扣除上列花費上限者)
+//   'overloaded'        過載: 529 overloaded_error
+//   'key-invalid'       金鑰無效: 401 authentication_error
+//   'no-permission'     金鑰無權限: 403 permission_error
+//   'network'           網路: 連不上(DNS/連線拒絕/TLS)、逾時(含504 timeout_error)
+//   'env-error'         呼叫方式或環境錯誤: 僅CLI——CLI回「沒額度」字樣但同一把金鑰以REST極小請求卻成功(見dispatchClaude之交叉確認)
+//   'other'             其餘(含截斷、拒答、驗證失敗、參數錯誤、500、404、未能辨識者)——遞補層維持既有處置
+//
+// 【依據(2026-10-25查證)】
+//   HTTP狀態碼與error.type: platform.claude.com/docs/en/api/errors(400 invalid_request_error 亦用於自設花費上限; 402 billing_error; 413 request_too_large;
+//     429 rate_limit_error 亦用於用量級別月花費上限; 504 timeout_error; 529 overloaded_error)
+//   花費上限之訊息與判別: platform.claude.com/docs/en/api/rate-limits(「Reaching your spend cap」: 429無retry-after、details.error_code=enforced_spend_limit_reached;
+//     「Setting your own spend limit」: 400, 訊息開頭You have reached your specified API usage limits)
+//   脈絡過長: platform.claude.com/docs/en/build-with-claude/context-windows(「Context window overflow behavior」: 輸入本身超過視窗即400 invalid_request_error「prompt is too long」)
+//   「Your credit balance is too low to access the Anthropic API」: 官方errors頁未逐字載明(第三方回報為400 invalid_request_error), 以訊息比對, 本套件撰寫時未以真實額度不足實測
+//   CLI結構化訊號: code.claude.com/docs/en/agent-sdk/typescript—SDKAssistantMessage.error之值(authentication_failed／oauth_org_not_allowed／account_on_hold／billing_error／
+//     rate_limit／overloaded／invalid_request／model_not_found／server_error／max_output_tokens／cloud_credential_error／unknown)與SDKResultMessage.api_error_status(HTTP狀態碼);
+//     此二者僅出現在 --output-format stream-json 的輸出
+//   CLI字樣(Claude Code 2.1.302之claude.exe內嵌字串, 2026-10-25以grep取得; 是「程式內含之字串」, 不等於各情境之實際輸出, 除標★者外未逐一觸發實測):
+//     ★「Credit balance is too low」(主控2026-10-25於stream-json之assistant與result實測)、「Prompt is too long」、「Invalid API key」(「API Error: 401 Invalid API key」)、
+//     「Unable to connect to API (…)」、「Request timed out」、「Repeated 529 Overloaded errors」、「Server is temporarily limiting requests (not your usage limit)」、
+//     「Request too large (max …)」; Claude Code自身之分類正則含「credit balance (is )?too low」
+//   版本漂移: 字樣隨Claude Code版本改變; 命中不到者歸'other'(安全方向: 維持既有處置), 不會誤判成其他類
+//
+// 【分類只在「失敗」時, 且只認「失敗訊息」】CLI分類不看成功結果, 也不看模型本文(離開碼0、驗證失敗者的stdout是模型輸出, 可能含這些字樣)。
+//   純文字stdout之採信規則(2026-10-25外審#4、#5後收緊): 只取末行(execCli依maxRetries重試時多次嘗試之輸出累積在同一份stdout, 只有最後一次嘗試決定分類),
+//   且須「以Claude Code之錯誤訊息開頭」(RE_CLI_ERROR_START)、單行≤1000字元才採信——模型回答中提到「Prompt is too long」之類字樣(離開碼非零)不得被當成API錯誤;
+//   stdout無證據時才取stderr末三行; stream-json只取最後一個init事件之後之事件, assistant.error／result.api_error_status為協定欄位不受開頭限制。開頭不在清單者歸'other'(維持既有處置)。
+//   fetch例外(收到回應之前)之分類見classifyFetchError: 有cause.code＝network、標頭值非法(金鑰含換行)＝key-invalid、其餘無法判定＝other, 不一律歸網路故障(曾致整組跳過、有效金鑰永遠不試)。
+
+
+//合法值(單一來源; 測試與文件引用)
+let FAILURE_KINDS = [
+    'no-credit',
+    'context-too-long',
+    'rate-limit',
+    'overloaded',
+    'key-invalid',
+    'no-permission',
+    'network',
+    'env-error',
+    'other',
+]
+
+
+//沒額度之訊息
+let RE_CREDIT = /credit balance (?:is )?too low/i
+let RE_SPEND_LIMIT = /you have reached your (?:specified )?(?:workspace )?api usage limits?/i //官方載明之花費上限訊息開頭(400與429)
+
+//脈絡過長之訊息; 「Request too large」為Claude Code字樣, 「Request exceeds the maximum allowed number of bytes」為413本體訊息
+let RE_CONTEXT = /prompt is too long|request too large|request exceeds the maximum allowed number of bytes/i
+
+//CLI文字專用之補充字樣(HTTP狀態與error.type缺席時才用), 逐類比對順序即優先序
+let CLI_TEXT_PATTERNS = [
+    ['key-invalid', /invalid api key|invalid x-api-key|api error: 401|authentication_error|authentication_failed/i],
+    ['no-permission', /api error: 403|permission_error|oauth_org_not_allowed|account_on_hold/i],
+    ['rate-limit', /api error: 429|rate_limit_error|rate limited?|server is temporarily limiting requests|too many requests/i],
+    ['overloaded', /api error: 529|overloaded_error|repeated 529|\boverloaded\b/i],
+    ['network', /unable to connect to api|request timed out|connection error|econnrefused|enotfound|econnreset|etimedout|eai_again|socket hang up|fetch failed|self.signed certificate|ssl (?:error|certificate)/i],
+]
+
+//SDKAssistantMessage.error(官方列舉) → 對應之API error.type(僅用於重用classifyRestFailure)
+let CLI_ASSISTANT_ERROR_TO_TYPE = {
+    billing_error: 'billing_error',
+    authentication_failed: 'authentication_error',
+    oauth_org_not_allowed: 'permission_error',
+    account_on_hold: 'permission_error',
+    rate_limit: 'rate_limit_error',
+    overloaded: 'overloaded_error',
+    invalid_request: 'invalid_request_error',
+    model_not_found: 'not_found_error',
+    server_error: 'api_error',
+}
+
+//CLI文字證據之長度上限(純文字模式之stdout/stderr須夠短才視為錯誤訊息; 長文是模型輸出, 不是失敗訊息)
+let MAX_PLAIN_TEXT = 1000
+
+//純文字stdout之錯誤訊息須「以Claude Code之錯誤訊息開頭」才採信(2026-10-25外審#4): 模型回答中提到「Prompt is too long」之類字樣(開頭不同)不得被當成API錯誤;
+//開頭清單即檔頭所列CLI字樣(claude.exe內嵌字串), 未列入者歸'other'(安全方向: 維持既有處置)
+let RE_CLI_ERROR_START = /^(?:API Error\b|Error: |Credit balance is too low|Prompt is too long|Request too large|Invalid API key|Unable to connect to API|Request timed out|Repeated 529|Server is temporarily limiting|Authentication error|OAuth token)/i
+
+//純文字取「末幾行」為證據(2026-10-25外審#5): execCli依maxRetries重試時，多次嘗試之輸出累積在同一份stdout/stderr，只有最後一次嘗試的失敗才決定最終分類
+let LAST_LINES = 3
+
+
+/**
+ * 由REST失敗之HTTP狀態、error.type與訊息分類(僅用於已知失敗；api-anthropic與CLI之結構化證據共用)
+ *
+ * 優先序: 沒額度(402、billing_error、額度字樣、花費上限字樣與錯誤碼) → 脈絡過長(413、request_too_large、字樣) → 依狀態碼／error.type(401、403、429、529、504) → 'other'
+ *
+ * @param {Object} o 輸入證據物件
+ * @param {Number} [o.status=0] 輸入HTTP狀態碼(未知為0或省略)
+ * @param {String} [o.apiErrorType=''] 輸入錯誤本體之error.type(如'rate_limit_error')
+ * @param {String} [o.message=''] 輸入錯誤本體之error.message(CLI為已收集之失敗文字)
+ * @param {String} [o.errorCode=''] 輸入錯誤本體之error.details.error_code(如'enforced_spend_limit_reached')
+ * @returns {String} 回傳failureKind字串(FAILURE_KINDS之一，不含'env-error')
+ * @example
+ *
+ * import { classifyRestFailure } from './src/failureKind.mjs'
+ *
+ * console.log(classifyRestFailure({ status: 400, apiErrorType: 'invalid_request_error', message: 'prompt is too long: 250000 tokens > 200000 maximum' }))
+ * // => 'context-too-long'
+ *
+ * console.log(classifyRestFailure({ status: 400, apiErrorType: 'invalid_request_error', message: 'Your credit balance is too low to access the Anthropic API.' }))
+ * // => 'no-credit'
+ *
+ * console.log(classifyRestFailure({ status: 429, apiErrorType: 'rate_limit_error', message: 'rate limited' }))
+ * // => 'rate-limit'
+ *
+ */
+function classifyRestFailure(o) {
+    let status = Number(get(o, 'status', 0))
+    if (!Number.isFinite(status)) {
+        status = 0
+    }
+    let t = get(o, 'apiErrorType', '')
+    let apiErrorType = isestr(t) ? t : ''
+    let m = get(o, 'message', '')
+    let message = isestr(m) ? m : ''
+    let c = get(o, 'errorCode', '')
+    let errorCode = isestr(c) ? c : ''
+
+    //沒額度(含花費上限): 先於狀態碼判定——花費上限之429與400都不是一般限流或參數錯誤
+    if (status === 402 || apiErrorType === 'billing_error') {
+        return 'no-credit'
+    }
+    if (errorCode === 'enforced_spend_limit_reached' || RE_CREDIT.test(message) || RE_SPEND_LIMIT.test(message)) {
+        return 'no-credit'
+    }
+
+    //脈絡過長(含請求本體過大)
+    if (status === 413 || apiErrorType === 'request_too_large' || RE_CONTEXT.test(message)) {
+        return 'context-too-long'
+    }
+
+    if (status === 401 || apiErrorType === 'authentication_error') {
+        return 'key-invalid'
+    }
+    if (status === 403 || apiErrorType === 'permission_error') {
+        return 'no-permission'
+    }
+    if (status === 429 || apiErrorType === 'rate_limit_error') {
+        return 'rate-limit'
+    }
+    if (status === 529 || apiErrorType === 'overloaded_error') {
+        return 'overloaded'
+    }
+    if (status === 504 || apiErrorType === 'timeout_error') {
+        return 'network'
+    }
+    return 'other'
+}
+
+
+/**
+ * 逐行解析stream-json輸出(只取以{開頭且可JSON.parse為物件之行，其餘略過)
+ *
+ * @param {String} text 輸入stdout文字
+ * @returns {Array} 回傳事件物件陣列
+ */
+function parseJsonLines(text) {
+    let out = []
+    if (!isestr(text)) {
+        return out
+    }
+    for (let line of text.split(/\r?\n/)) {
+        let s = line.trim()
+        if (s[0] !== '{') {
+            continue
+        }
+        try {
+            let o = JSON.parse(s)
+            if (isobj(o)) {
+                out.push(o)
+            }
+        }
+        catch {}
+    }
+    return out
+}
+
+
+/**
+ * 取文字末幾行(非空行，修剪)
+ *
+ * @param {String} text 輸入文字
+ * @param {Number} n 輸入行數
+ * @returns {Array} 回傳至多n行之字串陣列(依原順序)
+ */
+function lastLines(text, n) {
+    let lines = text.split(/\r?\n/).map((s) => s.trim()).filter((s) => s !== '')
+    return lines.slice(Math.max(lines.length - n, 0))
+}
+
+
+/**
+ * 由fetch例外分類(例外發生於收到回應之前)
+ *
+ * 有cause.code(ECONNREFUSED、ENOTFOUND、ECONNRESET、ETIMEDOUT…或ERR_INVALID_URL等系統/網址層級錯誤)＝'network'(與哪一把金鑰無關)；
+ * 訊息顯示標頭值非法(金鑰含換行等，送出前由fetch拋出，無cause.code)＝'key-invalid'(屬金鑰層，須換把)；
+ * 其餘無法判定者＝'other'(維持既有處置：換下一把)，不憑空歸為網路故障(2026-10-25外審#7: 非法金鑰曾被歸為網路故障致整組跳過)
+ *
+ * @param {*} err 輸入fetch拋出之例外(任意值，讀取一律防禦)
+ * @returns {String} 回傳'network'、'key-invalid'或'other'
+ * @example
+ *
+ * import { classifyFetchError } from './src/failureKind.mjs'
+ *
+ * let e = new TypeError('fetch failed')
+ * e.cause = { code: 'ECONNREFUSED' }
+ * console.log(classifyFetchError(e))
+ * // => 'network'
+ *
+ * console.log(classifyFetchError(new TypeError('Headers.append: "bad\nkey" is an invalid header value')))
+ * // => 'key-invalid'
+ *
+ */
+function classifyFetchError(err) {
+    let code = errField(err, 'cause.code')
+    if (code !== '') {
+        return 'network'
+    }
+    if (/invalid header|header value|header name|invalid character in header/i.test(errMsg(err))) {
+        return 'key-invalid'
+    }
+    return 'other'
+}
+
+
+/**
+ * 由CLI(claude -p)失敗結果之輸出收集分類證據
+ *
+ * stream-json輸出取result事件(is_error為true者之result、errors、api_error_status)與帶error欄位之assistant事件(官方列舉值與其文字區塊)；
+ * 純文字輸出取夠短之stdout與stderr(長文是模型輸出，不是失敗訊息)
+ *
+ * @param {String} stdout 輸入stdout文字
+ * @param {String} stderr 輸入stderr文字
+ * @returns {Object} 回傳物件，內含status(api_error_status數值，無為0)、assistantErrors(帶error欄位之assistant事件的error值陣列)、texts(失敗文字陣列)、structured(是否為stream-json輸出)
+ */
+function collectCliEvidence(stdout, stderr) {
+    let events = parseJsonLines(stdout)
+
+    //多次嘗試(maxRetries)時每次嘗試以init事件起頭: 只取最後一次嘗試之事件
+    let lastInit = -1
+    events.forEach((ev, i) => {
+        if (get(ev, 'type', '') === 'system' &amp;&amp; get(ev, 'subtype', '') === 'init') {
+            lastInit = i
+        }
+    })
+    if (lastInit > 0) {
+        events = events.slice(lastInit)
+    }
+    let status = 0
+    let assistantErrors = []
+    let texts = []
+    for (let ev of events) {
+        let type = get(ev, 'type', '')
+        if (type === 'result' &amp;&amp; get(ev, 'is_error', false) === true) {
+            let st = get(ev, 'api_error_status', null)
+            if (typeof st === 'number' &amp;&amp; st > 0) {
+                status = st
+            }
+            let res = get(ev, 'result', null)
+            if (isestr(res)) {
+                texts.push(res)
+            }
+            let errs = get(ev, 'errors', null)
+            if (isarr(errs)) {
+                for (let e of errs) {
+                    if (isestr(e)) {
+                        texts.push(e)
+                    }
+                }
+            }
+        }
+        else if (type === 'assistant' &amp;&amp; isestr(get(ev, 'error', null))) {
+            assistantErrors.push(ev.error)
+            let blocks = get(ev, 'message.content', null)
+            if (isarr(blocks)) {
+                for (let b of blocks) {
+                    if (get(b, 'type', '') === 'text' &amp;&amp; isestr(get(b, 'text', null))) {
+                        texts.push(b.text)
+                    }
+                }
+            }
+        }
+    }
+    let structured = events.length > 0
+
+    //純文字stdout: 只取末行(最後一次嘗試之失敗訊息)，且須「以Claude Code錯誤訊息開頭」(見RE_CLI_ERROR_START)、夠短才採信
+    if (!structured &amp;&amp; isestr(stdout)) {
+        for (let line of lastLines(stdout, 1)) {
+            if (line.length &lt;= MAX_PLAIN_TEXT &amp;&amp; RE_CLI_ERROR_START.test(line)) {
+                texts.push(line)
+            }
+        }
+    }
+
+    //stderr(CLI自身輸出，非模型本文): 只在stdout/事件沒有證據時才用，取末幾行(其後可能接警告行)；有stdout證據時不混入，免多次嘗試之舊輸出蓋過最後一次
+    //(結構化證據——HTTP狀態或assistant.error——即使沒有文字也算有證據，stderr不得以較高優先序之字樣蓋過它；2026-10-25外審二#1)
+    if (texts.length === 0 &amp;&amp; status === 0 &amp;&amp; assistantErrors.length === 0 &amp;&amp; isestr(stderr)) {
+        for (let line of lastLines(stderr, LAST_LINES)) {
+            if (line.length &lt;= MAX_PLAIN_TEXT * 2) {
+                texts.push(line)
+            }
+        }
+    }
+    return { status, assistantErrors, texts, structured }
+}
+
+
+/**
+ * 由claude CLI(-p)之失敗結果分類(不含「交叉確認」；交叉確認由dispatchClaude以REST極小請求完成，見該檔)
+ *
+ * 前置條件: r須為失敗結果。逾時歸'network'；子進程未能啟動、參數錯誤、輸出驗證失敗歸'other'(它們與API錯誤無關，stdout亦可能是模型輸出)；
+ * 其餘以離開碼非零為前提，依序用: stream-json之api_error_status／assistant.error(結構化) → 失敗文字(沒額度、脈絡過長字樣先，再401/403/429/529/網路字樣) → 'other'
+ *
+ * @param {Object} r 輸入失敗結果物件(取其ok、errorType、error、code、stdout、stderr)
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {String} [opt.stdout=null] 輸入完整stdout文字(execCli失敗結果之stdout只留前500字元，stream-json的result事件在尾端會被截掉，故呼叫端可另傳完整尾段)，預設取r.stdout
+ * @param {String} [opt.stderr=null] 輸入完整stderr文字，預設取r.stderr
+ * @returns {Object} 回傳物件，內含kind(failureKind字串)、detail(命中之失敗文字，截斷至200字元，未遮蔽，呼叫端須先遮蔽金鑰再外送)、source(依據: 'timeout'／'skip'／'api_error_status'／'assistant.error'／'text'／'none')
+ * @example
+ *
+ * import { classifyCliFailure } from './src/failureKind.mjs'
+ *
+ * console.log(classifyCliFailure({ ok: false, code: 1, error: 'Exit code 1', errorType: 'exec', stdout: 'Credit balance is too low', stderr: '' }))
+ * // => { kind: 'no-credit', detail: 'Credit balance is too low', source: 'text' }
+ *
+ */
+function classifyCliFailure(r, opt = {}) {
+    let errorType = get(r, 'errorType', '')
+    let error = get(r, 'error', '')
+    if (!isestr(error)) {
+        error = ''
+    }
+
+    //逾時: 網路類(同REST之逾時)
+    if (errorType === 'timeout' || error.indexOf('TIMEOUT') === 0) {
+        return { kind: 'network', detail: error, source: 'timeout' }
+    }
+
+    //與API錯誤無關者: 未能啟動、參數錯誤、輸出未過驗證(stdout是模型輸出)
+    if (errorType === 'spawn' || errorType === 'params' || errorType === 'validation' || error === 'OUTPUT_VALIDATION_FAILED') {
+        return { kind: 'other', detail: '', source: 'skip' }
+    }
+
+    //離開碼須為非零數值(code為null＝訊號結束等, 無法據以判定)
+    let code = get(r, 'code', null)
+    if (typeof code !== 'number' || code === 0) {
+        return { kind: 'other', detail: '', source: 'skip' }
+    }
+
+    let stdout = get(opt, 'stdout', null)
+    if (!isestr(stdout)) {
+        stdout = get(r, 'stdout', '')
+    }
+    let stderr = get(opt, 'stderr', null)
+    if (!isestr(stderr)) {
+        stderr = get(r, 'stderr', '')
+    }
+    let ev = collectCliEvidence(stdout, stderr)
+    let message = ev.texts.join('\n')
+
+    //結構化: HTTP狀態(result.api_error_status)與assistant.error(官方列舉)換算成API error.type後共用REST規則, 失敗文字併入(額度字樣、脈絡字樣在文字內)
+    let apiErrorType = ''
+    for (let ae of ev.assistantErrors) {
+        let t = get(CLI_ASSISTANT_ERROR_TO_TYPE, ae, '')
+        if (t !== '') {
+            apiErrorType = t
+            break
+        }
+    }
+    let kind = classifyRestFailure({ status: ev.status, apiErrorType, message })
+    let source = (ev.status > 0) ? 'api_error_status' : (apiErrorType !== '' ? 'assistant.error' : 'text')
+
+    //文字專用字樣(結構化證據缺席或只得'other'時)
+    if (kind === 'other') {
+        for (let [k, re] of CLI_TEXT_PATTERNS) {
+            if (re.test(message)) {
+                kind = k
+                source = 'text'
+                break
+            }
+        }
+    }
+
+    if (kind === 'other') {
+        return { kind, detail: '', source: 'none' }
+    }
+
+    //detail, 取最能代表的一段文字(命中者優先, 否則第一段)
+    let pick = ev.texts.find((t) => RE_CREDIT.test(t) || RE_SPEND_LIMIT.test(t) || RE_CONTEXT.test(t) || CLI_TEXT_PATTERNS.some(([, re]) => re.test(t))) || ev.texts[0] || ''
+    let detail = pick.length > 200 ? `${pick.slice(0, 200)}...` : pick
+    return { kind, detail, source }
+}
+
+
+export { FAILURE_KINDS, classifyRestFailure, classifyCliFailure, classifyFetchError, collectCliEvidence, parseJsonLines }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Oct 25 2026 14:17:49 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
