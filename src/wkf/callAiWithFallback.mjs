@@ -134,7 +134,7 @@ function buildChain(providers, spec) {
  * @param {Object} [opt.store=null] 輸入游標持久化物件{get,set}，預設null代表用行程內記憶體
  * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳下層，預設undefined
  * @param {Function} [opt.onEvent=null] 輸入遞補層事件回調函數，預設null。除上列外之其餘鍵(retryDelayMs、maxBuffer、shouldStop、coolDetect、cooldownMs等)亦一律原樣轉傳dispatchAiFallback
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(通過驗證時之解析結果物件，不重解析，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、usage(api類之token用量原樣透傳，CLI類為null)、finishReason(REST文字類之正規化終止原因字串，CLI類為'')、truncated(是否為截斷內容布林值，接受搶救時ok亦可能為true)、error(錯誤訊息字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否取得可用結果布林值)、json(通過驗證時之解析結果物件，不重解析，rawText模式下為文字)、providerId(實際使用之名稱)、keyIndex、keyId、ms(總耗時毫秒)、tried(遞補嘗試歷程陣列)、usage(api類之token用量原樣透傳，CLI類為null)、finishReason(REST文字類之正規化終止原因字串，CLI類為'')、truncated(是否為截斷內容布林值，接受搶救時ok亦可能為true)、error(錯誤訊息字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)，api-anthropic與claude帶key之失敗另帶failureKind(最後一筆失敗之細分類：沒額度、脈絡過長等，見failureKind.mjs；脈絡過長時整條遞補鏈已提前結束，error為'CONTEXT_TOO_LONG: …')與quotaExhausted(組內每一把金鑰皆沒額度之供應商名稱陣列，僅有時)，本函數不會reject
  * @example
  * //need cli in system PATH
  *
@@ -316,6 +316,8 @@ async function callAiWithFallback(prompt, opt = {}) {
         truncated: get(r, 'truncated', false) === true, //接受搶救之截斷內容時ok亦可能為true
         error: ok ? '' : (r.ok ? 'OUTPUT_VALIDATION_FAILED' : get(r, 'error', 'unknown error')),
         ...(ok ? {} : { errorType: r.ok ? 'validation' : get(r, 'errorType', 'exec') }), //機器可讀錯誤類別, 僅失敗時
+        ...(!ok && !r.ok && isestr(get(r, 'failureKind', null)) ? { failureKind: r.failureKind } : {}), //細分類(api-anthropic與claude帶key之最後一筆失敗才有, 見failureKind.mjs), 僅失敗時
+        ...(!ok && !r.ok && isearr(get(r, 'quotaExhausted', null)) ? { quotaExhausted: r.quotaExhausted } : {}), //整組皆沒額度之供應商id, 僅有時
     }
 }
 

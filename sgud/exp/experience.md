@@ -2,31 +2,7 @@
 
 本檔為執行工作時特有之累積經驗,留給後續之嘗試、執行與判斷,由agent自行編列、擴充與維護.
 
-## Windows 上各種「執行檔無法執行」之實際錯誤碼(2026-10-14 實測,node v24.19.0、Windows 11、wsemi 1.9.15)
-
-| 情形 | node 之回報 | 同步/非同步 | execCli 結果 |
-| --- | --- | --- | --- |
-| 名稱不在 PATH、絕對路徑不存在(.exe 或無副檔名) | ENOENT | 非同步 'error' 事件 | code null、pid undefined、attempts 1 |
-| 路徑是資料夾 | ENOENT(不是 EACCES) | 非同步 | 同上 |
-| cwd 不存在 | ENOENT,訊息卻是「spawn <執行檔> ENOENT」(誤指執行檔);**wsemi 1.9.16 起訊息為 `ENOENT: cwd is not an existing folder: <cwd>`** | 非同步 | 同上 |
-| 內容非 PE 之 .exe | UNKNOWN | 同步拋錯 | 1.9.15 起回結果物件,同上;1.9.12 會 reject |
-| 零位元組 .exe、.ps1 | **EFTYPE**(易漏) | 同步 | 同上 |
-| icacls 拒絕 X／R／RX／RD／F | 一律 EPERM(Windows 上重現不出 EACCES) | 同步 | 同上 |
-| 命令列超過 32767 字元(含轉義膨脹) | ENAMETOOLONG | 同步 | 同上 |
-| 參數或環境變數含空字元 | ERR_INVALID_ARG_VALUE(訊息尾段「. Received 值」會帶出內容;wsemi 1.9.15 已去除) | 同步 | 同上 |
-| 不存在之 .cmd 絕對路徑(經 wsemi) | 1.9.15:走 cmd.exe 退路:離開碼 1、stderr 為 Big5 經 UTF-8 解碼之亂碼、會被重試;**1.9.16 起(絕對、相對、只給檔名、.bat 皆然)為 `ENOENT: spawn <路徑> ENOENT`、不重試** | — | 1.9.15:code 1、pid 有值 → exec;1.9.16:code null、pid 鍵 undefined → spawn |
-| npm shim 形狀之 .cmd 存在而入口缺失(經 wsemi) | 1.9.16:仍走 cmd.exe 退路,node 報 Cannot find module、離開碼 1、**依 maxRetries 重試**;**1.9.17 起為 `ENOENT: spawn <入口> ENOENT`(`<入口>` 為 shim 指向之 JS 入口,非 .cmd 本身)、不重試**(2026-10-16 實測四家轉接器、getQuotaCodex、getQuotaAntigravity) | — | 1.9.16:code 1、pid 有值 → exec(attempts 隨 maxRetries,實測 3);1.9.17:code null、pid 鍵 undefined、attempts 1 → spawn;遞補層由 `next-key`／`exec` 變 `skip-group`／`spawn`;quota 由 `exit` 變 `notfound` |
-| env 物件之 getter 拋錯(wsemi 1.9.16) | claude/codex/antigravity:`UNKNOWN: <訊息>` 結果物件;opencode 自行展開 env 故仍 reject;**本套件 1.0.49 起於啟動前以 `readCallerObj` 物化,四家一律 `params`(`env is not readable: …`、attempts 0),不到達 wsemi** | 同步 | wsemi 直呼:code null、pid undefined → spawn;env 為已撤銷 Proxy 時 wsemi 1.9.16 直呼仍 reject(`execCli.mjs:485-486`);**1.9.17 起兩者皆回結果物件(`UNKNOWN: <訊息>`、code null、pid 鍵 undefined、attempts 1)**,本層前置判讀仍須保留,否則被誤歸 spawn(實測:移除後 4 案轉紅,見帳本 R-SPAWN-3) |
-| 直接 `spawn('<不存在>.cmd')`(不經 wsemi) | EINVAL(node 對 .cmd/.bat 之 CVE-2024-27980 防護) | 同步 | — |
-| 4 萬字元之環境變數值 | 可正常啟動(故金鑰過長不會造成 spawn 失敗) | — | 成功 |
-
-教訓:「無法啟動」之錯誤碼隨平台與成因而異,列舉必漏(建議書所列清單即漏 EFTYPE);判定一律用結構(execCli 結果之 code 為 null 且 pid 為 undefined)。
-
-## 比對依賴之新舊版行為:用模組解析掛鉤,不動 repo
-
-- `npm pack wsemi@<舊版> --pack-destination ./tmp/<案名>` 後 `tar -xzf … -C …` 解開;寫一支 `register()` 之 resolve hook,把 `wsemi/src/execCli.mjs` 等指定 specifier 導向舊版副本;以 `node --import ./tmp/<案名>/hook-old.mjs <探測腳本>` 執行。舊版副本內之相對 import 自然走舊版,其外部依賴(lodash-es、tree-kill)沿目錄上溯取 repo 之 node_modules。
-- 探測腳本先自證版本(如檢查 `execCli.toString()` 是否含新版才有之識別字),避免掛鉤未生效而誤判。
-- 審計時之「提議修正」放 `./tmp/<案名>/proto/{src,test}` 副本,`npx mocha --parallel "tmp/<案名>/proto/test/*.test.mjs" --timeout 180000` 驗綠;再把同一份新測試搭現行 src 跑一次驗紅(紅轉綠才算重現測試)。fakeCliForTest 之夾具落點由檔案位置衍生,副本內自會落在副本之 test/tmp。
+> 2026-10-25 整理(檔過長,約 37KB):2026-10-14～16 之舊經驗(Windows 執行檔錯誤碼、依賴新舊版比對、審計／實作流程、agy、wsemi 1.9.17)已抽出至 `experience_20261025.md`(逐字搬移,節號與標題不變);需要久遠經驗時再調閱.
 
 ## 本套件之遞補與錯誤型別
 
@@ -38,58 +14,6 @@
 - 結構判定「code 為 null 且 pid 為 undefined」必須再加「帶自有 pid 鍵」:REST 結果與 `getErrorResult` 物件也是 code null 且無 pid,否則會被誤判為 spawn(獨立複審 R12 抓到;execCli 兩條失敗路徑皆明給 pid 鍵)。
 - undici 對非法標頭值之例外訊息會原文引用整個標頭值(`Headers.append: "Bearer <金鑰>" is an invalid header value.`),且無 cause.code;REST 轉接器以 `cause.code || err.message` 組錯誤字串時即把金鑰帶進 tried、事件與日誌。遮蔽一律走 `src/redactText.mjs`(1.0.48 已實作:`redactText` + `secretHeaderValues`,REST 三家與 fetchQuotaJson 共用)。
 - 「呼叫無法開始」不只發生在 spawn:轉接器組參數(opencode 之 `JSON.stringify(config)`)、呼叫端回調(validate、onStdout)、工作流組 prompt(runRolePipeline／runFanout 之 prompt 函式、null 名額)都會讓呼叫在送出前就失敗;盤點時把「失敗發生點」當成一軸逐一列,不要只看 execCli 內部(初版漏此軸,複審補出 4 個成員)。
-
-## 審計流程之經驗(2026-10-14 run01)
-
-- 獨立複審值得做:自審自認完整之 251 格矩陣,交子代理(opus,能自行讀檔與實跑,prompt 明定「先挑戰表之完整性、再審對標與對稱、最後才審方案」)後又找出 16 項(含金鑰外洩與 3 種 reject),逐項開檔核對後 14 項全採。派工前先寫好表與證據檔,子代理才有東西可挑戰。
-- 本 session 為主控以 `claude -p --output-format json` 派發(print 模式):結束本輪即輸出結果並退出,背景子代理會被一併結束。等待背景子代理改以前景、有上限出口之檢查迴圈(`node ./tmp/<案名>/wait-file.mjs <檔> 540`,單次 ≤ 540 秒)在本輪內等待;先以行程命令列確認模式(`Get-CimInstance Win32_Process` 篩 session id)。
-- 假 CLI 要「卡住不結束」時,單寫 `await new Promise(() => {})` 不夠——事件迴圈沒有計時器時 node 立即以離開碼 13 結束;須另掛 `setInterval(() => {}, 1000)`。
-- 以 Bash 之雙引號包 `node -e` 改檔時,內文之反引號會被 shell 當成指令替換而靜默吞掉(產生缺字之檔案);含反引號之改檔一律用 Edit 工具。另:交給 node 之路徑一律用 `C:/…` 形式,Git Bash 之 `/c/…` 會被 node 解讀為 `C:\c\…`。
-- 實體檢查腳本(自交付文件抽 `檔案:行號` 並印出所引行)能抓到「行號指到 `}`」這類偏移;抓到一例後依同類判準(所引首行為收尾符號)全文掃描。
-
-## 實作流程之經驗(2026-10-14 run02)
-
-- **fetch 之禁用埠不是「連線拒絕」**:node 內建 fetch(undici)依 Fetch 規範之 bad port 清單(1、7、9、…)在連線前即拋 `fetch failed`,`cause.message` 為 `bad port`、**無 `cause.code`**。要測 ECONNREFUSED 須連一個真的沒人監聽之一般埠——本套件用 8651(測試保留段 8650–8699、只連線不監聽)。既有測試 `test/unit-fetchQuotaJson.test.mjs:53`、`test/unit-dispatchApiTypesafeSystemone.test.mjs:144`(埠 9)、`test/unit-dispatchApiOpenaiCompat.test.mjs:150`(埠 1)標題寫連線拒絕/失敗,實為 bad port(斷言只驗類別,仍成立)。
-- **不用 stash/checkout 取得修前紅**:`./tmp/<案名>/make-pre.mjs` 以 `git show HEAD:<路徑>` 寫出 HEAD 版 src、再複製現行 test 到 `./tmp/<案名>/run02-pre/`,於其內跑 mocha。注意:測試檔 import 新匯出(如 `isSpawnFail`)時,整檔 import 失敗,mocha 報一條「Uncaught error outside test suite」且**該檔所有測試(含舊的)都不註冊**——計數時「已註冊 = 總數 − 該檔測試數」;要證斷言層也紅,另用 HEAD 版模組直跑同一組案例。
-- **測試要守住依賴下限**:移除轉接器自建 try/catch 之前提是 wsemi ≥1.9.15;以 run01 之 resolve hook 跑真測試檔 `node --import ./tmp/<案名>/hook-old.mjs node_modules/mocha/bin/mocha.js test/<檔>`,1.9.12 下 T1/T2 為紅(reject),證明測試能抓到依賴被降版。
-- **移除防禦性 catch 後要重跑「它原本吸收的路徑」**:antigravity 之 try/catch 移除後,病態 env(getter 拋錯)由 resolve 變 reject(與另三家一致,屬 wsemi)。靠重跑獨立複審 harness 並逐欄比對新舊輸出才看到;已補記 README 1.0.48 第 17 條之已知例外。不寫「斷言 reject」之測試(那是把缺陷凍結成規格)。
-- **README 為 CRLF、src/test 為 LF**:改 README 用 node 腳本(每個錨點斷言恰出現 1 次、新增換行一律 `\r\n`),改後以 node 數位元組驗 CR 數 = LF 數;Git Bash 之 `grep -c $'\r$'` 數 CRLF 不可靠。
-- **原型與定稿之比對要去掉易變欄**:比對腳本以 JSON replacer 剔除 `durationMs`、`ms`;複審 harness 有把毫秒嵌在字串內者(`fetch/att3/336ms`),逐欄比對時人工判讀為「只差毫秒」。
-- 本環境之權限設定會擋下含 `git stash`、`git tag` 字樣之指令(即使唯讀之 `git stash list`);要證明未 commit 改用 `git log -1` 比對 HEAD。
-
-## 審計流程之經驗(2026-10-14 asyncval run01:注入函數之回傳形態)
-
-- **回呼類問題以「站點 × 回傳形態」逐格子行程實測**:`tmp/asyncval-20261014/cell.mjs`(一格一子行程,guard 模式掛 unhandledRejection 記錄、有記錄者再以 raw 模式(不掛)取離開碼;6 秒看門狗＋keep-alive 計時器判永不落定)＋`run-matrix.mjs`(並行 6、各用一埠)＋`gen-matrix.mjs`(由實測 JSON 與應然規則產表並核對原型)。390 格約 4 分鐘;應然規則寫成函數,原型改完重跑即得「原型符合 N/390」。
-- **回傳形態要含惡意拋出值與 thenable**:已撤銷 Proxy 會讓 catch 內之 `get(err,'message')`/`String(err)` 再拋(REST 與 prompt 因而 reject);then 會拋錯之自訂 thenable、晚於上限才 reject 之 Promise 都要列。
-- **mocha `--parallel` 之假綠**:測試期間之未處理 rejection 若交 mocha,mocha 先判該測試失敗、測試之斷言再判一次 → `ERR_MOCHA_MULTIPLE_DONE`,多檔並行時主行程**不印摘要且離開碼 0**(單檔或 `--no-parallel` 正常)。修前紅之測試要自行收集 rejection(暫移既有監聽、finally 復原,見原型 `test/tools/userFnFormsForTest.mjs` 之 `captureUnhandled`);判讀 mocha 結果一律確認摘要行存在。
-- **改「內部」匯出前先查下游深層匯入**:w-knowledge-extract 以 `w-dispatch-ai/src/checkTruncation.mjs` 之 `safeValidate(ev, s).pass` 同步取用;改 async 會使其條目驗證恆失敗。改簽章前以子代理掃 C:\opensrc 全部 repo 與技能根(`rg --hidden --no-ignore` 補查),相容則新增函數而不改舊者。
-- **以 git archive 取依賴舊版做降版守門**:`git -C <wsemi repo> archive <舊版commit> src | tar -x -C ./tmp/<案名>/w15` 後以 resolve hook 導向,證明新增之依賴下限測試在舊版為紅(不必 npm pack)。
-
-## 實作流程之經驗(2026-10-16 asyncval run03)
-
-- **修前紅不必另建副本即可先跑一次**:測試先搬入 `test/`、src 尚未動時直接 `npm test`(經 quiet-run)即為「新測試配現行 src」;之後要補驗新增之案例,以 `git archive HEAD src | tar -x -C ./tmp/<案名>/run03-pre` 取 HEAD 之 src、複製 `test/` 過去,單檔跑 mocha(`-g` 篩案例)。
-- **以 Bash 之 `node -e "…"` 改檔時,內文之反引號與 `${}` 仍會被 shell 吃掉**(本次踩了三次:①模板字串被替換成空白,產生語法錯誤之 `{ ok:  }`;②③反引號內之檔名被 bash 當指令執行——src 檔、log 檔、JSON 檔被當腳本跑(皆於第 1 行語法錯誤而止,未造成損害)、`git status` 被執行)。**含反引號之內容一律用 Edit／Write,或把改檔腳本寫成 `.mjs` 檔再 `node <檔>` 執行**;不要心存「這次只有一兩個反引號」之僥倖。
-- **下游相容驗證(不改下游 repo)**:複製下游之 `src`、`test`、`package.json` 至 `./tmp/wke-copy`,以 `fs.symlinkSync(<下游 node_modules>, <副本>/node_modules, 'junction')` 掛相依(cmd 之 `mklink /J` 遇中文路徑會亂碼失敗);以 resolve hook 把 `w-dispatch-ai/<路徑>` 導向本 repo,`NODE_OPTIONS="--import=<hook 之 file URL>"` 令 mocha `--parallel` 之 worker 一併生效;hook 每次導向寫一行 marker 檔,以「導向筆數與 PID 數」證明生效(本次 110 筆、7 個行程)。基準同指令不掛 hook。**用完立刻以 `fs.unlinkSync` 移除 junction 並驗目標仍在**——留著的 junction 會讓日後 `rm -rf tmp/` 有穿透刪除下游 node_modules 之風險。
-- **釘住「自上游複製之公式」之測試**:以上游函數原生跑同一情境、與本層逐欄比對(鍵集合、截斷後之 stdout／stderr、code、error、attempts),重試間隔則由子進程把啟動時刻寫檔、比較相鄰間隔(兩者相差 <400ms 且不短於公式值);上游改公式或形狀即紅。降版(wsemi 1.9.15)時此案亦紅(1.9.15 之 execCli 不承接同步拋錯之 validate)——屬預期。**但該次未捕捉例外使測試之 finally 未執行,殘留之時刻檔令下一次全套跑出假紅**(多一行時刻);寫檔型測試一律「開頭先清空自己的暫存夾、夾名帶 pid」。
-
-## agy(Antigravity)非成功結局、額度結構與逾時(2026-10-16 Argon 審計 run01/run02)
-
-- **agy 1.4.0 的非成功結局多為 exit 0**:自身 `--print-timeout` 到時(`[agy] print timeout after Ns with turn in progress; returning partial output`,stdout 為部分輸出、可能為空)、權限閘門擋下(stdout 空、stderr `jetski: no output produced — …`)皆 `ok:true`;只有未知模型是 exit 1(`error: invalid model selection`)。驗遞補層逾時路徑時,假 CLI 必須理會 `--print-timeout` 且 `timeoutMs`>30s,否則會誤得「冷卻有效」(「卡住」假 CLI 配 `timeoutMs` ≤30s 恰落在外層先殺之唯一區間)。真 agy 實證:`timeoutMs: 8000`、長輸出提示詞 → `TIMEOUT after 8s`、`skip-group/timeout`、已冷卻,`tasklist` 無殘留 agy 行程。
-- **描述行為變更時,受影響區間要用會理會旗標的假 CLI 實跑出來,不能只推論**:我寫的行為變更紀錄把受影響區間寫反(原寫「耗時介於 T−30 與 T 者改為 TIMEOUT」,實為「介於舊內層截止點與 T 者由截斷改為完整成功;達 T 者由部分輸出 ok:true 改為 TIMEOUT」),opus 與 sol 兩位外審各自獨立抓到。測試用 T=40000 的假 agy:自然 35 秒者修前於 30 秒截斷(stdout 止於 `29`)、修後完整;自然 50 秒者修前 ok:true、修後 TIMEOUT(約 40 秒的慢測試,列入 `unit-agyFailShapes`)。
-- **推導出來給外部 CLI 的數值要封頂到它能解析的範圍**:agy 拒收超出 Go duration 範圍之 `--print-timeout`(`9007199254770s`、`9223372037s` → exit 2 `invalid duration`;`2147513s` 正常);execCli 計時器上限 2147483647 ms,推導同樣封頂。新公式把原可解析之 `timeoutMs≈9.223e12` 推過邊界(sol F01),這種「加常數」的改動要掃兩端邊界。
-- **`/usage` 讀數閒置時會在兩個值之間跳動**(同帳號 50 秒內:gemini-weekly 0.93→0.07→0.93、Argon 3.91→3.39→3.91;幅度可達 0.5~0.9 個百分點,先前以為 ±0.2),且未動用窗口之 `reset_time`=查詢時刻+窗口(隨查詢漂移)、已動用者固定。耗用量只可作量級參考;Argon 與 Gemini 群組額度池互相獨立(4 次呼叫前後對照),但**額度池獨立不等於故障域獨立**(CLI、登入、網路共用)。`/quota` 為 `/usage` 別名;`agy models` 無 JSON、需 `< /dev/null`;未給 `--model` 時預設 Gemini 4 Argon (Medium);基礎 slug(`gemini-4-argon`+`effort`)可生成。
-- **非有限數:`isnum`/`cdbl`(= `toFinite`)組合會把 `Infinity`/`'1e400'` 換成 `MAX_VALUE`,算式再溢位成 `-Infinity`,夾值後假造成 100%**;十進位以外之字串(`'0x10'`、`'0o7'`、`'0b1'`)經 `Number` 也被當成數值。判有限一律用原值 `Number(v)`,字串另驗十進位;越界值先夾到 [0,1] 再換算,免極大值溢位使結果與 1.7 不一致。共享層 `toQuotaWindow` 亦需同樣判,否則三家對非有限值不一致。
-- **格式漂移要以「結構辨識得到與否」判,不要以窗口數判**:`buckets` 全為空陣列(結構完整)與 `groups:[]` 同屬「agy 未回報限額」,不得誤判 `parse`;parse 結果仍須保留已查得之獨立資料(`withCredits`)——早退路徑容易丟掉先前步驟的結果。
-- **外審流程**:prompt 範本與派工腳本參數化(`tmp/<案名>/review/prompt-base.md`、`dispatch-review.mjs <opus|sol|muse>`);opus 的 `--allowedTools Read,Glob,Grep,Write,Bash --setting-sources project`、sol 的 `workspace-write`+讀檔用 `rg -n '^' -- <檔>`、muse 的 `useStoredAuth:false`+`config.permission {edit:'allow', bash:'ask'}`(bash 不可 deny,否則觸發免費層閘門 403);派工前後以 `manifest.mjs` 對 src/test/README/package/帳本/toolg 雜湊比對,偵測審查者是否改動既有檔。Git Bash 前景 `sleep` 被擋,但前景 `until [ 條件 ] || [ $SECONDS -gt N ]; do sleep 10; done`(單次 ≤540 秒)可用;Monitor 上限約 10 分鐘且需重掛。
-- 修前紅的取得:規則→測試→(src 未動)直接 `npm test` 即得修前紅;需 HEAD 對照時 `git archive HEAD src | tar -x -C ./tmp/<案名>/pre` 配新測試單檔跑 mocha。慢測試(約 40 秒)與全套 `--parallel` 並行,全套 wall 時間仍約 46 秒。
-- 流程自省:①曾因 `cd ./tmp/…` 污染後續相對路徑(第一次審計),一律絕對路徑;②「已證」只標在已存在的產物上;③下游搜尋工具失敗(`timeout rg` 因 `rg` 是 shell 函式而無輸出)要檢查 stderr 檔,不可把空結果當無用法。
-
-## wsemi 1.9.17 連動(2026-10-16 第47項 run03)
-
-- **「只在某平台才成立」的情境用夾具回傳空字串來守門**:npm shim 解析是 Windows 專有(POSIX 的 sh 啟動器不經 `parseJsEntryFromCmd`),故 `createUnstartableExe` 回 `shimNoEntryExe`(POSIX 為 `''`),各列舉測試以 `!== ''` 才納入;`spawnFailCases` 同。不在測試內寫 `process.platform` 分支散落各處。
-- **取舊版 wsemi 做修前紅,`npm pack wsemi@<版> --pack-destination ./tmp/<案名>` 最省事**(免找 wsemi repo 之 commit):`tar -xzf <tgz> -C ./tmp/<案名>/w16 package/src package/package.json`,resolve hook 導向 `w16/package/src`(`execCli`、`execCliJsonRpc` 兩個 specifier 足矣,其餘相對 import 自走舊版副本)。實測 1.9.16 下新增 7 案恰紅、其餘 126 案綠。
-- **「建議保留」類結論要用 mutation 實證**:對 `runExecCli` 之 env 前置判讀,於 `./tmp` 副本把它改成直通,跑現有 env 測試,紅 4 案(3 家轉接器 + `unit-userFnValidate` 表);即現有測試已釘住,不需新增測試。副本放 `./tmp/<案名>/mut/{src,test}`(test 須含 `test/tools`),從 repo 根跑 mocha 即可解析 node_modules。
-- 探測腳本放 `./tmp/<案名>/probe*.mjs`,用相對 import 指到 `../../src`,同一支腳本以 `node --import hook` 切換 wsemi 版本,同欄位並排對照(`errorType`、`code`、`attempts`、有無 pid 鍵、`isSpawnFail`)。
 
 ## opencode 免費模型之實際脈絡長度(2026-10-23 主控實測;證據 opensrcOper `dhist/20261023185913`)
 
@@ -118,3 +42,18 @@
 - **移除規則的取捨**:要移除的是**繼承自 `process.env`**者,不是呼叫端 `opt.env` 明確傳入者(後者代表呼叫端的意圖,如 `CLAUDE_CODE_EFFORT_LEVEL`);保留清單只放「缺了子進程可能無法啟動」者(Windows 的 `CLAUDE_CODE_GIT_BASH_PATH`),行為偏好類缺了只是回預設.判定「呼叫端已傳入」用「同名含大小寫已在 env 物件內」——wsemi `execCli` 在 Windows 對 `envExtra` 與繼承值做不分大小寫的同名覆蓋(`buildSpawnEnv`),值為 `undefined` 者展開後由 Node `spawn` 略過,故以 `undefined` 標記即移除繼承值.
 - **測試與工具的坑**:①`withEnv` 還原順序:Windows 的 `process.env` 不分大小寫,同一 patch 內 `CLAUDE_CODE_SESSION_ID`(cleanParent 先刪)與 `claude_code_session_id`(後設)是同一個變數,**必須逆序還原**,否則先還原真實值又被後者的 `delete` 抹掉(會把測試行程自己的 session 變數永久刪掉);②`this.skip()` 在 `it(function(){})` 內可用(非 arrow);③變異工具 `mutate.mjs` 的 `from` 樣式遇多行須用 `\n`,CRLF 檔由工具自行轉換;④實測腳本若要印環境變數**只印名稱不印值**(`CLAUDE_CODE_MESSAGING_TOKEN` 是權杖),離線驗收以「輸出不含假權杖值」守門.
 - **離線驗收法**(不發真實請求):假 claude 設定「作祟變數在場即 `apiKeySource=none`」,跑實測腳本的 `--control`(不給 key,應仍見全部連結變數)與 `--bisect`(逐一傳回單一變數,應只有作祟者翻回 `none`),即驗了腳本判讀與 `--bisect` 邏輯;真實元兇由主控以真實 `claude` 跑 `--bisect` 取得.
+
+## 失敗細分類 `failureKind` 與遞補處置(2026-10-25 dispatch-run01 修正輪;帳本 `rulebook_failurekind.md` R-ANTHROPIC-5)
+
+- **問題的形狀**:CLI 回「Credit balance is too low」**不等於**沒額度(主控重現:`env:{ANTHROPIC_API_KEY}`＋`--bare` 時 CLI 稱沒額度,同金鑰經 `key` 參數與 REST 皆正常),子代理據此誤判「API 額度用盡」.教訓:**單一來源的失敗字樣不足以判額度**,須用另一條獨立路徑(REST 極小請求)交叉確認;REST 成功就是「呼叫方式或環境錯誤」,不是額度.同理「沒額度」與「脈絡過長」同為 HTTP 400,只靠 `errorType` 分不出,遞補層一律換金鑰會把所有金鑰輪過一遍(誤判用盡)或對必然相同的結果空耗.
+- **`execCli` 失敗時 stdout 只留前 500 字元**(`strTruncate` 取頭,wsemi `execCli.mjs`:306)——stream-json 輸出的 result 事件在**尾端**,failure 結果裡看不到;所以 CLI 分類要靠 `onStdout`／`onStderr` 另錄尾段(分類用,不外送).寫 CLI 失敗分類前先看失敗結果實際保留什麼,別假設 `r.stdout` 是完整輸出.
+- **官方依據的取得法**(不發請求):`WebFetch` 官方頁——errors(HTTP 碼與 `error.type`)、rate-limits(花費上限:自設=400「You have reached your specified … API usage limits」,月上限=429＋`error.details.error_code: enforced_spend_limit_reached`＋無 `retry-after`;限額標頭 `anthropic-ratelimit-*`)、context-windows(輸入本身超過視窗=400「prompt is too long」;4.5 以後「輸入＋max_tokens 超過」不是錯誤,`stop_reason: model_context_window_exceeded`)、agent-sdk/typescript(`SDKAssistantMessage.error` 十二值、`SDKResultMessage.api_error_status`;頁面長,`WebFetch` 要分段 `offset` 讀).「Your credit balance is too low to access the Anthropic API」官方 errors 頁**未逐字載明**,只能標註為第三方回報.
+- **CLI 字樣取得法**:`grep -a -o -E "Credit balance is too low[^\"]{0,120}" ~/.local/bin/claude.exe`(290MB 原生執行檔,單次約數十秒).取得的是「程式內含之字串」(含 `Prompt is too long`、`Invalid API key`、`Unable to connect to API (${…})`、`Repeated 529 Overloaded errors`、`Server is temporarily limiting requests (not your usage limit)`、`You've hit your limit` 等),**不等於各情境實際輸出**;文件須標明哪些經實測(僅「Credit balance is too low」)、哪些未實測.Claude Code 自己的分類正則含 `credit balance (is )?too low|usage limit reached`.
+- **額度池跨條目共享**:`claude-api:` 與 `anthropic:` 共用同一組 `ANTHROPIC_KEYS` 與同一 Console 額度,所以「某把沒額度」是**金鑰層級**事實而非條目層級——游標與條目冷卻(以 id 為鍵)表達不了,故用金鑰指紋(sha256 前 16 碼;**store 不存金鑰本體**)做本次呼叫內 `deadKeys` 與 `cooldownMs>0` 時的跨呼叫 `keyCooling`.範圍限「官方端點」(`kind` 為 `api-anthropic`／`claude` 且未自訂 `baseURL`),因為自訂閘道的額度與該把金鑰未必同池.
+- **注入 `fetch` 讓 CLI 條目也可離線測交叉確認**:條目的 `fetch` 鍵經遞補層原樣轉傳 `dispatchClaude`(`OWN_KEYS` 含它,不外傳 execCli)與 `dispatchApiAnthropic`;測試用 `fetch: (url, init) => fetch(`${srv.url}/v1/messages`, init)` 把請求轉向本機假伺服器,假伺服器 `by-key` 路由依金鑰字樣給不同結果,配合 `crossCheckModel: 'by-key'` 即可同時模擬「CLI 稱沒額度,REST 確認／否認」.條目不能設 `baseURL`(會被視為自訂端點而不屬官方範圍),所以改用注入的 `fetch`.
+- **測試一次全綠要懷疑**:新測試第一次跑 211 條全過,必須做「修前紅」(`git archive HEAD src` 解到 `./tmp/…/red/src`,疊上新測試與 `test/tools`,逐檔跑:92 條 failing,通過者皆為「不得改變」守門)與變異驗證(`tmp/dispatch-run01/mutate.mjs`,於副本套變異、須至少一條 failing);變異工具要先跑基準(未變異須全綠),`find` 須恰出現一次否則標 BAD_MUTANT.`runTests.mjs` 逐檔跑 mocha(模組不存在時整檔 failing 為 0 但 exit 1,需標 MODULE_NOT_FOUND).
+- **與鎖共處**:`quiet-run --lock` 在他套件長時間持鎖時會等很久(本輪等 8 分 20 秒);等待期間做文件、不要輪詢;摘要若報他套件之殘留鎖(持有者 pid 已不存在)只回報主控,不處理.
+- **分隔符處置的取捨**:使用者以分號分隔 `ANTHROPIC_KEYS` 致整串當成一把(得到 401 而非明顯的設定錯誤).選「`*_KEYS` 遇分號視同逗號＋warning」而非只警告:內建供應商金鑰字元不含分號,自動拆開貼近意圖,warning 避免靜默;只作用於複數形 `_KEYS` 以保相容,並留 `splitSemicolon: false` 出口.
+- **外審(sol,gpt-6.1-sol max,唯讀沙箱,16 分鐘)二十條,逐條讀碼核對後 18 條屬實或部分屬實並已修**——自審與測試全綠漏掉的共通形狀:①**把「條目欄位」當成「實際行為」**:以 `baseURL` 判官方端點,但 CLI 經 `ANTHROPIC_BASE_URL`(條目 env／process.env)改端點、REST 的 `headers` 可覆寫 `x-api-key`,金鑰指紋因而代表了未實際使用的金鑰→範圍判定要看**實際生效的端點與認證**,看不到者(settings.json 的 env)寫成已知限制;②**新分類器的輸入證據邊界**:全文搜尋關鍵字會把「提到關鍵字的短模型回答」(離開碼非零)誤判成 API 錯誤——純文字須**以已知錯誤訊息開頭、只取末行**;同理 execCli 重試時多次嘗試的輸出**累積在同一份** stdout,只有最後一次嘗試決定分類(stream-json 取最後一個 `init` 之後);③**一律歸類的捷徑會推翻舊行為**:`fetch` 例外一律歸 `network` 令「金鑰含換行」(須換把)變成整組跳過、有效金鑰永遠不試——改為有 `cause.code`＝network、標頭非法＝key-invalid、其餘＝other(維持既有);④**新增的旁路請求要共用同一個期限**:交叉確認原本重新拿完整 timeout,突破遞補層 `budgetMs` 契約——扣掉 CLI 已耗時並併入 `durationMs`;⑤**新 helper 的錯誤處理本身也要防禦**:探測的 catch 內用 `get(err,'name')` 遇拋錯 getter 會 reject——一律 `errField`／`errMsg`＋最後防線;⑥**兩條路對稱**:REST 的月花費上限 429 因原始 `code===429` 提前冷卻條目,CLI 路徑不會——有 `failureKind` 者只認 `rate-limit`;⑦**測試要隔離證據來源**:純分類器測過 `error_code`,轉接器是否接線須另以「訊息 opaque、只有 error_code」案例驗(假伺服器新增 `err-spend-cap-opaque-429`);變異驗證當初的 `lastResult = dead` 變異存活,即因為所有測試的情境讓「新舊 lastResult 恰好相同」.
+- **第二輪外審(同一審查者,針對修正)九條,七條屬實並已修**,教訓:①**修正本身要被再審**——「stdout 無證據時才取 stderr」漏算了「只有結構化欄位(HTTP 狀態、assistant.error)而無文字」也是證據,stderr 的 `Prompt is too long` 字樣因優先序較高而蓋過 429;②**不要用「累積串流」判定「最後一次嘗試」**:`execCli` 失敗結果的 `stdout`／`stderr` 本來就只屬最後一次嘗試(每次嘗試各自累積、只留前 500／1000 字元),`onStdout` 才是跨嘗試累積;所以未被截斷時直接用結果的 stdout,被截斷(長輸出)才改用累積尾段(靠 stream-json 的 `init` 分段),別靠「輸出有換行」這個沒保證的格式;③**新增的前置檢查也受「呼叫端物件只讀一次」契約約束**:範圍檢查讀 `env.ANTHROPIC_BASE_URL` 多執行了一次 getter——改用屬性描述子判讀(存取子保守視為範圍外);④**「不共享」與「不累計」是兩件事**:`headers` 覆寫認證時雖已不共享略過,失敗仍被算在 `keys[]` 每一把頭上而報出 `QUOTA_EXHAUSTED`——要另設「keys[] 即實際認證」旗標(`trusted`),與「官方端點」(`scoped`)分開;⑤**提前返回的路徑要和主路徑一樣彙總**(脈絡過長提前返回遺失先前已確認的 `quotaExhausted`);⑥**測試的標題與實際案例要一致**(標題寫 `x-api-key／authorization` 卻只測前者,且覆寫值恰為 `keys[0]` 而抓不到錯誤累計)——凍結 state 的防線同理,要有真的凍結案例才算被守住.
+- **未驗證(待主控實測)**:真實 CLI 額度不足時之實際輸出與離開碼(假設非零;若為 0 則 `execCli` 回 `ok: true`,本套件不會把它當失敗,屬既有行為)、`max_tokens: 1` 於 `claude-haiku-5-5`(自適應思考)之接受度、「credit balance is too low」之真實 HTTP 碼與 `error.type`、真實 `prompt is too long` 逐字格式.實測腳本 `agent-out/dispatch-run01-evidence/dispatch-run01-real-check.mjs`.

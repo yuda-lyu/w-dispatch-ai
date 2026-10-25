@@ -1,6 +1,9 @@
 # 規則帳本(類型:anthropic)
 
-> 自 `rulebook.md` 抽出(2026-10-25 依全域 sgud 規則整理:過長即依類型拆檔;節號與標題不變,不刪內容,只搬移).類型說明:Anthropic API 金鑰計費:CLI 帶 key 與 kind api-anthropic(R-ANTHROPIC-1～3).主檔索引見 `sgud/rule/rulebook.md`.
+> 自 `rulebook.md` 抽出(2026-10-25 依全域 sgud 規則整理:過長即依類型拆檔;節號與標題不變,不刪內容,只搬移).類型說明:Anthropic API 金鑰計費:CLI 帶 key 與 kind api-anthropic(R-ANTHROPIC-1～3)、父 session 連結變數(R-ANTHROPIC-4)、失敗細分類與遞補處置(R-ANTHROPIC-5,2026-10-25 dispatch-run01 新增).主檔索引見 `sgud/rule/rulebook.md`.
+
+> 2026-10-25 起 R-ANTHROPIC-5(失敗細分類 `failureKind`、CLI「沒額度」REST 交叉確認、遞補依分類處置、金鑰探測、`*_KEYS` 分隔符)及其變異驗證表(94 個)抽出至 `sgud/rule/rulebook_failurekind.md`(節號與標題不變);測試檔與盤點指令照該檔所載.
+
 
 ## Anthropic API 金鑰計費:CLI 帶 key 與 kind `api-anthropic`(2026-10-24 立)
 
@@ -109,9 +112,13 @@ run03 修前紅:在 run02 源碼(未改 `dispatchClaude.mjs`)上先寫 R08 十�
 
 ### 文件同步點(改上列規則時一併改)
 
+(R-ANTHROPIC-5 之失敗細分類／交叉確認／遞補處置／探測／分隔符:文件同步點為 README「Claude以API金鑰計費」之「失敗細分類 failureKind」起至「勿用 --bare 與 env 傳金鑰」各段、行為變更紀錄第 47–52 條、各檔頭與 JSDoc,測試與盤點指令見 `rulebook_failurekind.md`.)
+
 README:Functions 表、Options only for dispatchClaude(`key`)、Options only for dispatchApiAnthropic、「Claude以API金鑰計費」(含「在 Claude Code 工作階段內呼叫時:繼承之父 session 連結變數」)、Choosing CLI or API 表、providers.mjs 段、行為變更紀錄第 40–46 條;`src/adapters.mjs` 檔頭(選型判準)、`src/dispatchClaude.mjs`(檔頭【key模式——繼承之父session連結變數】與 JSDoc)與 `src/dispatchApiAnthropic.mjs` 檔頭、`src/providers.mjs` 檔頭與條目註解、`src/getErrorType.mjs` errorType 一覽(`refusal`、`incomplete` 補述)、`src/dispatchAiFallback.mjs`(失敗分流與 `keys` 說明)、`src/redactText.mjs`.
 
 ### 驗證指令
+
+- 2026-10-25 dispatch-run01 修正輪後全套為 772 passing(含 R-ANTHROPIC-5 之六個新測試檔),細節與變異驗證見 `rulebook_failurekind.md`.
 
 - `node C:/opensrcOper/tools/quiet-run.mjs --lock --name <名> -- npx mocha --parallel "test/*.test.mjs" --timeout 180000`(全套約 45 秒,2026-10-25:run02 為 516 passing,run03 加 R08 十條後 526 passing).
 - 本輪新增或改動之測試:`test/unit-dispatchClaudeKey`、`unit-dispatchApiAnthropic`、`unit-redactText`、`unit-providersAnthropicEntries`、`unit-providers`、`unit-resolveProviders`、`unit-adapters`、`unit-WDispatchAi`、`unit-dispatchAi`、`unit-dispatchClaude`.

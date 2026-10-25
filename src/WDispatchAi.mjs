@@ -22,6 +22,7 @@ import NO_SIDE_EFFECT from './wkf/noSideEffectPrefix.mjs'
 import getQuotaClaude from './quota/getQuotaClaude.mjs'
 import getQuotaCodex from './quota/getQuotaCodex.mjs'
 import getQuotaAntigravity from './quota/getQuotaAntigravity.mjs'
+import probeAnthropicKeys from './probeAnthropicKeys.mjs'
 
 
 // WDispatchAi.mjs — AI供應商分派層
@@ -39,7 +40,7 @@ let KINDS = keys(adapters)
 /**
  * AI供應商分派
  *
- * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、dispatchApiOpenaiResponses、dispatchApiAnthropic(Anthropic Messages API，以Console API金鑰計費)、dispatchApiTypesafeSystemone(TypeSafe jev之型別化決策API，非文字生成)之async函數，providers(預設providers定義檔)與resolveProviders(envVar展開器)，以及readEnvFile(讀.env不污染process.env)、budgetFor(遞補鏈時間預算推導)、createFileStore(store檔案持久化)、createUsageCounter(逐日用量計帳)、salvageTruncatedArray(截斷陣列搶救)、NO_SIDE_EFFECT(防副作用prompt前綴)等工具，以及getQuotaClaude、getQuotaCodex、getQuotaAntigravity(查詢各訂閱制CLI本機登入帳號之額度窗口，統一結構，可比對指定email)
+ * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、dispatchApiOpenaiResponses、dispatchApiAnthropic(Anthropic Messages API，以Console API金鑰計費)、dispatchApiTypesafeSystemone(TypeSafe jev之型別化決策API，非文字生成)之async函數，probeAnthropicKeys(對每把Anthropic金鑰送極小請求，回報此刻能否呼叫與每分鐘限額標頭，無查餘額端點)，providers(預設providers定義檔)與resolveProviders(envVar展開器)，以及readEnvFile(讀.env不污染process.env)、budgetFor(遞補鏈時間預算推導)、createFileStore(store檔案持久化)、createUsageCounter(逐日用量計帳)、salvageTruncatedArray(截斷陣列搶救)、NO_SIDE_EFFECT(防副作用prompt前綴)等工具，以及getQuotaClaude、getQuotaCodex、getQuotaAntigravity(查詢各訂閱制CLI本機登入帳號之額度窗口，統一結構，可比對指定email)
  * @example
  *
  * 詳見dispatchAi、dispatchAiFallback、dispatchAiWkf、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、dispatchApiOpenaiResponses、dispatchApiAnthropic、dispatchApiTypesafeSystemone、resolveProviders、getQuotaClaude、getQuotaCodex、getQuotaAntigravity範例
@@ -59,6 +60,7 @@ let WDispatchAi = {
     dispatchApiOpenaiResponses,
     dispatchApiAnthropic,
     dispatchApiTypesafeSystemone,
+    probeAnthropicKeys,
     providers,
     resolveProviders,
     readEnvFile,

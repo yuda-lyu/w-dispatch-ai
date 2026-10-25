@@ -5,6 +5,7 @@ import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import strFindSimilar from 'wsemi/src/strFindSimilar.mjs'
+import splitKeys from './splitKeys.mjs'
 
 
 // resolveProviders.mjs — 把providers定義檔展開為可直接使用的條目
@@ -41,10 +42,11 @@ import strFindSimilar from 'wsemi/src/strFindSimilar.mjs'
  * @param {Array} providers 輸入providers條目物件陣列(如providers.mjs之預設匯出)
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env。建議以readEnvFile('./.env')讀成物件傳入，不污染process.env
+ * @param {Boolean} [opt.splitSemicolon=true] 輸入名稱以_KEYS結尾之環境變數遇分號時是否視同逗號拆開布林值，預設true(拆開並於warnings回報)；false代表分號保留於金鑰內(仍回報warning)。使用者曾以分號分隔多把金鑰致整串被當成一把(送出後為401金鑰無效而非明顯的設定錯誤)；已知內建供應商之金鑰字元皆為英數、底線與連字號，不含分號。其他變數名(如單數形FOO_KEY)只認逗號
  * @param {Array} [opt.pick=null] 輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)
  * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件(如{claude:'C:/.../claude.exe'})，命中kind之條目補上exe欄位(條目已自帶exe者不覆寫——條目層設定優先)，預設null代表不注入
  * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件(如{'claude:sonnet':{timeoutMs:360000}})，命中id之條目淺合併覆寫，於exes之後施作故可覆寫exe，預設null代表不覆寫
- * @returns {Object} 回傳物件，內含providers(可直接餵dispatchAiFallback之條目陣列)、table(id對條目之物件，可直接餵dispatchAiWkf)、skipped(缺環境變數而停用之{id,envVar}陣列)、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之拼寫提示物件，pick查無多半是打錯字，附最接近id供直接定位；僅為相似度最高者非保證正解，無missing時為空物件)
+ * @returns {Object} 回傳物件，內含providers(可直接餵dispatchAiFallback之條目陣列)、table(id對條目之物件，可直接餵dispatchAiWkf)、skipped(缺環境變數而停用之{id,envVar}陣列)、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之拼寫提示物件，pick查無多半是打錯字，附最接近id供直接定位；僅為相似度最高者非保證正解，無missing時為空物件)，warnings(設定疑慮之陣列，目前只有'KEYS_SEMICOLON'：各項含envVar、code、message與ids(受影響之條目id)，不含金鑰值；無疑慮時為空陣列)
  * @example
  *
  * import resolveProviders from './src/resolveProviders.mjs'
@@ -122,6 +124,8 @@ function resolveProviders(providers, opt = {}) {
     }
 
     //展開envVar → keys
+    let splitSemicolon = get(opt, 'splitSemicolon', null) !== false
+    let warnMap = new Map()
     let out = []
     let skipped = []
     for (let entry of selected) {
@@ -133,8 +137,25 @@ function resolveProviders(providers, opt = {}) {
             continue
         }
 
-        //envVar → keys, 變數值以逗號分隔多把
-        let keys = String(get(env, envVar, '') || '').split(',').map((k) => k.trim()).filter(Boolean)
+        //envVar → keys, 變數值以逗號分隔多把; 名稱以_KEYS結尾者(複數形＝清單)遇分號時視同逗號並發warning(見splitKeys.mjs檔頭), 其餘變數名只認逗號
+        let isList = /_KEYS$/i.test(envVar)
+        let sk = splitKeys(String(get(env, envVar, '') || ''), { splitSemicolon: isList && splitSemicolon })
+        let keys = sk.keys
+        if (isList && sk.hasSemicolon) {
+
+            //同一變數只發一則warning(多個條目共用同一變數，如ANTHROPIC_KEYS對六條)，ids累加受影響之條目
+            if (!warnMap.has(envVar)) {
+                warnMap.set(envVar, {
+                    envVar,
+                    code: 'KEYS_SEMICOLON',
+                    message: splitSemicolon
+                        ? `${envVar} contains ";": treated as a separator like "," (${keys.length} key(s)); use "," to separate keys`
+                        : `${envVar} contains ";": kept inside the key (opt.splitSemicolon is false); use "," to separate keys`,
+                    ids: [],
+                })
+            }
+            warnMap.get(envVar).ids.push(get(entry, 'id', ''))
+        }
         if (keys.length === 0) {
 
             //缺環境變數: 停用該條目並回報, 不中斷(設計providers原則§四.4)
@@ -174,7 +195,7 @@ function resolveProviders(providers, opt = {}) {
         table[entry.id] = entry
     }
 
-    return { providers: out, table, skipped, missing, hints }
+    return { providers: out, table, skipped, missing, hints, warnings: [...warnMap.values()] }
 }
 
 

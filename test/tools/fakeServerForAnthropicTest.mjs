@@ -35,6 +35,14 @@ import zlib from 'zlib'
 //   err-400 / err-402 / err-403 / err-404 / err-413 / err-429 / err-500 / err-529 — 對應HTTP錯誤與官方error type
 //   flaky-429 / flaky-529 — 同一金鑰首次失敗, 之後200(重試路徑)
 //   echo-key-error — 400, 錯誤訊息回顯x-api-key(測遮蔽)
+//   (2026-10-25 dispatch-run01, failureKind細分類; 形狀依官方errors與rate-limits頁)
+//   err-credit-400 — 400 invalid_request_error「Your credit balance is too low to access the Anthropic API…」(第三方回報之額度不足訊息)
+//   err-spend-limit-400 / err-spend-limit-ws-400 — 400, 使用者自設花費上限(官方: 訊息開頭「You have reached your specified (workspace) API usage limits」)
+//   err-spend-cap-429 — 429 rate_limit_error, 用量級別月花費上限(無retry-after, error.details.error_code為enforced_spend_limit_reached)
+//   err-spend-cap-opaque-429 — 429, 訊息為opaque message, 只有error.details.error_code為enforced_spend_limit_reached(隔離錯誤碼接線)
+//   err-context-400 — 400 invalid_request_error「prompt is too long: N tokens > M maximum」
+//   ok-with-limits — 200, 回應帶anthropic-ratelimit-*標頭
+//   by-key         — 依x-api-key內含字樣路由: nocredit→額度不足400、spendcap→月花費上限429(僅error_code)、ratelimited→429、overloaded→529、ctx→脈絡過長400、forbidden→403、gwtimeout→504、否則200(每把金鑰可有不同結果, 供遞補測試)
 //   其他           — 404 not_found_error
 
 
@@ -166,6 +174,65 @@ async function fakeServerForAnthropicTest() {
             }
             else if (model === 'err-504') {
                 err(504, 'timeout_error', 'The request timed out while processing')
+            }
+            else if (model === 'err-credit-400') {
+                err(400, 'invalid_request_error', 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.')
+            }
+            else if (model === 'err-spend-limit-400') {
+                err(400, 'invalid_request_error', 'You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC.')
+            }
+            else if (model === 'err-spend-limit-ws-400') {
+                err(400, 'invalid_request_error', 'You have reached your specified workspace API usage limits. You will regain access on 2026-11-01 at 00:00 UTC.')
+            }
+            else if (model === 'err-spend-cap-429') {
+                send(429, { type: 'error', error: { type: 'rate_limit_error', message: 'You have reached your API usage limits: your organization has crossed its monthly API usage threshold, set based on your organization\'s API tier. You will regain access on 2026-11-01 at 00:00 UTC.', details: { error_code: 'enforced_spend_limit_reached' } }, request_id: 'req_fake' })
+            }
+            else if (model === 'err-spend-cap-opaque-429') { //訊息不含任何已知字樣, 只靠error.details.error_code(隔離錯誤碼接線)
+                send(429, { type: 'error', error: { type: 'rate_limit_error', message: 'opaque message', details: { error_code: 'enforced_spend_limit_reached' } }, request_id: 'req_fake' })
+            }
+            else if (model === 'err-context-400') {
+                err(400, 'invalid_request_error', 'prompt is too long: 250000 tokens > 200000 maximum')
+            }
+            else if (model === 'ok-with-limits') {
+                res.writeHead(200, {
+                    'Content-Type': 'application/json',
+                    'anthropic-ratelimit-requests-limit': '1000',
+                    'anthropic-ratelimit-requests-remaining': '999',
+                    'anthropic-ratelimit-requests-reset': '2026-10-25T12:00:00Z',
+                    'anthropic-ratelimit-input-tokens-limit': '2000000',
+                    'anthropic-ratelimit-input-tokens-remaining': '1999000',
+                    'anthropic-ratelimit-input-tokens-reset': '2026-10-25T12:00:00Z',
+                    'anthropic-ratelimit-output-tokens-limit': '400000',
+                    'anthropic-ratelimit-output-tokens-remaining': '399000',
+                    'anthropic-ratelimit-output-tokens-reset': '2026-10-25T12:00:00Z',
+                })
+                res.end(JSON.stringify({ id: 'msg_fake', type: 'message', role: 'assistant', model, content: [{ type: 'text', text: 'h' }], stop_reason: 'max_tokens', stop_sequence: null, usage }))
+            }
+            else if (model === 'by-key') {
+                if (key.includes('nocredit')) {
+                    err(400, 'invalid_request_error', 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.')
+                }
+                else if (key.includes('spendcap')) {
+                    send(429, { type: 'error', error: { type: 'rate_limit_error', message: 'opaque message', details: { error_code: 'enforced_spend_limit_reached' } }, request_id: 'req_fake' })
+                }
+                else if (key.includes('ratelimited')) {
+                    err(429, 'rate_limit_error', 'rate limited', { 'retry-after': '30' })
+                }
+                else if (key.includes('overloaded')) {
+                    err(529, 'overloaded_error', 'Overloaded')
+                }
+                else if (key.includes('ctx')) {
+                    err(400, 'invalid_request_error', 'prompt is too long: 250000 tokens > 200000 maximum')
+                }
+                else if (key.includes('forbidden')) {
+                    err(403, 'permission_error', 'Your API key does not have permission to use the specified resource.')
+                }
+                else if (key.includes('gwtimeout')) {
+                    err(504, 'timeout_error', 'The request timed out while processing')
+                }
+                else {
+                    msg([{ type: 'text', text: `ok ${key.slice(-4)}` }])
+                }
             }
             else if (model === 'err-html-401') { //非JSON之401(如閘道HTML錯誤頁): 仍為http分類, apiErrorType為空字串
                 res.writeHead(401, { 'Content-Type': 'text/html' })

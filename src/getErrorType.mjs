@@ -46,6 +46,12 @@ import isestr from 'wsemi/src/isestr.mjs'
 //                      stdout為已輸出之部分文字、stderr為stop_details; 屬模型/請求性質, 同請求換金鑰必然再被拒, 不重試且遞補層整組跳過
 //   'aborted'          shouldStop中止(僅dispatchAiFallback)
 //   'budget'           時間預算用盡(僅dispatchAiFallback)
+//
+// 【failureKind: 與errorType並存之另一欄位(2026-10-25 dispatch-run01)】errorType只機械分「http/exec/fetch…」, 同為HTTP 400就分不出「沒額度」與「脈絡過長」,
+//   故api-anthropic之全部失敗結果與claude在API金鑰在場(key，或opt.env.ANTHROPIC_API_KEY)且已進入執行階段之失敗結果另帶failureKind
+//   ('no-credit'｜'context-too-long'｜'rate-limit'｜'overloaded'｜'key-invalid'｜'no-permission'｜'network'｜'env-error'｜'other')與failureDetail,
+//   判準、依據與未實測者見failureKind.mjs檔頭。errorType之值域與判準不因此改變(本檔一覽仍適用); 其他kind與成功結果無failureKind。
+//   遞補層(dispatchAiFallback)依failureKind處置(見其檔頭【failureKind處置】), 本檔getErrorType不產生failureKind。
 
 
 /**

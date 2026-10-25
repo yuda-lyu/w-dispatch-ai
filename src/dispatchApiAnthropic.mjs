@@ -4,6 +4,7 @@ import isobj from 'wsemi/src/isobj.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import castPintOr from './castPintOr.mjs'
@@ -15,6 +16,7 @@ import redactText, { secretHeaderValues, redactApiKeyText } from './redactText.m
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
+import { classifyRestFailure, classifyFetchError } from './failureKind.mjs'
 
 
 // dispatchApiAnthropic.mjs — 以fetch直呼Anthropic Messages API(POST /v1/messages), 以Console之API金鑰計費
@@ -66,7 +68,13 @@ import describeNonJsonBody from './describeNonJsonBody.mjs'
 // 【沿用其他REST轉接器之既有規則】預設Accept-Encoding: identity(防伺服器壓縮卻漏標Content-Encoding)、HTTP 200但本體非JSON另報INVALID_RESPONSE(describeNonJsonBody.mjs)、
 //   截斷於validate之前裁定、validate支援Promise與該次嘗試共用timeoutMs、body/headers不可讀或不可序列化以params回報、不reject。
 //
-// 【結果結構】{ ok, stdout, stderr, code, error, durationMs, attempts, usage, finishReason, truncated }, 失敗另帶errorType(一覽見getErrorType.mjs檔頭);
+// 【失敗細分類failureKind(2026-10-25 dispatch-run01)】每個失敗結果另帶failureKind(沒額度/脈絡過長/限流/過載/金鑰無效/無權限/網路/其他, 一覽、判準與依據見failureKind.mjs檔頭)
+//   與failureDetail(API錯誤訊息, 已遮蔽key, ≤200字元); errorType與error照舊不動。HTTP非2xx依狀態碼、error.type、error.message與error.details.error_code分類;
+//   逾時歸'network'; fetch例外依classifyFetchError(有cause.code＝'network'、標頭值非法＝'key-invalid'、其餘無法判定＝'other'維持既有處置);
+//   截斷、拒答、驗證失敗、結構不合規、params等歸'other'。遞補層依failureKind處置(見dispatchAiFallback.mjs檔頭【failureKind處置】)。
+//   重試: 沒額度(含月花費上限429)與脈絡過長為決定性失敗，不重試(限流429與過載529照舊依maxRetries重試)。opt.fetch(Function, 預設全域fetch)可注入以利測試。
+//
+// 【結果結構】{ ok, stdout, stderr, code, error, durationMs, attempts, usage, finishReason, truncated }, 失敗另帶errorType(一覽見getErrorType.mjs檔頭)與failureKind、failureDetail;
 //   usage為原始回應之usage物件原樣透傳(input_tokens、output_tokens、cache_*等; 思考token含於output_tokens)。
 
 
@@ -101,26 +109,34 @@ let optTruncate = {
  * @param {Function|null} validator 輸入驗證函式
  * @param {Boolean} acceptTruncated 輸入是否明示接受截斷內容
  * @param {Array} secrets 輸入須遮蔽之機密值字串陣列
+ * @param {Function} fetchFn 輸入fetch函數(預設全域fetch，可由opt.fetch注入)
  * @returns {Promise} 回傳Promise，resolve回傳結果物件
  */
-async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTruncated, secrets) {
+async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTruncated, secrets, fetchFn) {
 
     let t0 = Date.now()
 
     //red, 錯誤路徑文字一律先遮蔽機密值與sk-ant-樣式
     let red = (s) => redactApiKeyText(s, secrets)
 
-    //mkResult, 結果形狀之單一來源(欄位對齊execCli, 追加errorType與usage); 成功分支不帶errorType
-    let mkResult = (patch) => ({
-        ok: false,
-        stdout: '',
-        stderr: '',
-        code: null,
-        error: '',
-        durationMs: Date.now() - t0,
-        usage: null,
-        ...patch,
-    })
+    //mkResult, 結果形狀之單一來源(欄位對齊execCli, 追加errorType與usage); 成功分支不帶errorType與failureKind;
+    //失敗未明給failureKind者歸'other'(截斷、拒答、驗證失敗、結構不合規等, 遞補層維持既有處置)
+    let mkResult = (patch) => {
+        let out = {
+            ok: false,
+            stdout: '',
+            stderr: '',
+            code: null,
+            error: '',
+            durationMs: Date.now() - t0,
+            usage: null,
+            ...patch,
+        }
+        if (out.ok !== true && out.failureKind === undefined) {
+            out.failureKind = 'other'
+        }
+        return out
+    }
 
     //AbortController, 逾時中止(含回應本體之串流讀取)
     let controller = new AbortController()
@@ -133,7 +149,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
     let raw = new Uint8Array(0)
     let txt = ''
     try {
-        res = await fetch(url, {
+        res = await fetchFn(url, {
             method: 'POST',
             headers,
             body: bodyText,
@@ -145,24 +161,32 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
     catch (err) {
         clearTimeout(timer)
 
-        //逾時, error以TIMEOUT開頭令dispatchAiFallback視為與金鑰無關而跳組
+        //逾時, error以TIMEOUT開頭令dispatchAiFallback視為與金鑰無關而跳組; failureKind歸網路類(逾時)
         if (errField(err, 'name') === 'AbortError') {
-            return mkResult({ error: `TIMEOUT after ${timeoutMs / 1000}s`, errorType: 'timeout' })
+            return mkResult({ error: `TIMEOUT after ${timeoutMs / 1000}s`, errorType: 'timeout', failureKind: 'network' })
         }
 
-        //網路層錯誤; 無cause.code者(送出前之例外, 如標頭值含換行)之訊息會夾帶標頭值(含金鑰), 一律遮蔽
+        //網路層錯誤; 無cause.code者(送出前之例外, 如標頭值含換行)之訊息會夾帶標頭值(含金鑰), 一律遮蔽;
+        //failureKind: 有cause.code(連線拒絕、DNS、TLS等)＝network; 標頭值非法(金鑰含換行等)＝key-invalid(屬金鑰層, 須換把); 其餘無法判定＝other(維持既有處置: 換下一把), 見failureKind.mjs之classifyFetchError
         let cause = errField(err, 'cause.code') || red(errMsg(err))
-        return mkResult({ error: `FETCH_ERROR: ${cause}`, errorType: 'fetch' })
+        return mkResult({ error: `FETCH_ERROR: ${cause}`, errorType: 'fetch', failureKind: classifyFetchError(err) })
     }
     clearTimeout(timer)
 
-    //HTTP非2xx, 原始回應本體放stderr供除錯與分類; apiErrorType取自本體error.type(如rate_limit_error、billing_error)
+    //HTTP非2xx, 原始回應本體放stderr供除錯與分類; apiErrorType取自本體error.type(如rate_limit_error、billing_error);
+    //failureKind依狀態碼、error.type、error.message與error.details.error_code細分(見failureKind.mjs), failureDetail為API訊息(已遮蔽, ≤200字元)
     if (!res.ok) {
         let apiErrorType = ''
+        let apiMessage = ''
+        let apiErrorCode = ''
         try {
             let ej = JSON.parse(txt)
             let t = get(ej, 'error.type', '')
             apiErrorType = isestr(t) ? strTruncate(red(t), 80, optTruncate) : ''
+            let m = get(ej, 'error.message', '')
+            apiMessage = isestr(m) ? m : ''
+            let c = get(ej, 'error.details.error_code', '')
+            apiErrorCode = isestr(c) ? c : ''
         }
         catch {}
         return mkResult({
@@ -171,6 +195,8 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
             error: `HTTP ${res.status}`,
             errorType: 'http',
             apiErrorType,
+            failureKind: classifyRestFailure({ status: res.status, apiErrorType, message: apiMessage, errorCode: apiErrorCode }),
+            failureDetail: strTruncate(red(apiMessage), 200, optTruncate),
         })
     }
 
@@ -356,9 +382,10 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，預設undefined代表不驗證
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(stop_reason為max_tokens)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；無可見輸出(思考耗盡max_tokens)者一律失敗，預設false代表截斷一律失敗(errorType incomplete)
+ * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試(不發真實請求)，簽章同全域fetch(url, init)，預設全域fetch；非函數視為未給
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)、截斷與拒答不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆文字，全部text區塊串接)、stderr(失敗時之原始回應本體或refusal之stop_details)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭，本轉接器另有'refusal')、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之usage物件原樣透傳，無則null)、finishReason(已取得回應時之stop_reason小寫原值，缺值為'')、truncated(是否因max_tokens截斷布林值)、apiErrorType(僅HTTP非2xx時，取自錯誤本體error.type之字串，如'rate_limit_error'、'billing_error'，無法解析為'')，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆文字，全部text區塊串接)、stderr(失敗時之原始回應本體或refusal之stop_details)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭，本轉接器另有'refusal')、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之usage物件原樣透傳，無則null)、finishReason(已取得回應時之stop_reason小寫原值，缺值為'')、truncated(是否因max_tokens截斷布林值)、apiErrorType(僅HTTP非2xx時，取自錯誤本體error.type之字串，如'rate_limit_error'、'billing_error'，無法解析為'')、failureKind(僅失敗時，細分類字串：'no-credit'沒額度｜'context-too-long'脈絡過長｜'rate-limit'限流｜'overloaded'過載｜'key-invalid'金鑰無效｜'no-permission'無權限｜'network'網路(連不上、逾時)｜'other'其他，判準與依據見failureKind.mjs檔頭)、failureDetail(僅HTTP非2xx時，API錯誤訊息，已遮蔽金鑰，截斷至200字元)，本函數不會reject
  * @example
  * //need network, no cli required
  *
@@ -388,16 +415,25 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  */
 async function dispatchApiAnthropic(prompt, opt = {}) {
 
+    //paramsErr, 啟動前之參數檢核失敗(failureKind恆為'other')
+    let paramsErr = (msg) => ({ ...getErrorResult(msg), failureKind: 'other' })
+
     //check prompt, 不reject故以錯誤結果物件回報
     prompt = asText(prompt) //String包裝物件取其原始字串(空包裝不得繞過非空檢核); 判型不執行使用者程式碼(已撤銷之Proxy等回空字串)
     if (prompt === '') {
-        return getErrorResult('prompt must be a non-empty string')
+        return paramsErr('prompt must be a non-empty string')
     }
 
     //model必填, Messages API無預設模型
     let model = get(opt, 'model', null)
     if (!isestr(model)) {
-        return getErrorResult('model must be a non-empty string')
+        return paramsErr('model must be a non-empty string')
+    }
+
+    //fetchFn, 可注入(測試不發真實請求); 非函數退回全域fetch
+    let fetchFn = get(opt, 'fetch', null)
+    if (!isfun(fetchFn)) {
+        fetchFn = fetch
     }
 
     //baseURL, 無效回退官方端點; 正規化: 去尾端斜線與尾端/v1(端點路徑由本函數接上)
@@ -422,7 +458,7 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     //bodyExtra
     let rbody = readCallerObj(get(opt, 'body', null), 'body') //呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 可讀者取物化之淺層副本
     if (!rbody.ok) {
-        return getErrorResult(redEarly(rbody.msg))
+        return paramsErr(redEarly(rbody.msg))
     }
     let bodyExtra = rbody.value
     if (!isobj(bodyExtra)) {
@@ -432,7 +468,7 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     //headersExtra
     let rheaders = readCallerObj(get(opt, 'headers', null), 'headers')
     if (!rheaders.ok) {
-        return getErrorResult(redEarly(rheaders.msg))
+        return paramsErr(redEarly(rheaders.msg))
     }
     let headersExtra = rheaders.value
     if (!isobj(headersExtra)) {
@@ -491,7 +527,7 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
         bodyText = JSON.stringify(body)
     }
     catch (err) {
-        return getErrorResult(redEarly(`body is not JSON-serializable: ${errMsg(err)}`))
+        return paramsErr(redEarly(`body is not JSON-serializable: ${errMsg(err)}`))
     }
 
     //headers之值, 物化為字串(同fetch之轉換)且只讀一次; 轉換拋錯以params回報
@@ -501,7 +537,7 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
         }
     }
     catch (err) {
-        return getErrorResult(redEarly(`headers is not readable: ${errMsg(err)}`))
+        return paramsErr(redEarly(`headers is not readable: ${errMsg(err)}`))
     }
 
     //secrets, 錯誤路徑須遮蔽之機密值: 全部機密標頭值(x-api-key、Authorization、呼叫端自給者; 版本與beta旗標除外)與key本身
@@ -523,7 +559,7 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
             await delay(Math.min(retryDelayMs * attempt, MAX_RETRY_DELAY_MS))
         }
 
-        lastResult = await callOnce(url, headers, bodyText, timeoutMs, validator, acceptTruncated, secrets)
+        lastResult = await callOnce(url, headers, bodyText, timeoutMs, validator, acceptTruncated, secrets, fetchFn)
         totalAttempts = attempt + 1
 
         if (lastResult.ok) {
@@ -538,6 +574,11 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
 
         //不可重試: 拒答為決定性(同一請求必然再被拒)
         if (lastResult.errorType === 'refusal') {
+            break
+        }
+
+        //不可重試: 沒額度(含月花費上限之429，該情形無retry-after且持續失敗)與脈絡過長皆為決定性(2026-10-25外審#6; 重試只會再送一次必敗請求)
+        if (lastResult.failureKind === 'no-credit' || lastResult.failureKind === 'context-too-long') {
             break
         }
 

@@ -44,7 +44,8 @@ Note:
 | `dispatchApiAnthropic(prompt, opt)` | call a claude model by direct fetch to the **Anthropic Messages API** (`POST /v1/messages`, `x-api-key` + `anthropic-version`), text generation only, billed to an Anthropic Console API key (`.env` `ANTHROPIC_KEYS`) |
 | `dispatchApiTypesafeSystemone(prompt, opt)` | call TypeSafe's **jev** decision model (`POST /v1/systemone`): not text generation — the prompt is the state to evaluate and `opt.questions` defines typed yes/no, choice and score questions; returns typed `answers` with probabilities (API only, TypeSafe has no cli) |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
-| `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated, missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
+| `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated; a `;` in a `*_KEYS` variable is treated as a comma with a `warnings` entry, see "ANTHROPIC_KEYS 的分隔符"; missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
+| `probeAnthropicKeys(keys, opt)` | probe each Anthropic API key with a tiny request (`max_tokens: 1`, default `claude-haiku-5-5`): returns per key `ok`／`no-credit`／`key-invalid`／`no-permission`／`rate-limit`／`overloaded`／`network`／`other` and the per-minute rate-limit headers; only index and length are returned, never the key. Anthropic has **no balance endpoint** for ordinary keys — this only tells whether a call works *right now* |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
 | `budgetFor(providers)` | derive the time budget to walk a whole fallback chain (sum of per-entry `timeoutMs`, defaults applied; async `validate` time is counted within each attempt, not added) |
 | `createFileStore(opt)` | file-persisted `store` for `dispatchAiFallback` (cursors and cooling survive across processes), exclusion-style passthrough |
@@ -280,6 +281,12 @@ await test()
 44. 內建 providers 新增 6 條：`claude-api:opus-5.5`／`claude-api:sonnet-5.5`／`claude-api:haiku-5.5`（kind `claude`，`envVar: 'ANTHROPIC_KEYS'`）與 `anthropic:opus-5.5`／`anthropic:sonnet-5.5`／`anthropic:haiku-5.5`（kind `api-anthropic`，`envVar: 'ANTHROPIC_KEYS'`），六條依序集中於清單末端（`poolside:laguna-s-2.1` 之後，先 CLI 後 REST）。**全取（不給 `pick`）且 `.env` 有 `ANTHROPIC_KEYS` 者，這 6 條會進入遞補鏈並耗用 API 額度（計費）**；沒有該變數則進 `skipped`，行為與此前相同。需要避免者以 `pick` 自選。`resolveProviders` 輸出之 `providers.length`、`skipped` 因而可能多 6 項。
 45. 文件：新增「Claude以API金鑰計費」與「Options only for dispatchApiAnthropic」；`dispatchAiFallback` 之 `keys` 說明、`adapters.mjs` 選型判準與 `getErrorType.mjs` 之 errorType 一覽同步補述。
 46. `dispatchClaude` 給 `key` 時，子進程環境額外移除**繼承自 `process.env` 之父 Claude Code session 連結變數**：前綴 `CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_` 與完整名稱 `CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`（保留 `CLAUDE_CODE_GIT_BASH_PATH`；`opt.env` 明確傳入者保留）。原因：在 Claude Code 工作階段內呼叫時（例如 agent 派工），子 `claude`（2.1.302 實測）會因這些變數沿用父 session 登入而無視 `ANTHROPIC_API_KEY`（`apiKeySource=none`，實走訂閱額度）。**未給 key 時行為不變**（不移除任何變數）。**影響**：給 key 且依賴「繼承自 shell 之 `CLAUDE_CODE_*` 使用者設定」（如 `CLAUDE_CODE_EFFORT_LEVEL`、`CLAUDE_CODE_USE_POWERSHELL_TOOL`、`CLAUDE_CODE_TMPDIR`）者，請改由 `opt.env` 明確傳入；見「Claude以API金鑰計費」。
+47. **失敗細分類 `failureKind`／`failureDetail`**（`api-anthropic` 之全部失敗結果，與 `claude` 在 API 金鑰在場〔`key`，或不建議的 `opt.env.ANTHROPIC_API_KEY`〕且已進入執行階段之失敗結果，另加「`key` 含 NUL 字元而在啟動前被拒」〔`INVALID_KEY`，`failureKind: 'key-invalid'`，`attempts: 0`〕）：值為 `no-credit`／`context-too-long`／`rate-limit`／`overloaded`／`key-invalid`／`no-permission`／`network`／`env-error`／`other`（判準、依據與未實測者見「Claude以API金鑰計費」）。`errorType`／`error`／`apiErrorType`／`stderr` 照舊；**成功結果、訂閱路徑〔`claude` 未給金鑰〕與其他 kind 不帶這些欄位**。依賴「結果物件欄位完全相等」做比對者請注意 `api-anthropic` 之 `params` 失敗亦多一欄 `failureKind: 'other'`。
+48. **`dispatchAiFallback` 依 `failureKind` 處置**（僅有 `failureKind` 者；其餘維持原規則）。**會改變行為的部分**：①**脈絡過長**（400「prompt is too long」、413、CLI「Prompt is too long」）此前逐把換金鑰、再逐條目重試，現**立即結束整個呼叫**，最終 `error` 為 `CONTEXT_TOO_LONG: …`、`tried` 於先前歷程之後追加一筆 `outcome: 'context-too-long'` 即結束；要改試更大脈絡的條目請由呼叫端以另一組 `providers` 再呼叫。②**沒額度**：仍換下一把，但本次呼叫內同為 Anthropic 官方端點之後續條目（`claude-api:`／`anthropic:`）遇已證實沒額度之金鑰**直接略過**（`tried[].outcome: 'skip-key'`、事件 `skip-key`，不送請求）；組內每把皆沒額度時 `group-exhausted` 事件帶 `quotaExhausted: true`，最終結果帶 `quotaExhausted: [id…]`，最後一筆為此情形時 `error` 由 `HTTP 400`／`Exit code 1` 變為 `QUOTA_EXHAUSTED: provider "<id>" has no credit on all N key(s) (…)`——**依 `error === 'HTTP 400'` 字面比對者請改依 `failureKind`／`quotaExhausted`**。③**網路**（`api-anthropic` 之帶 `cause.code` 的 `fetch` 例外〔連線拒絕、DNS、重設、TLS〕、逾時、504；`claude` 帶 key 之逾時與連線字樣）此前 `fetch` 例外逐把換金鑰，現**整組跳過**（不換金鑰，已依 `maxRetries` 在轉接器內重試）；標頭值非法（金鑰含換行）改為 `key-invalid`（仍換把）、其餘無法判定之 `fetch` 例外為 `other`（維持逐把換金鑰）。REST 另對**沒額度（含月花費上限 429）與脈絡過長不再重試**（此前 429 依 `maxRetries` 重試）。④**呼叫方式或環境錯誤**（`env-error`）整組跳過，最終 `error` 為 `ENV_ERROR: …`。⑤限流（`rate-limit`）之內建冷卻觸發新增「`failureKind === 'rate-limit'`」（`claude` 帶 key 之 CLI 限流字樣不需 `coolDetect` 即冷卻；僅 `cooldownMs>0`）；`coolDetect` 與內建為「或」，不能否決內建觸發。⑥`cooldownMs>0` 時沒額度之金鑰另記入 `store.keyCooling`（只存 sha256 前 16 碼指紋）並降序至組內最後，整組沒額度之條目比照條目冷卻；`createFileStore` 等整包存還之 `store` 不受影響，**自行挑欄位存還之 `store` 請連 `keyCooling` 一併存還**。⑦`group-exhausted` 之 `attempted`／`errorTypes` 不含 `skip-key`；`cooled` 事件新增 `scope`（`key`／`entry`）；`onEvent` 若以 `switch (ev.type)` 窮舉者請納入 `skip-key`、`context-too-long`。
+49. **`dispatchClaude` 在 API 金鑰在場時，CLI 稱沒額度須經 REST 交叉確認**：新增選用參數 `crossCheck`（預設 `true`）、`fetch`、`crossCheckBaseURL`、`crossCheckModel`（見 Options only for dispatchClaude）；失敗結果另帶 `crossCheck: { done, restKind, restStatus }`。REST 對同一把金鑰的極小請求（`max_tokens: 1`，預設 `claude-haiku-5-5`）成功即判 `env-error`，**不再被當成沒額度**。每次「CLI 稱沒額度」多一次極小 REST 請求（費用 ≈ 0）；其耗時與 CLI 共用同一次嘗試之期限（只用 `timeoutMs` 扣除 CLI 已耗時後之剩餘時間，且至多 30 秒，故遞補層的 `budgetMs` 契約不破），並**併入 `durationMs`**。CLI 的 `maxRetries` 重試由 `execCli` 在分類之前進行（分類只看最後一次嘗試之輸出），故決定性失敗（脈絡過長、沒額度）在 `maxRetries>0` 時仍會重送 CLI（預設 `maxRetries` 為 0，建議維持）；REST 轉接器則已不重試沒額度與脈絡過長。金鑰在場時 `onStdout`／`onStderr` 恆被包一層以記錄輸出尾段供分類（呼叫端所見文字不變）。未給 `key` 且 `opt.env` 為物件時，`env` 改以物化之副本交 execCli（內容相同，呼叫端 getter 仍只讀一次）。**未給金鑰之訂閱路徑結果物件不變。**
+50. **新增匯出 `probeAnthropicKeys(keys, opt)`**（`WDispatchAi` 鍵由 23 個變 24 個）：對每把金鑰送極小請求，回報 `ok`／`no-credit`／`key-invalid`／`no-permission`／`rate-limit`／`overloaded`／`network`／`other` 與每分鐘限額標頭；只回序號與長度，不回金鑰。**Anthropic 一般金鑰沒有查餘額端點，只判斷「此刻能否呼叫」。** `fetch` 可注入。`dispatchApiAnthropic` 新增選用參數 `fetch`。
+51. **`resolveProviders` 對 `*_KEYS` 變數遇分號視同逗號並回報**：此前分號分隔之 `ANTHROPIC_KEYS`（`sk-ant-aaa;sk-ant-bbb`）整串被當成一把金鑰；現拆成多把，回傳多一個 `warnings` 鍵（`[{ envVar, code: 'KEYS_SEMICOLON', message, ids }]`，無疑慮時為 `[]`，**不含金鑰值**）。名稱不以 `_KEYS` 結尾之變數與條目自帶 `keys` 不受影響；某供應商金鑰確實含分號者傳 `splitSemicolon: false` 關閉。依賴回傳物件鍵清單完全相等者請納入 `warnings`。
+52. 文件：新增「失敗細分類 `failureKind`」「CLI『沒額度』須經 REST 交叉確認」「遞補層依 `failureKind` 的處置」「金鑰探測 `probeAnthropicKeys`」「`ANTHROPIC_KEYS` 的分隔符」「勿用 `--bare` 與 `env` 傳金鑰（重現紀錄）」；`getErrorType.mjs` 之 errorType 一覽補述 `failureKind` 與其並存。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -307,6 +314,7 @@ await test()
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `key` | String | `''` | Anthropic Console之API金鑰（`sk-ant-…`）。**給予有效字串即以API金鑰計費**（與Claude訂閱額度分開計費）：只在**該次子進程**之環境設`ANTHROPIC_API_KEY`（不寫入`process.env`、不進命令列），並自該子進程環境移除會優先於它或與之衝突之憑證變數（`ANTHROPIC_AUTH_TOKEN`、`CLAUDE_CODE_USE_BEDROCK`／`VERTEX`／`FOUNDRY`／`MANTLE`／`ANTHROPIC_AWS`、`CLAUDE_CODE_OAUTH_TOKEN`、`ANTHROPIC_PROFILE`、`ANTHROPIC_FEDERATION_RULE_ID`；`opt.env`中同名者亦移除），**另移除繼承自`process.env`之父Claude Code session連結變數**（前綴`CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_`與`CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`；保留`CLAUDE_CODE_GIT_BASH_PATH`；`opt.env`明確傳入者保留，見下方「在 Claude Code 工作階段內呼叫時」），結果之`stdout`／`stderr`／`error`與`onStdout`／`onStderr`回調收到之文字遮蔽該key（`stderr`／`error`／stderr 回調與失敗之`stdout`另遮蔽`sk-ant-`樣式）；key 含 NUL 字元回`INVALID_KEY`。未給或非有效字串＝沿用登入態，行為與無此參數時完全相同。經`dispatchAiFallback`時由條目之`keys`逐把注入（`claude-api:`條目）。詳見下方「Claude以API金鑰計費」 |
+| `crossCheck`／`fetch`／`crossCheckBaseURL`／`crossCheckModel` | Boolean／Function／String／String | `true`／全域`fetch`／`https://api.anthropic.com`／`claude-haiku-5-5` | **「沒額度」交叉確認**（僅 API 金鑰在場時有意義：`key`有效，或不建議的`opt.env.ANTHROPIC_API_KEY`）：CLI 失敗且字樣判為沒額度（`failureKind: 'no-credit'`）時，以同一把金鑰對 REST 送極小請求（`max_tokens: 1`）確認——REST 亦沒額度才判`no-credit`；REST 成功判`env-error`（呼叫方式或環境錯誤，**不得當成沒額度**）；其餘結果判`other`。`crossCheck: false`＝只憑 CLI 字樣（誤判風險自負）；`fetch`可注入（測試不發真實請求）。失敗結果另帶`failureKind`、`failureDetail`、`crossCheck`（`{ done, restKind, restStatus }`）；成功結果與訂閱路徑不帶。詳見下方「失敗細分類 `failureKind`」 |
 | `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標，`false`代表保留CLI權限閘門（見上方Security說明）。`extraArgs` **勿帶 `--bare`**：bare 模式不讀 OAuth 登入會直接認證失敗，且官方預告 `--bare` 將成為 `-p` 之預設（屆時訂閱條目會一併失效，見 `dispatchClaude.mjs` 檔頭）；帶 `--restricted` 時本欄須為 `false`（restricted 拒絕 bypassPermissions，2026-09-23 實測同時帶即報錯） |
 
 #### Options only for dispatchCodex:
@@ -399,7 +407,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `aborted` | `shouldStop`中止 | fallback層 |
 | `budget` | 時間預算用盡 | fallback層 |
 
-僅涵蓋**機械可判**者：CLI類之其餘失敗（額度上限／金鑰無效／服務端錯誤，各家字樣不同且隨版本漂移）一律歸`exec`，套件不維護簽章表（與否決金鑰停用清單同一理由）——需細分時以`coolDetect`式注入自判，或依`tried`內之`error`與`stderr`自行決策。
+僅涵蓋**機械可判**者：CLI類之其餘失敗（額度上限／金鑰無效／服務端錯誤，各家字樣不同且隨版本漂移）一律歸`exec`，套件不維護簽章表（與否決金鑰停用清單同一理由）——需細分時以`coolDetect`式注入自判，或依`tried`內之`error`與`stderr`自行決策。**例外（2026-10-25 起）**：`api-anthropic`與`claude`帶 API 金鑰之失敗結果另帶`failureKind`細分類（沒額度／脈絡過長／限流／過載／金鑰無效／無權限／網路／呼叫方式或環境錯誤／其他；REST 依 HTTP 狀態碼與`error.type`，CLI 依官方 stream-json 結構化欄位與 Claude Code 字樣），遞補層據以處置，見「Claude以API金鑰計費」之「失敗細分類 `failureKind`」；`errorType`照舊不變。其他 kind 仍不維護簽章表。
 
 #### Options only for dispatchApiAnthropic:
 直呼 Anthropic Messages API（`POST <baseURL>/v1/messages`），僅供純文字生成；需要工具請用`claude`（給`key`）。請求形狀：標頭`x-api-key`（金鑰，**非**`Authorization: Bearer`）、`anthropic-version: 2023-06-01`、`Content-Type: application/json`、`Accept-Encoding: identity`；本體`{ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }], system?, output_config?: { effort } }`（**不送**`temperature`／`top_p`／`top_k`／`thinking`／`stream`／`tools`）。
@@ -412,7 +420,10 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | `effort` | String | `''` | `low`／`medium`／`high`／`xhigh`／`max`，以`output_config.effort`送出；其他值視為未給。未給時API依模型預設（Opus 5.5與Haiku 5.5為`medium`、Sonnet 5.5為`high`），內建`anthropic:`條目明給`high` |
 | `body` | Object | `{}` | 額外請求本體（`max_tokens`、`thinking`、`output_config`、`fallbacks`等），同名鍵覆寫預設。Opus 5.5／Sonnet 5.5／Haiku 5.5皆為自適應思考（省略`thinking`即開）：Opus 5.5不可關閉思考（`disabled`與`budget_tokens`在任何effort皆400）、Sonnet 5.5的`disabled`為400（須`between_tools`）、三者皆不接受非預設之`temperature`／`top_p`／`top_k`。思考token計入`max_tokens`，長輸出請放寬 |
 | `headers` | Object | `{}` | 額外請求標頭，同名鍵（**不分大小寫**）覆寫預設標頭而不重複送出；如`{ 'anthropic-beta': '…' }` |
-| `timeoutMs`／`maxRetries`／`retryDelayMs`／`validate`／`acceptTruncated` | | | 同`dispatchApiOpenaiCompat`。4xx（429除外）、截斷、拒答不重試；429／5xx（含529）／網路錯誤／逾時依`maxRetries`線性退避重試 |
+| `fetch` | Function | 全域`fetch` | 注入`fetch`函數（簽章同全域`fetch(url, init)`），供測試不發真實請求；非函數視為未給 |
+| `timeoutMs`／`maxRetries`／`retryDelayMs`／`validate`／`acceptTruncated` | | | 同`dispatchApiOpenaiCompat`。4xx（429除外）、截斷、拒答、**沒額度（含月花費上限之 429）、脈絡過長**不重試；限流 429／5xx（含529）／網路錯誤／逾時依`maxRetries`線性退避重試 |
+
+失敗結果另帶`failureKind`（`no-credit`／`context-too-long`／`rate-limit`／`overloaded`／`key-invalid`／`no-permission`／`network`／`other`）與`failureDetail`（API 錯誤訊息，已遮蔽金鑰），判準見下方「失敗細分類 `failureKind`」；`errorType`／`error`／`apiErrorType`照舊。
 
 **`stop_reason`處置**：`end_turn`／`stop_sequence`／未知值＝正常結束；`max_tokens`＝截斷，預設失敗（`errorType: 'incomplete'`、`truncated: true`、不重試，思考耗盡而無可見輸出者即使`acceptTruncated`亦失敗）；`refusal`＝安全分類器拒答（HTTP 200），失敗（`errorType: 'refusal'`、`error: 'REFUSED: stop_reason=refusal (category=…)'`、部分文字在`stdout`、`stop_details`在`stderr`，不重試，遞補層**整組跳過**由下一條目接手）；`tool_use`＝`tool-unsupported`；`pause_turn`＝`incomplete`（非截斷）。回傳之`finishReason`為`stop_reason`小寫原值。
 **HTTP錯誤**皆`errorType: 'http'`、`code`為狀態碼，另帶`apiErrorType`（取自錯誤本體`error.type`：`invalid_request_error`400／`authentication_error`401／`billing_error`402／`permission_error`403／`not_found_error`404／`request_too_large`413／`rate_limit_error`429／`api_error`500／`timeout_error`504／`overloaded_error`529）。
@@ -456,10 +467,95 @@ console.log(r.ok, r.stdout, r.providerId, r.keyIndex) //keyIndex為實際使用�
 - **未給`key`時完全不處理**（繼承之連結變數照舊流入，行為與此前相同）。
 - 這是令 key「有機會勝出」之必要修正而非證明；是否確實走 API 金鑰仍依上節以`apiKeySource==='ANTHROPIC_API_KEY'`（必要）加 Console 用量（充分）驗證。
 
-**額度不足／限流之辨識（官方錯誤碼；本套件撰寫時不得發真實請求，未以真實額度不足實測）**：
-- REST（`anthropic:`）：`429 rate_limit_error`（含用量級別月花費上限，該情形無`retry-after`且持續失敗）→ 遞補層內建冷卻觸發（`cooldownMs>0`時降序至鏈尾）並換下一把金鑰；`402 billing_error`、`401 authentication_error`（金鑰無效／撤銷）、`403 permission_error`、`400 invalid_request_error`（官方：亦用於組織或工作區自訂花費上限；第三方回報額度不足的訊息為「Your credit balance is too low to access the Anthropic API」）→ 皆換下一把金鑰，不冷卻。`529 overloaded_error`／`5xx`依`maxRetries`重試。
-- CLI（`claude-api:`）：Claude Code 把 API 錯誤印成文字（stdout 或 stderr 視版本），本套件**不維護簽章表**（見 Known design notes）；要冷卻請以`coolDetect`注入，例如 `coolDetect: (r) => r.errorType !== 'validation' && /credit balance is too low|rate_limit_error|API Error: 429|overloaded/i.test(r.stdout + '\n' + r.stderr)`（字樣取自第三方回報與官方錯誤型別名，**未實測，使用端觀察到實際字樣後調整**）。未注入時失敗仍換下一把金鑰。
-- 兩條路之`refusal`（REST）：整組跳過，不逐把重打。
+**失敗細分類 `failureKind`（2026-10-25 起；REST `api-anthropic` 與 CLI `claude` 帶 API 金鑰之失敗結果帶此欄，`errorType`／`error`照舊並存）**
+
+為什麼要分：「沒額度」與「超過脈絡上限」在 Anthropic 都是 HTTP 400，只靠`errorType`（`http`／`exec`）分不出來，遞補層便一律「換下一把金鑰」——沒額度時把所有金鑰輪過一遍、被誤判成額度用盡；脈絡過長時換金鑰結果必然相同、純屬空耗。另有人曾因 CLI 回「Credit balance is too low」就判定「API 額度用盡」，實際上同一把金鑰經 REST 完全正常（見下方「勿用`--bare`與`env`傳金鑰」）。
+
+| `failureKind` | 意義 | REST 判定（HTTP 狀態碼／`error.type`／訊息） | CLI 判定（stream-json 結構化欄位優先，其次失敗文字） |
+| --- | --- | --- | --- |
+| `no-credit` | 沒額度 | `402 billing_error`；`400`訊息含「credit balance is too low」；`400`自設花費上限（訊息開頭「You have reached your specified (workspace) API usage limits」）；`429`月花費上限（`error.details.error_code === 'enforced_spend_limit_reached'`，無`retry-after`） | `assistant.error === 'billing_error'`、`result.api_error_status`為 402、字樣「Credit balance is too low」；**須經 REST 交叉確認**（見下） |
+| `context-too-long` | 脈絡過長 | `400`訊息含「prompt is too long: N tokens > M maximum」；`413 request_too_large`（請求本體過大） | 字樣「Prompt is too long」「Request too large」（`invalid_request`＋該字樣） |
+| `rate-limit` | 限流 | `429 rate_limit_error`（扣除上列花費上限） | `assistant.error === 'rate_limit'`、`api_error_status`為 429、字樣「API Error: 429」「Server is temporarily limiting requests」 |
+| `overloaded` | 過載 | `529 overloaded_error` | `assistant.error === 'overloaded'`、`api_error_status`為 529、字樣「Repeated 529 Overloaded errors」 |
+| `key-invalid` | 金鑰無效 | `401 authentication_error` | `assistant.error === 'authentication_failed'`、`api_error_status`為 401、字樣「Invalid API key」 |
+| `no-permission` | 金鑰無權限 | `403 permission_error` | `assistant.error`為`oauth_org_not_allowed`／`account_on_hold`、`api_error_status`為 403、字樣「API Error: 403」 |
+| `network` | 網路（連不上、逾時） | `fetch`例外**且帶`cause.code`**（DNS／連線拒絕／重設／TLS／無效網址）、逾時（`TIMEOUT`）、`504 timeout_error`。`fetch`例外而標頭值非法（金鑰含換行，送出前拋出、無`cause.code`）＝`key-invalid`（屬金鑰層，須換把）；其餘無法判定之`fetch`例外＝`other`（維持既有處置，不憑空歸為網路） | 逾時（`TIMEOUT`）、字樣「Unable to connect to API」「Request timed out」 |
+| `env-error` | 呼叫方式或環境錯誤 | （無，僅 CLI） | CLI 稱沒額度，但**同一把金鑰 REST 極小請求成功** |
+| `other` | 其他 | 一般 400、404、500、截斷、拒答、驗證失敗、結構不合規、參數錯誤等 | 其餘（含未能辨識者；**維持既有處置**，不會誤判成上列任一類） |
+
+另有`failureDetail`（API 錯誤訊息，或 CLI 命中之失敗文字／判定說明；已遮蔽金鑰；REST 之訊息截斷至 200 字元，CLI 之判定說明含命中文字約 400 字元內）。成功結果與訂閱路徑（`claude`未給金鑰）**不帶**這些欄位。REST 之 HTTP 失敗仍為`errorType: 'http'`、`error: 'HTTP 400'`、`apiErrorType`、`stderr`（原始本體）——`failureKind`是另加的欄位。
+
+**判定依據與未實測者**（撰寫時不得發真實請求）：
+- REST：HTTP 狀態碼與`error.type`取自官方 errors 頁；花費上限之訊息與`error_code`取自官方 rate-limits 頁（2026-10-25 查證）；脈絡過長取自官方 context-windows 頁（輸入本身超過視窗＝`400 invalid_request_error`「prompt is too long」）。**「Your credit balance is too low to access the Anthropic API」官方 errors 頁未逐字載明**（第三方回報為 400），本套件以訊息比對、**未以真實額度不足實測**。較舊模型「輸入＋`max_tokens`超過視窗」之驗證錯誤，官方未載明逐字訊息，歸`other`。
+- CLI：官方 Agent SDK 文件（code.claude.com/docs/en/agent-sdk/typescript）載明`SDKAssistantMessage.error`之列舉值與`SDKResultMessage.api_error_status`（HTTP 狀態碼），僅出現在`--output-format stream-json`輸出；純文字輸出（內建`claude-api:`條目所用）只能比對字樣。字樣取自 Claude Code 2.1.302 之`claude.exe`內嵌字串（2026-10-25 以 grep 取得，**是程式內含之字串，不等於各情境之實際輸出**）：「Credit balance is too low」（★主控 2026-10-25 於 stream-json 之 assistant／result 實測）、「Prompt is too long」、「Invalid API key」、「Unable to connect to API」、「Request timed out」、「Repeated 529 Overloaded errors」、「Server is temporarily limiting requests (not your usage limit)」、「Request too large」，**除標★者外皆未逐一觸發實測**；字樣隨 Claude Code 版本漂移，命中不到者歸`other`（維持既有處置）。`execCli`失敗時`stdout`只留前 500 字元（stream-json 之 result 事件在尾端會被截掉），故`dispatchClaude`在金鑰在場時另以`onStdout`／`onStderr`記錄輸出尾段（64KB／16KB）供分類，不外送、不改變呼叫端回調所見。**純文字輸出之採信規則**（避免把「提到關鍵字的模型回答」誤當 API 錯誤）：只看**末行**，且須**以 Claude Code 之錯誤訊息開頭**（`Credit balance is too low`、`Prompt is too long`、`Request too large`、`Invalid API key`、`API Error`、`Unable to connect to API`、`Request timed out`、`Repeated 529`、`Server is temporarily limiting`、`Authentication error`、`OAuth token`、`Error: `）、單行 ≤1000 字元；stdout 無證據時才取`stderr`末三行；多次嘗試（`maxRetries`）累積之輸出只看最後一次（純文字取末行、stream-json 取最後一個`init`事件之後）；stream-json 之`assistant.error`／`result.api_error_status`為協定欄位，不受此限。開頭不在清單內者歸`other`（維持既有處置）。
+
+**CLI「沒額度」須經 REST 交叉確認（`dispatchClaude`；預設開）**：CLI 的失敗分類為`no-credit`時，以**同一把金鑰**對 REST 送極小請求（`POST /v1/messages`、`max_tokens: 1`、模型預設`claude-haiku-5-5`、費用極小）：
+
+| REST 交叉確認結果 | 最終`failureKind` | `crossCheck` |
+| --- | --- | --- |
+| 亦為沒額度（`no-credit`） | `no-credit`（已確認） | `{ done: true, restKind: 'no-credit', restStatus: 400 }` |
+| 成功（HTTP 2xx） | **`env-error`**（呼叫方式或環境錯誤；**不得當成沒額度**） | `{ done: true, restKind: 'ok', restStatus: 200 }` |
+| 其他（限流、金鑰無效、網路失敗、一般 400…） | `other`（無法確認，不判額度） | `{ done: true, restKind: …, restStatus: … }` |
+| 關閉（`crossCheck: false`） | `no-credit`（只憑 CLI 字樣，誤判風險自負） | `{ done: false }` |
+
+選項：`crossCheck`（預設`true`；只有明給`false`才關閉）、`fetch`（注入，測試不發真實請求，預設全域`fetch`）、`crossCheckBaseURL`（預設官方端點；CLI 經`ANTHROPIC_BASE_URL`導向他處者請同步給）、`crossCheckModel`（預設`claude-haiku-5-5`）。費用：一次 8 個輸入 token＋1 個輸出 token（Haiku 5.5 約 0.000001 美元量級）；耗時與 CLI 共用同一次嘗試之期限（只用`timeoutMs`扣除 CLI 已耗時後之剩餘時間，至多 30 秒，通常一秒內）並併入`durationMs`。範圍：僅「API 金鑰在場」（`opt.key`，或不建議的`opt.env.ANTHROPIC_API_KEY`）之失敗；訂閱路徑不經此處。
+
+**遞補層（`dispatchAiFallback`，工作流層經`callAi`同樣適用）依`failureKind`的處置**——未給`coolDetect`者亦適用（內建）；其餘 kind 與沒有`failureKind`的結果維持上節「失敗分流規則」：
+
+| `failureKind` | 處置 |
+| --- | --- |
+| `no-credit` | 該把金鑰記為沒額度→**換下一把**；本次呼叫內其餘「同為 Anthropic 官方端點」之條目（`claude-api:`與`anthropic:`共用同一組`ANTHROPIC_KEYS`與同一額度池）遇該把**直接略過**（事件`skip-key`、`tried[].outcome === 'skip-key'`，不送請求；最終結果以合成之失敗結果表示，只帶錯誤字樣、`errorType`、`failureKind`，並以`skippedFrom`標明證據來自哪個條目，不掛他家轉接器之`stdout`／`stderr`／`code`／`pid`）。**官方端點範圍**：`kind`為`api-anthropic`且未自訂`baseURL`（顯式給`https://api.anthropic.com`視同官方）、`headers`未覆寫認證標頭（`x-api-key`／`authorization`，覆寫時實際認證身分不是`keys[]`所示）；`kind`為`claude`且未自訂`crossCheckBaseURL`、條目`env`與`process.env`之`ANTHROPIC_BASE_URL`皆未導向官方以外（`settings.json`之`env`區塊另設者看不到，已知限制）；範圍外之條目不共享、也不被略過；**組內每一把皆沒額度**才標`quotaExhausted`（`group-exhausted`事件帶`quotaExhausted: true`；最終結果帶`quotaExhausted: [供應商 id…]`，最後一筆為此情形時`error`為`QUOTA_EXHAUSTED: provider "<id>" has no credit on all N key(s) (…)`）；部分沒額度（其餘為限流、金鑰無效等）不算額度用盡。`cooldownMs>0`時另把該把記入`store.keyCooling`（**只存金鑰指紋＝sha256 前 16 碼，不存金鑰本體**），之後的呼叫中該把降序至組內最後（只降序不移除，仍會被嘗試以偵測恢復），整組皆沒額度者並比照條目冷卻降至鏈尾；未啟用冷卻時不跨呼叫記憶 |
+| `context-too-long` | **不換金鑰、不換同脈絡上限之條目，立即結束整個呼叫**並回明確錯誤（`error`為`CONTEXT_TOO_LONG: prompt is too long: 250000 tokens > 200000 maximum (not retried …)`，`failureKind`同名，事件`context-too-long`）；後續條目之脈絡上限未知，**是否改試更大脈絡之條目由呼叫端決定**（另以脈絡更大的`providers`再呼叫）。不寫游標、不記冷卻 |
+| `rate-limit` | 既有規則：換下一把；`cooldownMs>0`時條目冷卻（內建觸發除 HTTP 429、`TIMEOUT`外，新增`failureKind === 'rate-limit'`，故 CLI 類限流不需`coolDetect`） |
+| `overloaded` | 既有規則：換下一把，不冷卻（REST 已依`maxRetries`重試） |
+| `key-invalid`／`no-permission` | 換下一把，**不冷卻**（不牽連他把與條目） |
+| `network` | **不換金鑰**、整組跳過（REST／CLI 已依`maxRetries`在轉接器內重試）、不判額度；續試下一個條目 |
+| `env-error` | **不換金鑰**、整組跳過、不判額度、該把金鑰**不**記為沒額度；最後一筆為此情形時`error`為`ENV_ERROR: CLI reported no credit … call method or environment error …` |
+| `other` | 既有規則（含`refusal`整組跳過） |
+
+`coolDetect`與內建觸發之優先序：內建（HTTP 429、`TIMEOUT`、`failureKind === 'rate-limit'`）先判，未命中才呼叫`coolDetect`；兩者為「或」（疊加）——`coolDetect`只能**增加**觸發、**不能否決**內建觸發；沒額度之金鑰冷卻與條目冷卻不經`coolDetect`。
+
+冷卻中之金鑰這次成功即解除其金鑰冷卻（恢復即復位，同條目冷卻之「任一次成功立即解除」）。
+
+**已知限制與範圍外觀察**（dispatch-run01 外審後記載）：
+- CLI 的`maxRetries`重試由`execCli`在分類「之前」進行：決定性失敗（脈絡過長、沒額度）在`maxRetries>0`時仍會重送 CLI（預設 0，建議維持）；REST 轉接器已不重試這兩類。
+- `claude`在額度不足時的離開碼**未實測**（假設非零）。若為 0，`execCli`回`ok: true`，本套件不會把它當失敗、也不分類（既有行為；待主控實測，見實測腳本`cli-envbare`步驟印出之`code`）。
+- 「官方端點」範圍看不到`settings.json`之`env`區塊所設的`ANTHROPIC_BASE_URL`；CLI 經它改端點時，額度結論可能不等於官方端點（需要時以條目`env`／`crossCheckBaseURL`明示，使該條目退出共享範圍）。
+- HTTP 200 且`stop_reason: 'model_context_window_exceeded'`（4.5 以後「輸入＋`max_tokens`超過視窗」之行為）仍被視為未知`stop_reason`而成功（既有契約）。
+- 其他 REST kind（`api-openai-compat`、`api-openai-responses`、`api-typesafe-systemone`）與 CLI 類（`opencode`／`codex`／`antigravity`）遇脈絡過長、連線拒絕等仍逐把換金鑰，不在本輪範圍（規格要求不得改變其行為）；若要比照處理，需各協定另案。
+
+**金鑰探測 `probeAnthropicKeys(keys, opt)`**：對每把金鑰送一個極小請求（`max_tokens: 1`，預設`claude-haiku-5-5`），回報每把「**此刻能否呼叫**」之分類與每分鐘限額標頭。**Anthropic 一般 API 金鑰沒有查詢餘額（剩餘額度）的端點**（Admin API 之用量與費用報告須 Admin 金鑰，屬組織層、不在本函數範圍），所以`ok`只代表「此刻這一次呼叫成功」，不代表額度充足；沒額度（餘額歸零或達花費上限）才會轉為`no-credit`。
+
+```alias
+import wdi from 'w-dispatch-ai'
+
+let env = wdi.readEnvFile('./.env') //不污染process.env
+let r = await wdi.probeAnthropicKeys(env.ANTHROPIC_KEYS) //可給陣列，或直接給ANTHROPIC_KEYS原始字串（逗號與分號皆分隔）
+console.log(r.summary)
+// => { total: 2, ok: 1, 'no-credit': 1 }
+console.log(r.results[0])
+// => { index: 0, length: 108, kind: 'ok', ok: true, status: 200, apiErrorType: '', detail: '',
+//      limits: { requests: { limit: 1000, remaining: 999, reset: '2026-10-25T12:00:00Z' }, tokens: null,
+//                inputTokens: { limit: 2000000, remaining: 1999000, reset: '…' }, outputTokens: { … } },
+//      retryAfterSec: null, durationMs: 412 }
+```
+
+| `kind` | 意義 |
+| --- | --- |
+| `ok` | 此刻可呼叫（HTTP 2xx） |
+| `no-credit` | 沒額度（餘額不足、花費上限） |
+| `key-invalid` | 金鑰無效（401） |
+| `no-permission` | 無權限（403） |
+| `rate-limit` | 限流（429） |
+| `overloaded` | 過載（529） |
+| `network` | 連不上、逾時（含 504） |
+| `other` | 其他（404 模型不存在或無權使用、非額度類 400、500…；以及非字串之無效元素，不送請求） |
+
+選項：`fetch`（注入，測試不發真實請求）、`baseURL`、`model`（預設`claude-haiku-5-5`）、`timeoutMs`（預設 20000，每把）。每把一個請求、依序執行。`limits`取自`anthropic-ratelimit-{requests|tokens|input-tokens|output-tokens}-{limit|remaining|reset}`標頭（`limit`／`remaining`為數值、`reset`為 RFC 3339 字串，缺席之組為`null`；無任何標頭時整個`limits`為`null`），`retryAfterSec`取自`retry-after`。**不回傳也不記錄金鑰本體或其任何片段**（只有`index`與`length`；`detail`之錯誤訊息與`limits.*.reset`等來自伺服器之文字欄位先遮蔽金鑰並截斷）。`kind`值域如上表（探測之極小請求不會脈絡過長，413 等歸`other`）；`fetch`例外：帶`cause.code`＝`network`、標頭值非法＝`key-invalid`、無法判定＝`other`。本函數不會 reject（注入之`fetch`拋出讀取即拋錯之物件、回傳畸形回應物件，皆以該把`other`回報）。
+
+**`ANTHROPIC_KEYS` 的分隔符**：只認**逗號**。使用者曾以**分號**分隔（`sk-ant-aaa;sk-ant-bbb`），整串被當成一把金鑰送出，結果是 401（金鑰無效）而非明顯的設定錯誤。處置（2026-10-25 起）：`resolveProviders`對名稱以`_KEYS`結尾之變數（`ANTHROPIC_KEYS`、`OPENCODE_KEYS`、`AGNES_KEYS`…，複數形＝清單）遇分號時**視同逗號拆開並回報 warning**（`warnings: [{ envVar, code: 'KEYS_SEMICOLON', message, ids }]`，同一變數只一則、`ids`為受影響之條目，**不含金鑰值**）。理由：已知內建供應商之金鑰字元皆為英數、底線與連字號，不含分號，含分號的值幾乎必然是分隔錯誤，自動拆開比整串送出更貼近意圖，又以 warning 避免靜默；單數形變數（如`FOO_KEY`）與條目自帶之`keys`不受影響（相容）；若某供應商之金鑰確實含分號，傳`resolveProviders(providers, { splitSemicolon: false })`關閉拆分（分號保留於金鑰內，仍發 warning）。`probeAnthropicKeys`給原始字串時同樣處理。
+
+**勿用`--bare`與`env`傳金鑰（重現紀錄，2026-10-25，Claude Code 2.1.302，主控）**：在 Claude Code 工作階段內以`env: { ANTHROPIC_API_KEY }`＋`extraArgs`含`--bare`呼叫`claude-opus-5-5`，`stream-json`之 init 事件`apiKeySource`為`ANTHROPIC_API_KEY`，**但 assistant 與 result 皆為「Credit balance is too low」**（`is_error: true`、費用 0）；**同一把金鑰**改經`key`參數（不加`--bare`）則正常回覆並扣費，REST（`max_tokens` 64000）亦正常。先前有子代理據此誤判「API 額度用盡」。**成因未隔離**（`--bare`、`env`傳遞或繼承之父 session 變數何者所致不明），所以：①金鑰一律走`key`參數、**不加`--bare`**（`--bare`另會令訂閱登入失效，見`dispatchClaude`檔頭）；②CLI 稱沒額度時**不得**直接當成額度用盡——`dispatchClaude`會以 REST 交叉確認（上表），REST 成功即判`env-error`；③`apiKeySource`為`ANTHROPIC_API_KEY`只是必要條件（見上節）。`opt.env.ANTHROPIC_API_KEY`（不建議）的路徑也會做分類與交叉確認，`env-error`的`failureDetail`會點出這兩點。
 
 **金鑰不外洩的範圍與已知限制**：key 只置於該次子進程環境（CLI）或`x-api-key`標頭（REST）；回傳物件（`stdout`／`stderr`／`error`）、`tried`、事件、`FETCH_ERROR`訊息、HTTP 錯誤本體、非 JSON 診斷之回應標頭值、呼叫端`validate`之例外訊息、啟動前 params 錯誤之外來例外訊息一律遮蔽 key 本身，並遮蔽`sk-ant-`樣式（殘段與他把金鑰）；成功之`stdout`為模型輸出，只遮蔽 key 本身（REST 為本次全部機密標頭值），不動合法出現的`sk-ant-…`範例字樣。**CLI 之`onStdout`／`onStderr`回調**（例如把串流寫入`stdout.log`）在 key 模式下收到的是已遮蔽文字：key 被切在兩塊之間以「尾端保留」處理，故尾端可能晚一塊、於結束時補送（stdout 回調只遮蔽 key，stderr 回調另遮蔽`sk-ant-`樣式）。**不在遮蔽範圍／已知限制**：`validate`函數收到的是未遮蔽之原始輸出（它需要原文判斷）；長度不足 6 字元之 key 不遮蔽；`usage`、`finishReason`為伺服器回傳值原樣透傳；CLI 子進程（模型）自身若能讀取其環境（如以 Read 工具讀`/proc/self/environ`，Windows 無此檔）則可能在其輸出中帶出 key，輸出經上述遮蔽不會回到呼叫端，但 CLI 自己的 session 紀錄（`~/.claude/projects`）可能含該輸出——唯讀白名單（`--tools Read,Glob,Grep`）下風險限於讀檔類工具。另：key 含 NUL 字元時 CLI 回`INVALID_KEY`（`errorType: 'exec'`，遞補層換下一把）。
 
@@ -527,12 +623,12 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | `providers[].meta` | any | 無 | **保留鍵，保證永不轉傳**轉接器。條目其餘鍵一律原樣轉傳——呼叫端要在條目上掛自有資訊（分類、標籤、註記）一律放`meta`，與轉傳機制永久絕緣（頂層opt與工作流各層規格物件同此約定） |
 | `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs`（非同步之`validate`與該次嘗試共用此時限，故亦受預算約束）。**已知限制**：條目或共用設定帶`maxRetries`>0 時，剩餘預算只壓進「呼叫轉接器」之那一次，轉接器內之各次重試各自以該值為上限，整輪至多約（maxRetries+1）×剩餘預算＋重試間隔，可超出`budgetMs`（既有行為，非同步驗證之重試亦同；以期限傳入轉接器之改善另議） |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
-| `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用）；假定單行程序列調用。跨行程持久化可直接用`createFileStore`；自行實作時**務必整包原封存還**，白名單式挑欄位會在套件擴充state時靜默丟棄新欄位。`get`／`set`須為**同步函數**：`get`拋錯、回傳 Promise 或回傳不可讀之物件時本次以全新狀態執行且**不回寫**（不覆寫既有之游標與冷卻；1.0.49 起，此前以全新狀態寫回），`get`回傳非物件（如尚未初始化之`null`）則照舊以全新狀態起始並寫回；`set`拋錯或回傳 Promise 皆靜默（其 rejection 被承接）。**state 之契約**：`get`回傳之 state 須為可寫之一般資料物件（`cursors`／`cooling`不得為凍結物件或帶拋錯之 getter），本層於整輪中持續讀寫同一物件並把它交給`set`——`set`不得凍結或改寫收到之 state（如 immer 式深凍結），需要不可變存放時請存其副本；違反者屬契約外，可能 reject。巢狀呼叫（`validate`內再呼叫本套件）共用同一檔案 store 時可能互相覆寫 |
-| `cooldownMs` | Integer | `0`不啟用 | 供應商冷卻視窗：條目（限有明給id者）遭遇**限流(HTTP 429，僅api類可偵測)或逾時(TIMEOUT)**後，於視窗內之後續呼叫中被**移至鏈尾（只降序不移除）**——前面全敗時仍會被嘗試、任一次成功立即解除，故不存在把已恢復服務冰住的問題。多階段工作流可大幅省去逐階段重踩已失效供應商的成本（使用端實測107s→15s）。注意啟用時providers順序會被暫時重排，此即機制目的 |
-| `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`），回傳`true`即視同冷卻觸發（內建429/TIMEOUT觸發不受影響）。CLI類限流字樣各家不同、隨版本漂移，且不一定在stderr（Claude Code之執行期失敗以result印在stdout，官方headless文件），**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`（注意：opencode 1.18.32 遇 Zen 免費層 429 時 `run` **不會結束**、stderr 只有 session 標頭，直到逾時才以 `TIMEOUT` 回報——內建 TIMEOUT 觸發已涵蓋；要讓字樣出現在 stderr 須於 `extraArgs` 加 `--print-logs --log-level ERROR`，2026-09-23 實測 DEBUG log 內為 `AI_APICallError: Rate limit exceeded`；不經本套件的原始 CLI 亦同）；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調須為**同步函數**，拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false`；以字樣判定者宜先排除`r.errorType === 'validation'`（驗證失敗之`stderr`含驗證函數自身之訊息，可能誤中字樣） |
+| `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用），以及僅在啟用冷卻且有金鑰沒額度時才出現的`keyCooling`（金鑰指紋→時間戳，指紋為sha256前16碼，不含金鑰本體）；假定單行程序列調用。跨行程持久化可直接用`createFileStore`；自行實作時**務必整包原封存還**，白名單式挑欄位會在套件擴充state時靜默丟棄新欄位。`get`／`set`須為**同步函數**：`get`拋錯、回傳 Promise 或回傳不可讀之物件時本次以全新狀態執行且**不回寫**（不覆寫既有之游標與冷卻；1.0.49 起，此前以全新狀態寫回），`get`回傳非物件（如尚未初始化之`null`）則照舊以全新狀態起始並寫回；`set`拋錯或回傳 Promise 皆靜默（其 rejection 被承接）。**state 之契約**：`get`回傳之 state 須為可寫之一般資料物件（`cursors`／`cooling`不得為凍結物件或帶拋錯之 getter），本層於整輪中持續讀寫同一物件並把它交給`set`——`set`不得凍結或改寫收到之 state（如 immer 式深凍結），需要不可變存放時請存其副本；違反者屬契約外，可能 reject。巢狀呼叫（`validate`內再呼叫本套件）共用同一檔案 store 時可能互相覆寫 |
+| `cooldownMs` | Integer | `0`不啟用 | 供應商冷卻視窗：條目（限有明給id者）遭遇**限流(HTTP 429，僅api類可偵測；`api-anthropic`與`claude`帶key者另可依`failureKind === 'rate-limit'`)或逾時(TIMEOUT)**後，於視窗內之後續呼叫中被**移至鏈尾（只降序不移除）**——前面全敗時仍會被嘗試、任一次成功立即解除，故不存在把已恢復服務冰住的問題。多階段工作流可大幅省去逐階段重踩已失效供應商的成本（使用端實測107s→15s）。注意啟用時providers順序會被暫時重排，此即機制目的。**沒額度（`failureKind === 'no-credit'`）另有金鑰層級冷卻**：該把金鑰（以指紋記於`store.keyCooling`）於視窗內降序至組內最後，整組皆沒額度者條目降至鏈尾，見「Claude以API金鑰計費」 |
+| `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`、`failureKind`），回傳`true`即視同冷卻觸發（內建429／TIMEOUT／`failureKind`為`rate-limit`之觸發不受影響：**內建先判、未命中才呼叫`coolDetect`，兩者為「或」疊加，`coolDetect`只能增加觸發、不能否決內建觸發**）。CLI類限流字樣各家不同、隨版本漂移，且不一定在stderr（Claude Code之執行期失敗以result印在stdout，官方headless文件），**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`（注意：opencode 1.18.32 遇 Zen 免費層 429 時 `run` **不會結束**、stderr 只有 session 標頭，直到逾時才以 `TIMEOUT` 回報——內建 TIMEOUT 觸發已涵蓋；要讓字樣出現在 stderr 須於 `extraArgs` 加 `--print-logs --log-level ERROR`，2026-09-23 實測 DEBUG log 內為 `AI_APICallError: Rate limit exceeded`；不經本套件的原始 CLI 亦同）；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調須為**同步函數**，拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false`；以字樣判定者宜先排除`r.errorType === 'validation'`（驗證失敗之`stderr`含驗證函數自身之訊息，可能誤中字樣） |
 | `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調須為**同步函數**（回傳值恰為`true`才中止），拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false` |
 | `meta` | any | 無 | 保留鍵，同`providers[].meta`，永不轉傳 |
-| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現)、`'group-exhausted'`(一組試完仍無成交，每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前；帶`keys`(有效金鑰數，`0`代表登入態之單一虛擬金鑰)、`attempted`(本組實際嘗試數)、`by`(`'all-keys'`每把皆換鑰失敗，或`'skip-group'`以與金鑰無關之失敗收尾)、`errorTypes`(本組各次嘗試之`errorType`依序)與`error`(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入`tried`)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外或回傳被 reject 之 Promise 皆不影響主流程（不等待其結果） |
+| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現；沒額度之金鑰冷卻與整組沒額度之條目冷卻另帶`scope`(`'key'`或`'entry'`)與`failureKind`)、`'skip-key'`(本次呼叫內已知沒額度之金鑰被略過而未送請求，僅`api-anthropic`／`claude`官方端點條目，帶`failureKind`與`error`)、`'context-too-long'`(脈絡過長，整個呼叫隨即結束，帶`failureKind`與`error`)、`'group-exhausted'`(一組試完仍無成交，每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前；帶`keys`(有效金鑰數，`0`代表登入態之單一虛擬金鑰)、`attempted`(本組實際嘗試數，不含`skip-key`)、`by`(`'all-keys'`每把皆換鑰失敗，或`'skip-group'`以與金鑰無關之失敗收尾)、`errorTypes`(本組各次嘗試之`errorType`依序)與`error`(本組最後一次錯誤)；有`failureKind`時另帶`failureKinds`(本組各次紀錄之`failureKind`)，組內每一把皆沒額度時另帶`quotaExhausted: true`；成交、預算用盡、中止之組不發，亦不寫入`tried`)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外或回傳被 reject 之 Promise 皆不影響主流程（不等待其結果） |
 
 頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
 
@@ -560,7 +656,13 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | 截斷（REST 文字類） | `truncated === true` | 整組跳過（同模型同請求換金鑰必然再截斷；`status: 'failed'`不屬此列，照「其餘」換下一把） |
 | 模型回工具呼叫而 api 類不支援 | `error`以`TOOL_CALLS_UNSUPPORTED`開頭 | 整組跳過 |
 | HTTP 200 但本體非 JSON（api 類） | `error`以`INVALID_RESPONSE: body is not JSON`開頭 | 整組跳過（傳輸或閘道狀態；「JSON 缺欄位」不在此列，照「其餘」換下一把） |
+| 網路（`failureKind === 'network'`，僅`api-anthropic`／`claude`帶key） | 連不上、逾時、504 | 整組跳過（已依`maxRetries`在轉接器內重試，不換金鑰、不判額度）；2026-10-25 前`api-anthropic`之連線失敗為逐把換金鑰 |
+| 呼叫方式或環境錯誤（`failureKind === 'env-error'`，僅`claude`帶key） | CLI 稱沒額度但同金鑰 REST 成功 | 整組跳過（不換金鑰、不判額度），`error`為`ENV_ERROR: …` |
+| 脈絡過長（`failureKind === 'context-too-long'`，僅`api-anthropic`／`claude`帶key） | 400「prompt is too long」、413、CLI「Prompt is too long」 | **立即結束整個呼叫**（不換金鑰、不試後續條目），`error`為`CONTEXT_TOO_LONG: …` |
+| 沒額度（`failureKind === 'no-credit'`，僅`api-anthropic`／`claude`帶key） | 402、400 額度不足／花費上限、429 月花費上限；CLI 須經 REST 交叉確認 | 換組內下一把，且該把於本次呼叫內不再用於其他官方端點條目；全部金鑰皆沒額度才標`quotaExhausted` |
 | 其餘（含額度上限、金鑰無效、服務回錯、REST 之`fetch`錯誤） | — | 換組內下一把 |
+
+以上「僅`api-anthropic`／`claude`帶key」之列完整處置（含限流、過載、金鑰無效）見「Claude以API金鑰計費」之「遞補層依`failureKind`的處置」。
 
 已知限制（1.0.48）：REST 之`fetch`錯誤中，屬條目層者（無效網址、連線拒絕、DNS、TLS、協定不支援）換金鑰亦必然再敗，現仍逐把換，且其中送出前之確定性錯誤與 TLS 驗證失敗於`maxRetries`>0 時仍會重試；只有「金鑰含非法標頭字元」屬金鑰層、須換把。改善方案（fetch 前以`new Request()`預檢：無效網址與 body 不可序列化回`params`，金鑰層之標頭錯誤回固定文字並換把）另議。
 
@@ -617,6 +719,15 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
         { providerId: 'agnes:agnes-2.0-flash', keyIndex: 0, keyId: 'agnes:agnes-2.0-flash#0', outcome: 'next-key', error: 'HTTP 401', durationMs: 105 },
         { providerId: 'agnes:agnes-2.0-flash', keyIndex: 1, keyId: 'agnes:agnes-2.0-flash#1', outcome: 'ok', durationMs: 1161 },
     ],
+}
+
+//api-anthropic與claude帶key之失敗另帶(2026-10-25起; 成功結果與其他kind無此欄):
+{
+    failureKind: 'no-credit',        //細分類, 一覽見「失敗細分類 failureKind」; 流出於結果與tried各項
+    failureDetail: 'Your credit balance is too low …',
+    quotaExhausted: ['anthropic:haiku-5.5'],  //組內每一把金鑰皆沒額度之供應商id(僅有時才有此鍵), 此時error為'QUOTA_EXHAUSTED: provider "…" has no credit on all N key(s) (…)'
+    // 脈絡過長時error為'CONTEXT_TOO_LONG: …'且整個呼叫已結束; 呼叫方式或環境錯誤時為'ENV_ERROR: …'
+    // tried[].outcome另有'skip-key'(本次呼叫內已知沒額度之金鑰, 未送請求)與'context-too-long'
 }
 ```
 
@@ -852,7 +963,7 @@ let providers = all.filter((p) => !(p.id === 'agy:gemini-4-argon-high' && low('G
 - `dispatchAi(kind, prompt, opt)`會把整個`opt`原樣轉傳對應轉接器，該轉接器用不到的鍵（例如輪替條目物件內的`kind`）會被忽略，故「供應商條目物件直接當`opt`」是預期用法；`dispatchAiFallback`之providers條目沿用同一約定。
 - `dispatchAiFallback`為單向單輪：全數群組試畢即回傳最後一筆失敗結果與`tried`歷程，不回頭重試已敗的組。跨次執行僅記憶游標，不設金鑰停用清單（理由見上方失敗分流說明）；需跨次跳過特定金鑰時，由呼叫端依`tried`／`onEvent`內之`error`與`stderr`自行決策。要以條目為單位判斷「本次呼叫整組試完仍無成交」者（如健康層據以降序），每收到一次`group-exhausted`事件計一次即可，勿以金鑰數與逐把`next-key`次數重建——事件不帶呼叫識別，並行呼叫跨越一次成交時（游標只在成交時推進，各呼叫起點不同）重建會多計或少計。
 - `shouldStop`**只在嘗試邊界檢查，不中止進行中之嘗試**（不殺子進程、不斷開HTTP請求）：進行中嘗試之強制中止需侵入execCli層與各轉接器，屬已知設計取捨——最小版已把斷線後的損失從「整條鏈」縮成「至多再耗當前這一家」；如有實測場景證明不足再議完整版。
-- CLI類限流簽章**不進套件**：各家字樣（stdout或stderr）不同且隨CLI版本漂移，套件維護簽章表等同養一個自己驗證不了的分類器（與否決金鑰停用清單同一理由）。偵測經`coolDetect`依賴注入，由觀察到字樣的呼叫端維護。
+- CLI類限流簽章**不進套件**（`opencode`／`codex`／`antigravity`與未給金鑰的`claude`）：各家字樣（stdout或stderr）不同且隨CLI版本漂移，套件維護簽章表等同養一個自己驗證不了的分類器（與否決金鑰停用清單同一理由）。偵測經`coolDetect`依賴注入，由觀察到字樣的呼叫端維護。**例外（2026-10-25 dispatch-run01）**：`claude`帶 API 金鑰時，錯誤是 Anthropic 官方協定的一部分（`stream-json`有`assistant.error`列舉與`api_error_status`，字樣取自 Claude Code 內嵌字串），且誤判代價高（把所有金鑰輪過一遍、或誤判額度用盡），故套件維護**最小**分類（`failureKind`）：結構化欄位優先、字樣其次、命中不到歸`other`（維持既有處置）、「沒額度」須經 REST 交叉確認。這不改變「不維護停用清單」之原則——沒額度之金鑰冷卻只在`cooldownMs>0`時啟用、只降序不移除。
 - agy之非成功結局多為離開碼0（2026-10-16 agy 1.4.0實測）：自身`--print-timeout`到時（stdout為部分輸出，可能為空；現預設推導令外層先逾時，故僅於呼叫端明給`printTimeout`≤`timeoutMs`時才自然發生；`extraArgs`重帶旗標之last-wins為推論未實跑）與權限閘門擋下（stdout空）皆`ok: true`，僅未知模型為離開碼1（`exec`）；故agy條目建議帶`validate: 'nonempty'`。**額度用盡時agy之輸出與離開碼未驗證**，本套件不內建簽章，由呼叫端自維護`coolDetect`（見上條）；未給`model`時agy預設為Gemini 4 Argon (Medium)。
 - `dispatchOpencode`之`key`與`provider`須同時給予才會注入金鑰；只給其一（或範例中`.env`缺鍵導致`key`為`undefined`）時不會報錯，而是靜默沿用CLI既有登入狀態。
 - 範例中之`process.loadEnvFile`需Node.js >= 20.12，僅範例使用，套件本身無此限制。

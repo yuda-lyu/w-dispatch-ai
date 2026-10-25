@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
 import isarr from 'wsemi/src/isarr.mjs'
@@ -35,6 +36,27 @@ import { callHookSync, readCallerObj, errMsg, asText } from './callUserFn.mjs'
 //   含中文(无效的令牌)與無特徵字串(UnknownError), 正則涵蓋不了; 而額度視窗有5小時滾動、
 //   逐小時、逐日等多種形態, 「命中即停用到當日結束」會把已復活的金鑰冰到隔天。
 //   故跨次執行不設停用清單: 額度恢復的偵測就是「下次再打一次」, 代價僅一次快速失敗。
+//
+// 【failureKind處置(2026-10-25 dispatch-run01)】api-anthropic與claude帶key之失敗結果帶failureKind細分類(判準與依據見failureKind.mjs檔頭), 本層依它處置,
+//   其餘kind與無failureKind之結果維持上述既有分流(完全不變)。Anthropic的「沒額度」與「脈絡過長」若都只當一般失敗而換金鑰, 前者會把所有金鑰輪過一遍並被誤判為額度用盡,
+//   後者換金鑰結果必然相同, 故分開處置:
+//     no-credit         該把金鑰記為沒額度→換組內下一把; 本次呼叫內其餘「同為Anthropic官方端點之條目」(claude-api:與anthropic:共用同一組ANTHROPIC_KEYS與同一額度池)遇該把金鑰
+//                       直接略過(事件skip-key, 不再送請求); 組內每一把皆沒額度才標quotaExhausted(組盡事件與最終結果), 該供應商額度用盡。
+//                       cooldownMs>0時另以「金鑰指紋(sha256前16碼, 不存金鑰本體)」記入store之keyCooling: 之後的呼叫中該把降序至組內最後(只降序不移除, 仍會被嘗試以偵測恢復),
+//                       整組皆沒額度者並比照條目冷卻降至鏈尾。未啟用冷卻時不跨呼叫記憶(同「跨次不設停用清單」原則)。
+//                       「官方端點」範圍(isOfficialAnthropicEntry): api-anthropic未自訂baseURL(顯式官方網址視同官方); claude未自訂crossCheckBaseURL且條目env／process.env之ANTHROPIC_BASE_URL未導向官方以外
+//                       (env內該鍵只以屬性描述子判讀、不執行getter; settings.json之env區塊另設者看不到＝已知限制)。「keys[]即實際認證」(keysAreActualAuth): api-anthropic之headers覆寫x-api-key／authorization者不可信——
+//                       其失敗與keys[]無關，不累計quotaExhausted、不共享略過、不記金鑰冷卻。略過時最終結果為合成之失敗結果(不掛他家轉接器之stdout／stderr／code／pid, skippedFrom標明證據來源)
+//     context-too-long  脈絡過長: 立即結束整個呼叫(不換金鑰、不試後續條目——後續條目的脈絡上限未知, 且同請求換金鑰必然相同), 回error 'CONTEXT_TOO_LONG: …';
+//                       是否改試脈絡更大之條目由呼叫端決定(另以脈絡更大之providers再呼叫)
+//     rate-limit        限流: 既有規則(換下一把; cooldownMs>0時條目冷卻——內建觸發除429與TIMEOUT外新增failureKind為rate-limit者, 令CLI類限流亦不需coolDetect)
+//     overloaded        過載: 既有規則(換下一把; 不冷卻)
+//     key-invalid / no-permission  金鑰無效或無權限: 換下一把, 不冷卻(只影響該把, 不牽連他把)
+//     network           網路(連不上、逾時): 不換金鑰、整組跳過(已依maxRetries於轉接器內重試過), 不判額度
+//     env-error         呼叫方式或環境錯誤(CLI稱沒額度但同金鑰REST成功): 不換金鑰、整組跳過、不判額度; 最終error為'ENV_ERROR: …'
+//     other             既有規則
+//   coolDetect與內建觸發之優先序: 內建(429、TIMEOUT、failureKind為rate-limit)先判, 未命中才呼叫coolDetect; 兩者為「或」(疊加)——coolDetect只能增加觸發, 不能否決內建觸發;
+//   no-credit之金鑰冷卻與條目冷卻不經coolDetect。
 //
 // 【跨次記憶只有游標】成功後游標推進至下一把, 令額度在同組多把金鑰間自動均攤;
 //   死金鑰的代價也被游標攤平——這輪從key1敗轉key2成功後游標停在key3, 下輪不會先碰key1。
@@ -157,6 +179,9 @@ function initState(store) {
         if (!isobj(state.cooling)) {
             state.cooling = {}
         }
+        if (state.keyCooling !== undefined && !isobj(state.keyCooling)) {
+            state.keyCooling = {} //金鑰冷卻(沒額度)僅在啟用時才建立, 存在但型別不符者重置
+        }
     }
     catch {
         //store.get回傳不可讀之物件(已撤銷之Proxy)或缺鍵之凍結物件: 同上, 本次以全新狀態執行且不回寫
@@ -210,6 +235,49 @@ function reorderByCooling(providers, state, cooldownMs, saveState) {
 
 
 /**
+ * 依金鑰冷卻狀態重排組內金鑰嘗試順序：冷卻中(沒額度)的金鑰移到組內最後，只降序不移除，其餘保持原相對順序；過期紀錄順手清除並寫回
+ *
+ * @param {Array} order 輸入金鑰索引陣列(游標起算之輪替順序)
+ * @param {Function} fpOf 輸入(金鑰索引)=>指紋字串之函數
+ * @param {Object} state 輸入狀態物件(取其keyCooling)
+ * @param {Number} cooldownMs 輸入冷卻視窗毫秒正整數
+ * @param {Function} saveState 輸入狀態寫回函數
+ * @returns {Array} 回傳重排後之金鑰索引陣列
+ */
+function reorderKeysByCooling(order, fpOf, state, cooldownMs, saveState) {
+    let table = state.keyCooling
+    if (!isobj(table)) {
+        return order
+    }
+    let now = Date.now()
+    let act = []
+    let cool = []
+    let dirty = false
+    for (let ki of order) {
+        let fp = fpOf(ki)
+        let ts = get(table, fp, null)
+        if (ispint(ts) && (now - ts) < cooldownMs) {
+            cool.push(ki)
+        }
+        else {
+            if (table[fp] !== undefined) {
+                try {
+                    delete table[fp] //冷卻已過期, 清除
+                    dirty = true
+                }
+                catch {}
+            }
+            act.push(ki)
+        }
+    }
+    if (dirty) {
+        saveState()
+    }
+    return [...act, ...cool]
+}
+
+
+/**
  * 取結果之截斷資訊供tried各項記錄(REST文字類轉接器才帶, 其餘kind回空物件)
  *
  * @param {Object} r 輸入dispatchAi結果物件
@@ -217,6 +285,129 @@ function reorderByCooling(providers, state, cooldownMs, saveState) {
  */
 function finOf(r) {
     return (get(r, 'truncated', undefined) !== undefined) ? { truncated: r.truncated, finishReason: r.finishReason } : {}
+}
+
+
+/**
+ * 取結果之failureKind細分類供事件與tried各項記錄(api-anthropic與claude帶key才有，其餘kind回空物件)
+ *
+ * @param {Object} r 輸入dispatchAi結果物件
+ * @returns {Object} 回傳物件，含failureKind(與有內容時之failureDetail)，或空物件
+ */
+function fkOf(r) {
+    let fk = get(r, 'failureKind', '')
+    if (!isestr(fk) || fk === '') {
+        return {}
+    }
+    let d = get(r, 'failureDetail', '')
+    return { failureKind: fk, ...(isestr(d) && d !== '' ? { failureDetail: d } : {}) }
+}
+
+
+/**
+ * 金鑰指紋(sha256前16碼十六進位): 跨條目、跨呼叫識別同一把金鑰, 不存放金鑰本體
+ *
+ * @param {String} key 輸入金鑰字串
+ * @returns {String} 回傳16碼十六進位字串
+ */
+function keyFingerprint(key) {
+    return crypto.createHash('sha256').update(typeof key === 'string' ? key : String(key)).digest('hex').slice(0, 16) //String包裝物件(isestr接受)先取原始字串
+}
+
+
+/**
+ * 是否為Anthropic官方端點網址(主機名為api.anthropic.com；無效網址視為非官方)
+ *
+ * @param {String} u 輸入網址字串
+ * @returns {Boolean} 回傳是否為官方端點
+ */
+function isOfficialAnthropicUrl(u) {
+    try {
+        return new URL(u).hostname.toLowerCase() === 'api.anthropic.com'
+    }
+    catch {
+        return false
+    }
+}
+
+
+/**
+ * 是否為自訂端點(有給網址且非官方端點)
+ *
+ * @param {*} u 輸入網址值
+ * @returns {Boolean} 回傳是否為自訂端點
+ */
+function isCustomEndpoint(u) {
+    return isestr(u) && !isOfficialAnthropicUrl(u)
+}
+
+
+/**
+ * 判斷條目的「keys[]」是否即實際認證身分(api-anthropic之headers可覆寫x-api-key／authorization，覆寫時認證身分不是keys[]所示——2026-10-25外審#3、外審二#4)
+ *
+ * 不可信時：不得以該條目之失敗推論「keys[]各把沒額度」(不累計quotaExhausted)，亦不參與金鑰層級的略過與冷卻。
+ * 只讀標頭名稱(Object.keys)，不讀值；任何讀取失敗一律保守視為不可信
+ *
+ * @param {Object} attemptOpt 輸入條目疊上共用預設後之設定物件
+ * @returns {Boolean} 回傳keys[]是否即實際認證身分
+ */
+function keysAreActualAuth(attemptOpt) {
+    try {
+        if (get(attemptOpt, 'kind', null) === 'api-anthropic') {
+            let h = get(attemptOpt, 'headers', null)
+            if (isobj(h) && Object.keys(h).some((k) => /^(?:x-api-key|authorization)$/i.test(k))) {
+                return false
+            }
+        }
+        return true
+    }
+    catch {
+        return false
+    }
+}
+
+
+/**
+ * 判斷條目是否打向「Anthropic官方端點」(kind為api-anthropic或claude)：此範圍內之條目共用同一組ANTHROPIC_KEYS與同一Console額度池，「某把沒額度」對範圍內全部條目成立
+ *
+ * ①kind為api-anthropic：未自訂baseURL(顯式給官方網址視同官方)；
+ * ②kind為claude：未自訂crossCheckBaseURL，且條目env與process.env之ANTHROPIC_BASE_URL皆未導向官方以外(CLI經它改端點；settings.json之env區塊另設者看不到，屬已知限制)；
+ * 條目env內之ANTHROPIC_BASE_URL只以屬性描述子判讀、不執行getter(2026-10-25外審二#2: 範圍檢查不得多讀一次呼叫端物件，違反只讀一次之契約)，為存取子屬性者保守視為不屬範圍；
+ * 任何讀取失敗(不可讀之物件)一律保守視為不屬範圍
+ *
+ * @param {Object} attemptOpt 輸入條目疊上共用預設後之設定物件
+ * @returns {Boolean} 回傳是否打向Anthropic官方端點
+ */
+function isOfficialAnthropicEntry(attemptOpt) {
+    try {
+        let kind = get(attemptOpt, 'kind', null)
+        if (kind === 'api-anthropic') {
+            return !isCustomEndpoint(get(attemptOpt, 'baseURL', null))
+        }
+        if (kind === 'claude') {
+            if (isCustomEndpoint(get(attemptOpt, 'crossCheckBaseURL', null))) {
+                return false
+            }
+            let env = get(attemptOpt, 'env', null)
+            if (isobj(env)) {
+                let nk = Object.keys(env).find((k) => k.toUpperCase() === 'ANTHROPIC_BASE_URL')
+                if (nk !== undefined) {
+                    let d = Object.getOwnPropertyDescriptor(env, nk)
+                    if (!d || !('value' in d) || isCustomEndpoint(d.value)) {
+                        return false
+                    }
+                }
+            }
+            if (typeof process !== 'undefined' && process && isobj(process.env) && isCustomEndpoint(process.env.ANTHROPIC_BASE_URL)) {
+                return false
+            }
+            return true
+        }
+        return false
+    }
+    catch {
+        return false
+    }
 }
 
 
@@ -289,6 +480,13 @@ function isKeyIndependentFail(r) {
         return true
     }
 
+    //failureKind(api-anthropic與claude帶key, 見failureKind.mjs): 網路(連不上、逾時, 已於轉接器內依maxRetries重試)與呼叫方式或環境錯誤(CLI稱沒額度但同金鑰REST成功),
+    //皆與「哪一把金鑰」無關, 換金鑰必然再敗、亦不得據以判額度, 整組跳過
+    let failureKind = get(r, 'failureKind', '')
+    if (failureKind === 'network' || failureKind === 'env-error') {
+        return true
+    }
+
     return false
 }
 
@@ -315,15 +513,15 @@ function isKeyIndependentFail(r) {
  * @param {Number} [opt.minAttemptMs=20000] 輸入單次嘗試之最低剩餘預算毫秒正整數，剩餘低於此值即停止嘗試回報budget exhausted，預設20000
  * @param {Object} [opt.store=null] 輸入狀態持久化物件{get:()=>state,set:(state)=>{}}，state內含cursors(逐群組游標)與cooling(供應商冷卻時間戳，僅cooldownMs>0時使用)，省略代表用行程內記憶體(跨呼叫有效，重啟歸零)。get/set須為同步函數：get拋錯、回傳Promise或回傳不可讀之物件時本次以全新狀態執行且不回寫(不覆寫既有游標與冷卻)，set拋錯或回傳Promise皆靜默。假定單行程序列調用，並行請自行加鎖
  * @param {Number} [opt.cooldownMs=0] 輸入供應商冷卻視窗毫秒非負整數，>0啟用：條目(限有明給id者)遭遇限流(HTTP 429，僅api類可偵測；CLI類可經coolDetect注入判定)或逾時(TIMEOUT開頭)後，於冷卻視窗內之後續呼叫中被移至鏈尾——只降序不移除，前面全敗時仍會被嘗試，任一次成功立即解除；注意啟用時「providers順序即優先序」會被暫時重排，此即本機制之目的；預設0代表不啟用
- * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429/TIMEOUT觸發不受影響)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=>/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs>0時有效，回調須為同步函數，拋出例外或回傳Promise(承接其rejection)皆視同false；以字樣判定者宜先排除errorType為'validation'者(其stderr含驗證函數自身之訊息)，預設null
+ * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429／TIMEOUT／failureKind為rate-limit之觸發不受影響；優先序：內建先判、未命中才呼叫coolDetect，兩者為「或」疊加，coolDetect只能增加觸發、不能否決內建觸發；沒額度之金鑰冷卻不經coolDetect)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=>/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs>0時有效，回調須為同步函數，拋出例外或回傳Promise(承接其rejection)皆視同false；以字樣判定者宜先排除errorType為'validation'者(其stderr含驗證函數自身之訊息)，預設null
  * @param {Function} [opt.shouldStop=null] 輸入中止判定函數()=>Boolean，於每次嘗試之間檢查，回傳true即停止遞補回報ABORTED(不中止進行中之嘗試)——供呼叫端於成果已無人接收時(如客戶端斷線)止損；經工作流層原樣轉傳，中止後各後續呼叫進門即回ABORTED令整條工作流快速收束；回調須為同步函數(回傳值恰為true才中止)，拋出例外或回傳Promise(承接其rejection)皆視同false，預設null
  * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊，保留鍵保證永不轉傳各轉接器，預設undefined
- * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現)、'group-exhausted'(本組未成交而試完，每次呼叫每組恰一次，位於本組最後一個next-key或skip-group之後、下一組首個try之前；帶keys(有效金鑰數，0代表登入態之單一虛擬金鑰)、attempted(本組實際嘗試數)、by('all-keys'每把皆換鑰失敗，或'skip-group'以與金鑰無關之失敗收尾)、errorTypes(本組各次嘗試之errorType依序)與error(本組最後一次錯誤)；成交、預算用盡、中止之組不發，亦不寫入tried)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外或回傳被reject之Promise皆不影響主流程(不等待其結果)，預設null
+ * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現；沒額度之金鑰冷卻與整組沒額度之條目冷卻另帶scope('key'或'entry')與failureKind)、'skip-key'(本次呼叫內已知沒額度之金鑰被略過而未送請求，僅Anthropic官方端點條目，帶failureKind與error)、'context-too-long'(脈絡過長，整個呼叫隨即結束，帶failureKind與error)、'group-exhausted'(本組未成交而試完，每次呼叫每組恰一次，位於本組最後一個next-key或skip-group之後、下一組首個try之前；帶keys(有效金鑰數，0代表登入態之單一虛擬金鑰)、attempted(本組實際嘗試數，不含skip-key)、by('all-keys'每把皆換鑰失敗，或'skip-group'以與金鑰無關之失敗收尾)、errorTypes(本組各次嘗試之errorType依序)、error(本組最後一次錯誤)，有failureKind時另帶failureKinds，組內每一把皆沒額度時另帶quotaExhausted: true；成交、預算用盡、中止之組不發，亦不寫入tried)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外或回傳被reject之Promise皆不影響主流程(不等待其結果)，預設null
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則(同dispatch functions之validate，自訂函數可回傳Promise)，條目可覆寫，預設undefined
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受REST文字類轉接器回報之截斷內容布林值(原樣轉傳轉接器)，1.0.37起截斷於validate之前判失敗，validate內含搶救策略者須給true，預設false
  * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；REST文字類轉接器另帶finishReason與truncated(是否截斷)，同樣流出於結果與tried各項；本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；REST文字類轉接器另帶finishReason與truncated(是否截斷)，同樣流出於結果與tried各項；api-anthropic與claude帶key之失敗另帶failureKind／failureDetail(細分類，見檔頭【failureKind處置】，流出於結果與tried各項)，最終失敗結果在有供應商整組皆沒額度時另帶quotaExhausted(供應商id陣列)，且最後一筆為該情形時error為'QUOTA_EXHAUSTED: …'、為脈絡過長時為'CONTEXT_TOO_LONG: …'(此時整個呼叫已結束)、為呼叫方式或環境錯誤時為'ENV_ERROR: …'；本函數不會reject
  * @example
  * //need opencode, claude, codex cli in system PATH
  *
@@ -453,6 +651,11 @@ async function dispatchAiFallback(prompt, opt = {}) {
     let lastResult = null
     let lastMeta = null
 
+    //deadKeys, 本次呼叫內已知「沒額度」之金鑰(指紋 → 該次失敗結果): Anthropic官方端點範圍內之後續條目遇它直接略過(見檔頭【failureKind處置】)
+    //exhaustedKeys, 本次呼叫內「組內每一把皆沒額度」之條目(id → 金鑰數)
+    let deadKeys = new Map()
+    let exhaustedKeys = new Map()
+
     //逐群組(宣告順序即優先序), 單向單輪不回頭
     for (let ig = 0; ig < providers.length; ig++) {
         //entry, 已於迴圈前物化; 不可讀者帶ENTRY_ERR, 本條目以params失敗
@@ -486,12 +689,42 @@ async function dispatchAiFallback(prompt, opt = {}) {
         }
 
         //組內逐把嘗試, 每把至多一次, 全敗即組盡遞補下一組
-        let nAttempts = (nk > 0) ? nk : 1
+        //order, 金鑰嘗試順序(自游標起算之輪替; 無keys為單一虛擬金鑰null); 屬Anthropic官方端點範圍且cooldownMs>0時,
+        //冷卻中(沒額度)的金鑰移到組內最後(只降序不移除, 見檔頭【failureKind處置】); 其餘情形與此前完全相同
+        let order = []
+        if (nk > 0) {
+            for (let a = 0; a < nk; a++) {
+                order.push((cursor + a) % nk)
+            }
+        }
+        else {
+            order.push(null)
+        }
+        //trusted, keys[]即實際認證身分(headers未覆寫認證標頭)才可由失敗推論「該把沒額度」並累計quotaExhausted; scoped, 另須打向官方端點才與他條目共享沒額度紀錄(略過／金鑰冷卻)
+        let entryAttemptOpt = { ...sharedOpt, ...entryOpt }
+        let trusted = nk > 0 && keysAreActualAuth(entryAttemptOpt)
+        let scoped = trusted && isOfficialAnthropicEntry(entryAttemptOpt)
+        let fps = []
+        if (scoped) {
+
+            //指紋於組前一次算好; 任一把無法算(畸形金鑰物件)則本組不參與金鑰層級的略過與冷卻(保守退回既有處置)
+            try {
+                fps = keys.map((k) => keyFingerprint(k))
+            }
+            catch {
+                scoped = false
+            }
+        }
+        let fpOf = (ki) => fps[ki]
+        if (scoped && cooldownMs > 0) {
+            order = reorderKeysByCooling(order, fpOf, state, cooldownMs, saveState)
+        }
+        let noCreditIdx = new Set() //本組內已知沒額度之金鑰索引(本次嘗試失敗者，或本次呼叫內已知而略過者)
         let skipGroup = false
         let groupStart = tried.length //本組於tried之起點, 供組盡事件取本組各次嘗試
-        for (let a = 0; a < nAttempts && !skipGroup; a++) {
+        for (let a = 0; a < order.length && !skipGroup; a++) {
 
-            //中止檢查(嘗試邊界): 成果已無人接收時止損, 不中止進行中之嘗試(見檔頭【中止】)
+            //中止檢查(嘗試邊界): 成果已無人接收時止損, 不中止進行中之嘗試(見檔頭【中止】); 置於略過判定之前(2026-10-25外審#13: 全部略過之條目亦須遵守)
             if (stopRequested()) {
                 emit({ type: 'aborted', providerId: id, keyIndex: null, keyId: id })
                 tried.push({ providerId: id, keyIndex: null, keyId: id, outcome: 'aborted' })
@@ -499,8 +732,34 @@ async function dispatchAiFallback(prompt, opt = {}) {
             }
 
             //keyIndex, 無keys時為null
-            let keyIndex = (nk > 0) ? (cursor + a) % nk : null
+            let keyIndex = order[a]
             let keyId = (keyIndex === null) ? id : `${id}#${keyIndex}`
+
+            //本次呼叫內已知沒額度之金鑰(先前條目已證實, 同為Anthropic官方端點共用額度池): 略過不送請求;
+            //最終結果改以合成之失敗結果表示(只帶錯誤字樣、errorType與failureKind，不帶他家轉接器之stdout／stderr／code／pid；skippedFrom標明證據來自哪個條目，2026-10-25外審#12)
+            if (scoped) {
+                let dead = deadKeys.get(fpOf(keyIndex))
+                if (dead !== undefined) {
+                    emit({ type: 'skip-key', providerId: id, keyIndex, keyId, failureKind: 'no-credit', error: dead.r.error, evidenceFrom: dead.providerId })
+                    tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-key', failureKind: 'no-credit', error: dead.r.error, errorType: dead.r.errorType, evidenceFrom: dead.providerId })
+                    noCreditIdx.add(keyIndex)
+                    lastResult = {
+                        ok: false,
+                        stdout: '',
+                        stderr: '',
+                        code: null,
+                        error: dead.r.error,
+                        errorType: dead.r.errorType,
+                        failureKind: 'no-credit',
+                        ...(isestr(dead.r.failureDetail) ? { failureDetail: dead.r.failureDetail } : {}),
+                        durationMs: 0,
+                        attempts: 0,
+                        skippedFrom: dead.providerId,
+                    }
+                    lastMeta = { providerId: id, keyIndex, kind, model }
+                    continue
+                }
+            }
 
             //attemptOpt, 共用預設 <- 條目覆寫 <- 本把金鑰
             let attemptOpt = { ...sharedOpt, ...entryOpt }
@@ -537,6 +796,15 @@ async function dispatchAiFallback(prompt, opt = {}) {
                     state.cursors[id] = (keyIndex + 1) % nk
                     saveState()
                 }
+
+                //金鑰冷卻(沒額度)亦同: 該把成功即證明已恢復, 立即解除(只降序不移除、恢復即復位)
+                if (scoped && cooldownMs > 0 && isobj(state.keyCooling) && state.keyCooling[fpOf(keyIndex)] !== undefined) {
+                    try {
+                        delete state.keyCooling[fpOf(keyIndex)]
+                    }
+                    catch {}
+                    saveState()
+                }
                 emit({ type: 'ok', providerId: id, keyIndex, keyId, durationMs: r.durationMs })
                 tried.push({ providerId: id, keyIndex, keyId, outcome: 'ok', durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
                 return { ...r, providerId: id, keyIndex, kind, model, tried }
@@ -545,11 +813,58 @@ async function dispatchAiFallback(prompt, opt = {}) {
             //失敗分流
             lastResult = r
             lastMeta = { providerId: id, keyIndex, kind, model }
-            //冷卻觸發: 內建為限流(HTTP 429, 僅api類可偵測)與逾時(TIMEOUT開頭, CLI與api皆可)——
+
+            //failureKind(api-anthropic與claude帶key才有, 見檔頭【failureKind處置】), 無或非字串視為無
+            let fk = get(r, 'failureKind', '')
+            if (!isestr(fk)) {
+                fk = ''
+            }
+
+            //脈絡過長: 同一請求換金鑰、換同脈絡上限之條目結果必然相同, 且後續條目之脈絡上限未知——立即結束整個呼叫並回明確錯誤, 是否改試更大脈絡之條目由呼叫端決定
+            if (fk === 'context-too-long') {
+                let evx = { providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr }
+                emit({ type: 'context-too-long', ...evx })
+                tried.push({ ...evx, outcome: 'context-too-long', durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
+                let why = (isestr(r.failureDetail) && r.failureDetail !== '') ? r.failureDetail : r.error
+
+                //先前已確認額度用盡之供應商仍附上(2026-10-25外審二#5: 提前返回不得遺失已累積之quotaExhausted)
+                return {
+                    ...r,
+                    error: `CONTEXT_TOO_LONG: ${why} (not retried with other keys or providers; retry with a smaller prompt or a provider with a larger context window)`,
+                    ...(exhaustedKeys.size > 0 ? { quotaExhausted: [...exhaustedKeys.keys()] } : {}),
+                    ...lastMeta,
+                    tried,
+                }
+            }
+
+            //沒額度: 記入本次呼叫之deadKeys(Anthropic官方端點範圍內, 後續條目略過該把); cooldownMs>0時另記金鑰冷卻(指紋, 不存金鑰本體)令之後的呼叫中該把降至組內最後;
+            //認證被headers覆寫者(trusted為false)失敗與keys[]無關，不累計
+            if (fk === 'no-credit' && nk > 0 && trusted) {
+                noCreditIdx.add(keyIndex)
+                if (scoped) {
+                    let fp = fpOf(keyIndex)
+                    deadKeys.set(fp, { r, providerId: id })
+                    if (cooldownMs > 0) {
+                        try {
+                            if (!isobj(state.keyCooling)) {
+                                state.keyCooling = {}
+                            }
+                            state.keyCooling[fp] = Date.now()
+                        }
+                        catch {} //凍結之state: 退化為只在本次呼叫內略過
+                        saveState()
+                        emit({ type: 'cooled', scope: 'key', providerId: id, keyIndex, keyId, error: r.error, cooldownMs, failureKind: fk })
+                    }
+                }
+            }
+
+            //冷卻觸發: 內建為限流(HTTP 429, 僅api類可偵測; 或failureKind為rate-limit——CLI類帶key者亦可, 不需coolDetect)與逾時(TIMEOUT開頭, CLI與api皆可)——
             //其餘失敗(金鑰無效/服務端錯誤)已有換金鑰換家機制處理, 納入冷卻反而誤傷;
-            //CLI類限流簽章經coolDetect注入判定(呼叫端維護, 見檔頭), 拋出例外視同false
+            //CLI類限流簽章經coolDetect注入判定(呼叫端維護, 見檔頭), 拋出例外視同false; 內建先判、coolDetect後判, 兩者為「或」(疊加)
             if (cooldownMs > 0 && idExplicit) {
-                let isCoolTrigger = (r.code === 429) || (isestr(r.error) && r.error.indexOf('TIMEOUT') === 0)
+                //限流: 有failureKind者只認'rate-limit'(月花費上限之429是沒額度，不是限流——2026-10-25外審#11, 與CLI路徑對稱); 無failureKind之其他kind維持HTTP 429判準
+                let isRateLimit = (fk !== '') ? (fk === 'rate-limit') : (r.code === 429)
+                let isCoolTrigger = isRateLimit || (isestr(r.error) && r.error.indexOf('TIMEOUT') === 0)
                 if (!isCoolTrigger && coolDetect !== null) {
                     let h = callHookSync(() => coolDetect(r)) //同步契約: 拋錯或回傳Promise(承接其rejection)皆視同false
                     isCoolTrigger = h.state === 'value' && h.value === true
@@ -566,37 +881,71 @@ async function dispatchAiFallback(prompt, opt = {}) {
             if (isKeyIndependentFail(r)) {
 
                 //與金鑰無關, 整組跳過
-                emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
+                emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
                 skipGroup = true
             }
             else {
 
                 //其餘(含額度上限/金鑰無效/未分類), 換組內下一把, 不記憶不停用
-                emit({ type: 'next-key', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr })
-                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, errorType: r.errorType, stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
+                emit({ type: 'next-key', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr })
+                tried.push({ providerId: id, keyIndex, keyId, outcome: 'next-key', error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r) })
             }
 
         }
 
         //組盡: 走到這裡即本組未成交且已試完(成交、預算用盡、中止皆於迴圈內回傳), 每次呼叫每組恰發一次(見檔頭【組盡事件】)
+        //att, 本組實際送出之嘗試(略過已知沒額度之金鑰者skip-key不算嘗試)
         let tg = tried.slice(groupStart)
+        let att = tg.filter((t) => t.outcome !== 'skip-key')
+
+        //quotaExhausted, 組內每一把金鑰皆沒額度(本次嘗試失敗，或本次呼叫內已證實而略過)——該供應商額度用盡; 部分沒額度（其餘為限流、金鑰無效等）不算
+        let quotaExhausted = !skipGroup && nk > 0 && noCreditIdx.size === nk
+        if (quotaExhausted) {
+            exhaustedKeys.set(id, nk)
+            if (cooldownMs > 0 && idExplicit) {
+
+                //整組沒額度: 條目降至鏈尾(只降序不移除, 任一次成功立即解除), 之後的呼叫先試其他供應商
+                try {
+                    state.cooling[id] = Date.now()
+                }
+                catch {} //凍結之state: 退化為不記條目冷卻(同金鑰冷卻之處理)
+                saveState()
+                emit({ type: 'cooled', scope: 'entry', providerId: id, keyIndex: null, keyId: id, error: get(lastResult, 'error', ''), cooldownMs, failureKind: 'no-credit' })
+            }
+        }
         emit({
             type: 'group-exhausted',
             providerId: id,
             keyIndex: null,
             keyId: id,
             keys: nk, //有效金鑰數(同上方濾法), 0代表登入態之單一虛擬金鑰
-            attempted: tg.length, //本組實際送出之嘗試數
+            attempted: att.length, //本組實際送出之嘗試數
             by: skipGroup ? 'skip-group' : 'all-keys', //以與金鑰無關之失敗收尾, 或每把皆換鑰失敗
-            errorTypes: tg.map((t) => t.errorType), //本組各次嘗試之errorType, 依嘗試順序
+            errorTypes: att.map((t) => t.errorType), //本組各次嘗試之errorType, 依嘗試順序
             error: get(lastResult, 'error', ''), //本組最後一次嘗試之錯誤
+            ...(tg.some((t) => isestr(t.failureKind)) ? { failureKinds: tg.map((t) => t.failureKind || '') } : {}), //本組各次紀錄之failureKind(含略過者; 無細分類時不出現此鍵)
+            ...(quotaExhausted ? { quotaExhausted: true } : {}), //組內每一把皆沒額度: 該供應商額度用盡
         })
     }
 
     //全數失敗, 回傳最後一筆失敗結果(含其errorType)與完整歷程
     let r = lastResult || getErrorResult('all providers failed', 'exec')
-    return { ...r, ...(lastMeta || {}), tried }
+    let out = { ...r, ...(lastMeta || {}), tried }
+
+    //額度用盡之供應商(僅有時才帶此鍵)與明確錯誤: 最後一筆失敗為沒額度且其條目整組皆沒額度→QUOTA_EXHAUSTED; 為呼叫方式或環境錯誤→ENV_ERROR
+    if (exhaustedKeys.size > 0) {
+        out.quotaExhausted = [...exhaustedKeys.keys()]
+    }
+    let lfk = get(r, 'failureKind', '')
+    let ldetail = (isestr(r.failureDetail) && r.failureDetail !== '') ? r.failureDetail : r.error
+    if (lfk === 'no-credit' && lastMeta && exhaustedKeys.has(lastMeta.providerId)) {
+        out.error = `QUOTA_EXHAUSTED: provider "${lastMeta.providerId}" has no credit on all ${exhaustedKeys.get(lastMeta.providerId)} key(s) (${ldetail})`
+    }
+    else if (lfk === 'env-error') {
+        out.error = `ENV_ERROR: ${ldetail}`
+    }
+    return out
 }
 
 

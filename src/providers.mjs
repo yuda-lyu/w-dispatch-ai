@@ -19,7 +19,9 @@
 //     「不得」用ANTHROPIC_API_KEY當.env變數名或設為全域環境變數: Claude Code在-p模式「一律使用」它, 本機全部Claude Code(含claude:訂閱條目與使用者自己的工作階段)會因而改走API計費;
 //     本檔條目刻意只認ANTHROPIC_KEYS, 金鑰只在該次呼叫由dispatchClaude注入子進程環境(見dispatchClaude.mjs檔頭)。
 //   - 要工具(讀檔、grep)用claude-api:(CLI, 防寫白名單同claude:條目); 純文字用anthropic:(REST, 免CLI, 天然無寫檔能力)。
-//   - 限流與額度: REST類429由遞補層內建冷卻觸發; 額度不足/限流之字樣見各條目註解與README「Claude以API金鑰計費」。
+//   - 限流與額度(2026-10-25起): 六條皆由轉接器對失敗結果加failureKind細分類(沒額度/脈絡過長/限流/過載/金鑰無效/無權限/網路/呼叫方式或環境錯誤/其他),
+//     遞補層(dispatchAiFallback)據以處置——沒額度換下一把且本次呼叫內claude-api:與anthropic:共用額度池故同一把不重複試、脈絡過長立即結束整個呼叫、網路不換金鑰;
+//     CLI稱沒額度者以同金鑰REST極小請求交叉確認(成功則為環境錯誤而非沒額度)。判準、依據與未實測者見README「Claude以API金鑰計費」之「失敗細分類 failureKind」。
 //   - 確認「確實走API金鑰」: CLI類以`--output-format stream-json --verbose`之首個system/init事件apiKeySource須為'ANTHROPIC_API_KEY'(必要條件, 充分條件另核對Console用量); REST類以回應之usage與Console用量。
 //
 // ══════════════════════════════════════════════════════════════════════════════
@@ -655,7 +657,8 @@ let providers = [
     //防寫白名單與強度同claude:條目(CLAUDE_READONLY、CLAUDE_EFFORT)。模型寫完整ID(API計費下別名隨CLI版本漂移, 固定ID令計費與行為可預期)。
     //官方定價(claude-api技能快取, 2026-10-06)每百萬token: Opus 5.5 $4/$20、Sonnet 5.5 $2/$10、Haiku 5.5 $0.10/$0.50(提示詞≤100K tokens)。
     //驗證確實走API金鑰: extraArgs加['--output-format','stream-json','--verbose'], 首個system/init事件之apiKeySource須為'ANTHROPIC_API_KEY'。
-    //限流/額度不足: CLI類無內建簽章(見dispatchAiFallback檔頭); 失敗時換下一把金鑰, 要冷卻請以coolDetect注入字樣(建議見README「Claude以API金鑰計費」)。
+    //限流/額度不足(2026-10-25起): 帶key之CLI失敗結果加failureKind(stream-json之assistant.error／api_error_status與Claude Code 2.1.302內嵌字樣; 字樣除「Credit balance is too low」外未實測),
+    //cooldownMs>0時限流不需coolDetect即冷卻(failureKind為rate-limit); 「沒額度」須經REST交叉確認(見dispatchClaude.mjs檔頭), REST成功則判env-error(呼叫方式或環境錯誤)而非沒額度。
     //--effort high於opus/sonnet/haiku三模型是否皆被Claude Code 2.1.302接受: 本檔撰寫時未發真實請求實測, 由主控實測回填。
     {
         id: 'claude-api:opus-5.5',
@@ -682,8 +685,9 @@ let providers = [
     //envVar ANTHROPIC_KEYS(同claude-api:條目; 勿用ANTHROPIC_API_KEY, 理由見檔頭【Anthropic API金鑰條目】)。置於清單末端: 全取遞補時最後才耗用API額度。
     //協定與各模型限制(完整見dispatchApiAnthropic.mjs檔頭【思考與effort】): 皆自適應思考(省略thinking即開, 條目不送thinking)、effort明給high(Opus 5.5與Haiku 5.5之API預設為medium)、
     //無temperature/top_p/top_k、思考token計入max_tokens(預設16000; 長輸出請於條目或呼叫層覆寫body.max_tokens)。stop_reason處置: max_tokens截斷預設失敗、refusal失敗且整組跳過。
-    //限流/額度(官方錯誤碼): 429 rate_limit_error由遞補層內建冷卻觸發; 402 billing_error、401 authentication_error(金鑰無效/撤銷)、403 permission_error、
-    //400 invalid_request_error(含組織自訂花費上限; 第三方回報額度不足亦為此碼:「Your credit balance is too low to access the Anthropic API」)皆換下一把金鑰。
+    //限流/額度(官方錯誤碼; 2026-10-25起以failureKind細分類): 429 rate_limit_error(限流)由遞補層內建冷卻觸發並換下一把; 月花費上限之429(error_code enforced_spend_limit_reached)、
+    //402 billing_error、400自設花費上限、400「Your credit balance is too low to access the Anthropic API」(第三方回報)皆為no-credit: 換下一把且本次呼叫內同一把不再用於其他官方端點條目、全部金鑰皆沒額度才標quotaExhausted;
+    //401 authentication_error、403 permission_error換下一把不冷卻; 400「prompt is too long」與413為context-too-long: 立即結束整個呼叫; 連線失敗/逾時/504為network: 不換金鑰。
     //定價(claude-api技能快取, 2026-10-06)每百萬token: Opus 5.5 $4/$20、Sonnet 5.5 $2/$10、Haiku 5.5 $0.10/$0.50(提示詞≤100K tokens)。本檔撰寫時未發真實請求, 實測由主控回填。
     {
         id: 'anthropic:opus-5.5',
