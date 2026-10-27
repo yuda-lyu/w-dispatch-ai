@@ -256,7 +256,7 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //各條目之思考強度(單一來源, 2026-09-30使用者指示一律high): 各家參數不同, 條目引用下列常數而不手寫。
 //  claude   --effort(low/medium/high/xhigh/max): 未給時-p實測為medium(Claude Code 2.1.285, session紀錄之effort欄)。
 //  codex    --config model_reasoning_effort: 未給時沿用執行機之~/.codex/config.toml(本機為high), 再無則為模型預設
-//           (app-server model/list之defaultReasoningEffort, gpt-6.1-sol為low)——明給令條目不隨安裝機之設定而變;
+//           (app-server model/list之defaultReasoningEffort, gpt-6.1-sol與gpt-6.1-terra皆為low)——明給令條目不隨安裝機之設定而變;
 //           同日實測--config覆寫優先於config.toml(給low時session記為low)。
 //  opencode --variant: 僅部分模型有檔位, 以`opencode models <provider> --verbose`之variants查(同日opencode 1.18.33:
 //           muse-spark-1.2(2026-10-03已移除)/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無;
@@ -279,7 +279,7 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           (與slug檔位不一致時agy報conflicts)。各模型可選檔位因模型而異(2026-10-16: Gemini 4 Argon與3.8 Flash皆為low/medium/high, 無xhigh/max),
 //           以`agy -p /effort --model <slug> --output-format json`之available查(不耗額度; Git Bash下須加MSYS_NO_PATHCONV=1,
 //           否則/effort被改寫成路徑而當成提示詞送出)。
-//  注意: 條目覆寫extraArgs時須一併帶上本常數(與防寫常數), 否則回退各CLI之預設強度。
+//  注意: 條目覆寫extraArgs時須一併帶上本常數(與防寫常數), 否則回退各CLI之預設強度(codex條目之防寫為獨立之sandbox欄位, 不在extraArgs, 覆寫時只需帶強度)。
 let EFFORT = 'high'
 let CLAUDE_EFFORT = ['--effort', EFFORT]
 let CODEX_EFFORT = ['--config', `model_reasoning_effort="${EFFORT}"`]
@@ -559,7 +559,8 @@ let providers = [
         skipPermissions: false,
         //實測: 簡答9.8~77.4s、推理題53.5s答對且照格式、讀檔61.9s正確(首次遇503, 重試成功)
     },
-    //claude/codex各兩條: 在前者為預設(全取遞補時先試), 在後者為較強之新模型(2026-09-23使用者指示)
+    //claude兩條、codex三條: claude在前者(sonnet)與codex之luna為預設(全取遞補時先試), 其後為較強之新模型(2026-09-23使用者指示);
+    //codex內terra排在sol之前(2026-10-28使用者指示: 2026-10-27起以terra為首選, 外審由sol改terra), luna維持最前、與其餘群組之相對順序不動
     {
         id: 'claude:sonnet', //當前為5.5
         model: 'sonnet',
@@ -584,6 +585,20 @@ let providers = [
         kind: 'codex',
         sandbox: 'read-only',
         extraArgs: CODEX_EFFORT,
+    },
+    {
+        id: 'codex:gpt-6.1-terra',
+        model: 'gpt-6.1-terra',
+        kind: 'codex',
+        sandbox: 'read-only',
+        extraArgs: CODEX_EFFORT,
+        //2026-10-28新增GPT-6.1 Terra(使用者2026-10-27改以terra為Codex首選), 排在codex:gpt-6.1-sol之前、codex:gpt-5.6-luna之後。
+        //欄位、唯讀沙箱與強度比照sol條目。Codex CLI 0.163.0之`codex debug models`已列(priority 3、脈絡500K、支援low~max與ultra),
+        //惟型錄預設reasoning effort為low(default_reasoning_level)——未明給且執行機config.toml亦未設定時即跑最淺, 故本條必傳強度, 沿用統一之CODEX_EFFORT(high, 不另寫max)。
+        //需要max(如外審)者於呼叫端以patch覆寫extraArgs為['--config', 'model_reasoning_effort="max"'](沙箱在sandbox欄位, 不在extraArgs, 覆寫不影響唯讀鎖)。
+        //主控2026-10-27實測: `-m gpt-6.1-terra -c model_reasoning_effort="max"`實跑通過(標頭回model: gpt-6.1-terra、reasoning effort: max);
+        //以dispatchCodex+sandbox:'workspace-write'實跑讀中文檔並寫檔通過。本條之唯讀沙箱金絲雀(要求寫檔須被擋)未對terra重測, 沿用sol條目之實測;
+        //寫全名而非別名之理由同sol條目
     },
     {
         id: 'codex:gpt-6.1-sol',

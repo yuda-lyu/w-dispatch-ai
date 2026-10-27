@@ -11,5 +11,6 @@
 | agy 型錄、額度與逾時 | `sgud/rule/rulebook_agy.md` | R-QUOTA-1～2、R-AGY-1～3 | `/usage` 群組與窗口由 agy 決定、格式漂移不得靜默成功、內建 agy 條目與型錄對齊、逾時階梯、非成功結局分流 |
 | Anthropic API 金鑰計費 | `sgud/rule/rulebook_anthropic.md` | R-ANTHROPIC-1～4 | CLI 帶 `key`(子進程環境、移除優先憑證、遮蔽)、kind `api-anthropic`(請求形狀、stop_reason、HTTP 錯誤)、providers 六條與 `ANTHROPIC_KEYS`、CLI key 模式移除繼承之父 Claude Code session 連結變數(R-ANTHROPIC-4)、變異驗證表(M1～M40) |
 | Anthropic 失敗細分類與遞補處置 | `sgud/rule/rulebook_failurekind.md` | R-ANTHROPIC-5 | `failureKind` 細分類(REST／CLI)、CLI「沒額度」REST 交叉確認、遞補依分類處置(沒額度跨條目略過／脈絡過長立即結束／網路與環境錯誤整組跳過／金鑰冷卻)、金鑰探測 `probeAnthropicKeys`、`*_KEYS` 分號處置、94 個變異驗證表 |
+| codex 條目 | `sgud/rule/rulebook_codex.md` | R-CODEX-1 | codex 條目欄位比照(唯讀 `sandbox`、強度常數)、強度必傳(型錄預設 low)、新首選排在舊首選之前、群組相鄰、`patch` 覆寫 max 不解除唯讀 |
 
 引用說明:程式碼註解與測試中之「帳本R-XXX-N」仍指上表對應檔內同編號之節.

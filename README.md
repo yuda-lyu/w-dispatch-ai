@@ -288,6 +288,9 @@ await test()
 51. **`resolveProviders` 對 `*_KEYS` 變數遇分號視同逗號並回報**：此前分號分隔之 `ANTHROPIC_KEYS`（`sk-ant-aaa;sk-ant-bbb`）整串被當成一把金鑰；現拆成多把，回傳多一個 `warnings` 鍵（`[{ envVar, code: 'KEYS_SEMICOLON', message, ids }]`，無疑慮時為 `[]`，**不含金鑰值**）。名稱不以 `_KEYS` 結尾之變數與條目自帶 `keys` 不受影響；某供應商金鑰確實含分號者傳 `splitSemicolon: false` 關閉。依賴回傳物件鍵清單完全相等者請納入 `warnings`。
 52. 文件：新增「失敗細分類 `failureKind`」「CLI『沒額度』須經 REST 交叉確認」「遞補層依 `failureKind` 的處置」「金鑰探測 `probeAnthropicKeys`」「`ANTHROPIC_KEYS` 的分隔符」「勿用 `--bare` 與 `env` 傳金鑰（重現紀錄）」；`getErrorType.mjs` 之 errorType 一覽補述 `failureKind` 與其並存。
 
+**未發布（同批次）**（Codex 新增 `gpt-6.1-terra`；僅新增條目，**既有條目之 id、欄位與行為不變**）：
+53. 內建 providers 新增 `codex:gpt-6.1-terra`（kind `codex`；`sandbox: 'read-only'` 與思考強度 `--config model_reasoning_effort="high"` 皆同 `codex:gpt-6.1-sol` 條目，除 `id`、`model` 外欄位相同）。Codex CLI 0.163.0 之 `codex debug models` 已列此模型（脈絡 500K、支援 low～max 與 ultra），**但型錄預設強度為 low**（未明給且執行機 `config.toml` 未設定時即跑最淺），故條目明給強度（沿用統一之 high 常數，不另寫 max）。排在 `codex:gpt-5.6-luna` 之後、`codex:gpt-6.1-sol` 之前（codex 群組內 terra 先於 sol；luna 仍在最前，其餘條目之相對順序不變）。以既有 id 做 `pick` 者，選出之條目與順序不變（`pick` 查無 id 時之 `hints` 候選集多一條）；**全取者遞補鏈多一條**（內建 `providers` 由 30 條變 31 條；此條無 `envVar`，故 `resolveProviders` 輸出之 `providers.length` 不論 `.env` 內容為何皆多 1），原排其後之 `codex:gpt-6.1-sol` 在未啟用 `cooldownMs` 重排（terra 遇限流或逾時被移至鏈尾時，sol 可先被嘗試）且遞補持續進行時，要在 terra 失敗後才輪到。需要 max 強度者（如外審）以 `patch` 覆寫該條 `extraArgs` 為 `['--config', 'model_reasoning_effort="max"']`，唯讀檔位（`sandbox` 欄位）不受影響。`dispatchCodex` 之 `model` 說明例示補列 `'gpt-6.1-terra'`。實測紀錄（使用者2026-10-27 改以 terra 為首選）：主控以 Codex CLI 0.163.0 `-m gpt-6.1-terra -c model_reasoning_effort="max"` 實跑通過，並以 `dispatchCodex`＋`sandbox: 'workspace-write'` 讀中文檔並寫檔通過；本套件之測試全程使用假 codex 執行檔、未對 terra 發真實請求，唯讀沙箱之寫檔金絲雀未對 terra 重測（沿用 sol 條目之實測）。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -794,7 +797,7 @@ timeoutMs（單次嘗試，統一預設300000）
 | `runRolePipeline` | Σ各階段（**序列**） | ≈M×K×timeoutMs |
 | `runFanoutPipeline` | 上兩者相加 | ≈(2+M)×K×timeoutMs |
 
-量級感受：內建providers 24條全上陣時，一個名額最壞24×300s＝120min；3階段RolePipeline最壞約6小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
+量級感受：內建providers 31條全上陣時，一個名額最壞31×300s＝155min；3階段RolePipeline最壞約7.8小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
 
 **外部調整四層**（細者覆蓋粗者，全部免改套件程式）：
 1. **全域**：`dispatchAiWkf({ defaults: { timeoutMs, budgetMs, minAttemptMs } })`
@@ -865,7 +868,7 @@ let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)),
 let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```
 
-**內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（原僅 `zen:space-bunny-free`，該條已於 2026-10-13 移除，現無內建 REST 條目帶此欄），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效。
+**內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（原僅 `zen:space-bunny-free`，該條已於 2026-10-13 移除，現無內建 REST 條目帶此欄），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效（codex 條目例外：其防寫為獨立之 `sandbox` 欄位而不在 `extraArgs`，覆寫 `extraArgs` 只需帶上強度旗標，唯讀檔位不受影響）。
 
 **Anthropic API 金鑰條目（2026-10-24 起，`claude-api:`×3 與 `anthropic:`×3）**：`envVar` 為 `ANTHROPIC_KEYS`（**不是** `ANTHROPIC_API_KEY`，理由與用法見「Claude以API金鑰計費」）；思考強度同樣 high——`claude-api:` 為 `--effort high`，`anthropic:` 為條目欄位 `effort: 'high'`（轉為 `output_config.effort`；Opus 5.5 與 Haiku 5.5 之 API 預設為 medium，故必須明給）。
 
