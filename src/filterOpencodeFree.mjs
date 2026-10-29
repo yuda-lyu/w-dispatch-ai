@@ -1,0 +1,297 @@
+import get from 'lodash-es/get.js'
+import isarr from 'wsemi/src/isarr.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import strTruncate from 'wsemi/src/strTruncate.mjs'
+import providersDefault from './providers.mjs'
+import runExecCli from './runExecCli.mjs'
+import getErrorType from './getErrorType.mjs'
+import castPintOr from './castPintOr.mjs'
+import { awaitUserFn, readCallerObj, errMsg } from './callUserFn.mjs'
+
+
+// filterOpencodeFree.mjs — 以`opencode models`之輸出過濾目錄(providers)之opencode免費條目, 回報「目前確實供應」者(帳本R-OCFREE-1)
+//
+// 【為何需要】opencode之免費模型日日漂移(2026-10-29: minimax-m3.1-flash-free、longcat-2.5-preview-free、nemotron-3-ultra-free
+//   已不在`opencode models`, 依條目呼叫約2s即回UnknownError, 而目錄仍收; 同時flint-40b-free已上線卻未收), 檔頭「能不能用一律以
+//   `opencode models`加實測為準」之判準由本函數落實: 下游於評比或組遞補鏈前對一次, 不必每次手查。
+//   本函數只查「目錄清單」(`opencode models`, 不呼叫任何模型、不耗免費額度); 「列了」不等於「能用」(2026-10-30實測: 清單有列之條目亦可能上游故障),
+//   實際可用性仍以呼叫實測為準, 但「不在清單」依檔頭先例屬下架之必要條件, 此條可機械判定。
+//
+// 【免費之判定(單一來源即本檔之isFreeText)】條目之id或model含`free`, 另加`big-pickle`(id不帶-free後綴但官方確為免費, 見providers.mjs檔頭big-pickle之收錄經過)。
+//   只過濾「可被`opencode models`判定」之條目: kind為'opencode'且model為`opencode/<id>`(opencode自家provider);
+//   其餘含free字樣者(如`zen:jev-1.13-free`為REST、第三方provider之條目須注入config才會列出)無從以此清單判定, 原樣列入unchecked而不判下架。
+//
+// 【查詢失敗不得被當成「全部下架」】`opencode`不存在、非零離開、逾時、輸出解析不出任何模型id(空輸出)時, ok為false並帶errorType與error,
+//   且available／removed／unchecked／uncatalogued／listed一律為null(不是空陣列): 讀取時會當場拋TypeError, 不會靜默得到「全部下架」。
+//
+// 【`opencode models`有本機快取】輸出隨其快取之新舊而異: 2026-10-30同一機器連續兩次不帶--refresh之查詢曾得到不同清單
+//   (第1次仍列已下架之nemotron-3-ultra-free, 其後之查詢與--refresh後皆不列)。要最新事實給refresh:true(附--refresh, 自models.dev更新本機快取, 須連網, 有本機副作用)。
+//
+// 【errorType一覽(僅ok為false時)】
+//   'params'    providers非陣列、條目不可讀(拋錯之getter、已撤銷之Proxy)或非物件(查詢前即擋下, 不啟動任何子進程)
+//   'notfound'  子進程未能啟動(`opencode`不存在或無法執行, 判準見getErrorType.mjs之isSpawnFail; 與getQuotaAntigravity同名)
+//   'timeout'   逾時(`opencode models`或注入之query在timeoutMs內未完成)
+//   'exit'      已啟動但非零離開(其餘失敗)
+//   'empty'     查詢成功但輸出解析不出任何模型id(空輸出或只有雜訊)
+//   'query'     注入之query拋錯、reject，或回傳不合規之形態
+//   'other'     本函數內部未預期之錯誤(最後防線, 不reject)
+//
+// 【不reject】注入之query經awaitUserFn(帳本R-USERFN-1): 同步拋錯、reject、永不落定、回傳畸形值皆以errorType回報。
+
+
+//預設值
+let DEFAULT_EXE = 'opencode'
+let DEFAULT_TIMEOUT_MS = 30000
+
+//opencode自家provider之model前綴(`opencode models`以provider/model逐行列出)
+let OC_PREFIX = 'opencode/'
+
+//ANSI控制序列(終端上色), 以char code組成避免於正規表示式字面寫控制字元
+let ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g')
+
+//模型id行: provider/model, 兩段以上以斜線相連, 不含空白(排除橫幅與警告行)
+let MODEL_LINE_RE = /^[A-Za-z0-9][\w.-]*(\/[\w.:+-]+)+$/
+
+
+/**
+ * 判斷字串是否帶免費字樣(含free，或為big-pickle)
+ *
+ * @param {*} s 輸入待判斷之值
+ * @returns {Boolean} 回傳是否為免費字樣之布林值，非字串為false
+ */
+function isFreeText(s) {
+    return isestr(s) && /free|big-pickle/i.test(s)
+}
+
+
+/**
+ * 解析`opencode models`之stdout為模型id陣列(去色、逐行、僅取符合provider/model形狀者、去重並保留順序)
+ *
+ * @param {String} stdout 輸入`opencode models`之標準輸出字串
+ * @returns {Array} 回傳模型id字串陣列
+ */
+function parseModelIds(stdout) {
+    let ids = []
+    let seen = new Set()
+    for (let line of String(stdout).replace(ANSI_RE, '').split(/\r?\n/)) {
+        let s = line.trim()
+        if (MODEL_LINE_RE.test(s) && !seen.has(s)) {
+            seen.add(s)
+            ids.push(s)
+        }
+    }
+    return ids
+}
+
+
+/**
+ * 將查詢結果(execCli形狀之結果物件，或直接為stdout字串)正規化為{ ok, stdout, errorType, error }
+ *
+ * @param {*} v 輸入查詢回傳值
+ * @returns {Object} 回傳物件，內含ok、stdout(成功時)、errorType與error(失敗時)
+ */
+function normalizeQueryResult(v) {
+    if (typeof v === 'string') {
+        return { ok: true, stdout: v, errorType: '', error: '' }
+    }
+    if (!isobj(v)) {
+        return { ok: false, stdout: '', errorType: 'query', error: 'query must return a string or an execCli-style result object' }
+    }
+    if (v.ok === true) {
+        if (typeof v.stdout !== 'string') {
+            return { ok: false, stdout: '', errorType: 'query', error: 'query result.stdout must be a string' }
+        }
+        return { ok: true, stdout: v.stdout, errorType: '', error: '' }
+    }
+
+    //失敗: 分流沿用getErrorType(spawn→notfound、TIMEOUT→timeout、其餘exit), 與dispatch系列同一判準
+    let t = getErrorType(v)
+    let errorType = t === 'spawn' ? 'notfound' : (t === 'timeout' ? 'timeout' : 'exit')
+    let err = isestr(v.error) ? v.error : 'unknown error'
+    let tail = isestr(v.stderr) ? v.stderr.replace(ANSI_RE, '').trim() : ''
+    return { ok: false, stdout: '', errorType, error: strTruncate(`${err}${tail !== '' ? ` | ${tail}` : ''}`, 500) }
+}
+
+
+/**
+ * 以`opencode models`之輸出過濾目錄(providers)之opencode免費條目，回報目前確實供應與已下架者
+ *
+ * 用途：下游組遞補鏈或評比名單前對一次——不在`opencode models`清單之免費條目依檔頭先例屬下架之必要條件(另一條件為依條目呼叫約2s回UnknownError)；
+ * 只查清單、不呼叫模型、不耗額度；「有列」不等於「能用」，實際可用性仍以呼叫實測為準。
+ * 免費之判定：條目之id或model含free，另加big-pickle；只判kind為'opencode'且model為`opencode/<id>`者，其餘含free字樣者(zen:REST條目等)列入unchecked，不判下架。
+ * 查詢失敗(opencode不存在、非零離開、逾時、空輸出)時ok為false並帶errorType，且各清單欄位為null而非空陣列——不得被誤讀為「全部下架」。
+ * `opencode models`有本機快取，要最新事實給refresh:true。
+ * 本函數不會reject
+ *
+ * @param {Array} [providers=providers.mjs之內建目錄] 輸入條目物件陣列(同resolveProviders第一參數)，預設內建目錄；非陣列或條目不可讀回params錯誤結果
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，預設'opencode'
+ * @param {Boolean} [opt.refresh=false] 輸入是否附`--refresh`(自models.dev更新本機快取，須連網)布林值，預設false
+ * @param {Number} [opt.timeoutMs=30000] 輸入查詢逾時毫秒正整數，預設30000
+ * @param {Object} [opt.env=undefined] 輸入查詢子進程額外注入之環境變數物件，預設undefined
+ * @param {Function} [opt.query=undefined] 輸入查詢函數，可注入以利測試(不啟動子進程)：接收{ exe, args, timeoutMs, refresh }，回傳(或resolve)`opencode models`之stdout字串，或execCli形狀之結果物件{ ok, stdout, stderr, code, pid, error }；可為async，拋錯、reject、逾時皆以errorType回報，預設undefined代表實際執行opencode
+ * @returns {Promise} 回傳Promise，resolve回傳物件，內含ok(查詢成功布林值)、errorType(失敗類別字串，成功為'')、error(錯誤訊息字串，成功為'')、available(目前供應之免費條目陣列，條目為淺層副本，依輸入順序)、removed(免費條目但不在`opencode models`清單之陣列，疑似下架)、unchecked(含free字樣但不屬opencode自家CLI條目、無從以清單判定之陣列)、uncatalogued(清單有列之opencode/免費模型id而輸入條目未收者之字串陣列，供提示新增)、listed(`opencode models`列出之全部模型id字串陣列)、refreshed(是否附--refresh之布林值)、durationMs(耗時毫秒)；ok為false時available／removed／unchecked／uncatalogued／listed皆為null，本函數不會reject
+ * @example
+ * //need opencode cli in system PATH
+ *
+ * import wdi from 'w-dispatch-ai'
+ *
+ * let test = async () => {
+ *
+ *     //對內建目錄查一次(組遞補鏈或評比名單前)
+ *     let r = await wdi.filterOpencodeFree()
+ *     if (!r.ok) {
+ *         //opencode不存在或查詢失敗: 不可當成「全部下架」, 沿用原清單或回報
+ *         console.log(r.errorType, r.error)
+ *         return
+ *     }
+ *     console.log(r.available.map((p) => p.id))
+ *     // => [ 'oc:opencode/big-pickle', 'oc:opencode/mimo-v2.6-flash-free', ... ]
+ *     console.log(r.removed.map((p) => p.id))
+ *     // => []
+ *     console.log(r.uncatalogued)
+ *     // => []
+ *
+ *     //自內建目錄去除疑似下架者後, 再交resolveProviders組遞補鏈(removed以id剔除, 其餘條目與順序不變)
+ *     let gone = new Set(r.removed.map((p) => p.id))
+ *     let alive = wdi.providers.filter((p) => !gone.has(p.id))
+ *     let { providers } = wdi.resolveProviders(alive, { env: wdi.readEnvFile('./.env') })
+ *     console.log(providers.length > 0)
+ *     // => true
+ *
+ *     //要最新事實(opencode models有本機快取), 附--refresh
+ *     let r2 = await wdi.filterOpencodeFree(wdi.providers, { refresh: true })
+ *     console.log(r2.ok, r2.refreshed)
+ *     // => true true
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function filterOpencodeFree(providers = providersDefault, opt = {}) {
+    let t0 = Date.now()
+    let refreshed = false
+    let fail = (errorType, error) => ({
+        ok: false,
+        errorType,
+        error,
+        available: null,
+        removed: null,
+        unchecked: null,
+        uncatalogued: null,
+        listed: null,
+        refreshed,
+        durationMs: Date.now() - t0,
+    })
+
+    try {
+
+        //providers, 查詢前先驗(不啟動任何子進程); 條目物化為淺層副本(只讀一次, 不可讀者以params回報, 同帳本R-USERFN-1)
+        if (!isarr(providers)) {
+            return fail('params', 'providers must be an array of provider entries')
+        }
+        let entries = []
+        for (let i = 0; i < providers.length; i++) {
+            let re = readCallerObj(providers[i], `providers[${i}]`)
+            if (!re.ok) {
+                return fail('params', re.msg)
+            }
+            if (!isobj(re.value)) {
+                return fail('params', `providers[${i}] must be an object`)
+            }
+            entries.push(re.value)
+        }
+
+        //設定
+        let exe = get(opt, 'exe', null)
+        if (!isestr(exe)) {
+            exe = DEFAULT_EXE
+        }
+        refreshed = get(opt, 'refresh', null) === true
+        let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+        let args = ['models', ...(refreshed ? ['--refresh'] : [])]
+
+        //查詢: 注入者經awaitUserFn(支援async、永不落定亦必落定); 預設者經runExecCli(自帶逾時, 不reject)
+        let query = get(opt, 'query', null)
+        let q = null
+        if (isfun(query)) {
+            let u = await awaitUserFn(() => query({ exe, args, timeoutMs, refresh: refreshed }), timeoutMs)
+            if (u.state === 'threw') {
+                return fail('query', `query threw: ${u.msg}`)
+            }
+            if (u.state === 'timeout') {
+                return fail('timeout', `query timed out: ${u.msg}`)
+            }
+            q = normalizeQueryResult(u.value)
+        }
+        else {
+            let env = get(opt, 'env', null)
+            let r = await runExecCli(exe, args, { timeoutMs, ...(isobj(env) ? { env } : {}) })
+            q = normalizeQueryResult(r)
+        }
+        if (!q.ok) {
+            return fail(q.errorType, q.error)
+        }
+
+        //解析; 解析不出任何id者為空輸出(不得當成「全部下架」)
+        let listed = parseModelIds(q.stdout)
+        if (listed.length === 0) {
+            return fail('empty', `opencode models returned no model ids (stdout ${q.stdout.length} chars)`)
+        }
+        let listedSet = new Set(listed)
+
+        //分流
+        let available = []
+        let removed = []
+        let unchecked = []
+        let known = new Set()
+        for (let p of entries) {
+            let id = get(p, 'id', '')
+            let model = get(p, 'model', '')
+            if (isestr(model)) {
+                known.add(model)
+            }
+            if (!isFreeText(id) && !isFreeText(model)) {
+                continue
+            }
+            let inScope = get(p, 'kind', '') === 'opencode' && isestr(model) && model.startsWith(OC_PREFIX)
+            if (!inScope) {
+                unchecked.push(p)
+            }
+            else if (listedSet.has(model)) {
+                available.push(p)
+            }
+            else {
+                removed.push(p)
+            }
+        }
+        let uncatalogued = listed.filter((id) => id.startsWith(OC_PREFIX) && isFreeText(id) && !known.has(id))
+
+        return {
+            ok: true,
+            errorType: '',
+            error: '',
+            available,
+            removed,
+            unchecked,
+            uncatalogued,
+            listed,
+            refreshed,
+            durationMs: Date.now() - t0,
+        }
+    }
+    catch (err) {
+
+        //最後防線: 不reject
+        return fail('other', errMsg(err))
+    }
+}
+
+
+export default filterOpencodeFree
+export { isFreeText, parseModelIds }

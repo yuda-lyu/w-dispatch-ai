@@ -200,6 +200,16 @@
 //     故只收oc:版(實測見三條)。使用者告知三者額度少且慢, 故排在opencode免費條目之末。
 //     同日再以oc:opencode/minimax-m3.1-flash-free取代oc:opencode/space-bunny-free(使用者指示: 同一模型恢復真名):
 //     space-bunny已自CLI清單(--refresh)與官方文件消失, 依條目呼叫2次皆約2s即回UnknownError; 新條目置於原位(實測見該條)。
+//   2026-10-30之漂移(opencode 1.19.5; 提出端: Gitea issue #25, tai-kns-trade 2026-10-29以免費席位重評時發現):
+//     移除oc:opencode/minimax-m3.1-flash-free、longcat-2.5-preview-free、nemotron-3-ultra-free三條: 當日重查(`opencode models`兩次與`opencode models opencode --refresh`
+//     皆不列; 依條目欄位以dispatchOpencode各呼叫2次共6次, 皆1.45~1.60s即回Exit code 1之UnknownError「Unexpected server error」, 離開碼1)——
+//     「已自CLI清單消失」與「依條目呼叫約2s即回UnknownError」兩條件同時滿足(同先例)。minimax-m3.1-flash-free之匿名REST同日另回400
+//     「Upstream request failed: Model is unavailable.」。注意nemotron-3-ultra-free: 當日第1次手動`opencode models`(不帶--refresh)仍列了它, 其後兩次與--refresh後皆不列,
+//     而依條目呼叫在第1次列出後約1分鐘內即已失敗——`opencode models`有本機快取, 清單與上游狀態不同步時「有列」不等於「能用」(下游以filterOpencodeFree({ refresh: true })取最新事實)。
+//     新增oc:opencode/flint-40b-free(CLI目錄有、release_date 2026-10-21; 依條目慣例實測後收, 數據見該條)。
+//     日後免費變體重新上架且實測可通時, 依收錄檢核重收即可。
+//     新增匯出函式filterOpencodeFree(src/filterOpencodeFree.mjs): 以`opencode models`過濾本目錄之opencode免費條目, 令「能不能用一律以`opencode models`加實測為準」之判準有工具可用
+//     (下游組遞補鏈或評比名單前對一次; 查詢失敗回明確錯誤狀態, 不得被當成「全部下架」); 連網守門test/api-providersOpencodeFree.test.mjs於`npm test`時對當日清單比對。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
@@ -265,7 +275,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           2026-10-18新收之beam(另有xhigh/max)亦有high、同日移除muse-spark-1.3, opencode 1.19.3;
 //           同日新收之deepseek-v4.1-flash、glm-5.3-flash為low/high/max亦有high, 同日移除ling-3.1-flash、cat-jam、step-5-preview;
 //           同日再收之nemotron-3.5-super-vl為none~xhigh亦有high, nemotron-3-ultra、nemotron-3.5-lightning無檔位;
-//           同日以minimax-m3.1-flash(low~max, 亦有high)取代space-bunny(同一模型恢復真名)),
+//           同日以minimax-m3.1-flash(low~max, 亦有high)取代space-bunny(同一模型恢復真名);
+//           2026-10-30新收之flint-40b有low/medium/high/xhigh/max亦有high, opencode 1.19.5, 同日移除minimax-m3.1-flash、longcat-2.5-preview、nemotron-3-ultra),
 //           無檔位之條目不帶。同日實測space-bunny之variant low/high推理token為18/71, opencode.db之訊息記錄variant。
 //  REST     body.reasoning_effort: 原僅zen:space-bunny-free帶(該條2026-10-13已移除, 現無內建REST條目帶此欄)——
 //           opencode模型目錄宣告其high檔即{reasoningEffort:'high'}
@@ -355,44 +366,8 @@ let providers = [
         //2026-09-22新增(官方文件與CLI清單皆有, 端點/chat/completions): 匿名CLI實測7.0s成功;
         //REST不收zen:版——同日實測403 FreeTierError(對話型免費模型之閘門, 見檔頭)
     },
-    {
-        id: 'oc:opencode/minimax-m3.1-flash-free',
-        model: 'opencode/minimax-m3.1-flash-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //2026-10-19新增(使用者指示): 即原stealth模型space-bunny-free恢復真名(space-bunny已自CLI清單與官方文件消失, 呼叫回
-        //UnknownError; 本條置於其原位, 全取者遞補順序不變)。官方文件〈Models〉〈Pricing〉列MiniMax M3.1 Flash Free(Free|Free|Free|-、
-        //端點/chat/completions), 說明為限時免費、供應商零保留且不以資料訓練; CLI清單(--refresh)有; REST匿名與第1把金鑰各2次皆403
-        //FreeTierError, 故只收oc:版。CLI目錄release_date 2026-10-19; 推理模型, context 1000000、輸出上限512000、可輸入圖片與影片;
-        //檔位low~max。匿名CLI實測(opencode 1.19.3、variant high): 簡答6.5s、推理題6.7s答對、read工具讀相對路徑9.4s正確、
-        //要求寫檔被OC_READONLY擋下未落地(回空字串而ok:true)。
-        //【脈絡長度(同日實測)】確為約1M: 針在乾草堆以預設設定實測至949,360 token仍答對且未於本機壓縮(299K/479K/599K/899K/949K皆過)
-    },
-    //以下一條2026-10-03新增(使用者指示; 原三條, fledge-alpha-free已於2026-10-13、ling-3.1-flash-free已於2026-10-18下架並移除,
-    //見檔頭漂移紀錄): 官方v1/v2文件、CLI清單(--refresh)與/zen/v1/models皆有, 〈Pricing〉全Free,
-    //端點/chat/completions; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError(免費層閘門, 見檔頭)。
-    //匿名CLI實測皆以opencode 1.18.34、variant high(opencode.db記錄確認): 簡答、推理題(答對)、read工具讀相對路徑(正確)、
-    //要求寫檔(被OC_READONLY擋下未落地)四項皆過
-    {
-        id: 'oc:opencode/longcat-2.5-preview-free',
-        model: 'opencode/longcat-2.5-preview-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //CLI目錄release_date 2026-09-25; 推理模型, context 1M、輸出上限131072、可輸入圖片。
-        //實測: 簡答12.0s、推理題13.1s、讀檔21.6s、寫檔金絲雀16.1s。
-        //官方〈Privacy〉載明其供應商零保留且不以資料訓練(同space-bunny)
-    },
-    //(2026-10-13新增之oc:opencode/cat-jam-free、step-5-preview-free已於2026-10-18下架並移除, 見檔頭漂移紀錄)
+    //(oc:opencode/minimax-m3.1-flash-free與oc:opencode/longcat-2.5-preview-free已於2026-10-30下架並移除, 見檔頭漂移紀錄;
+    //  2026-10-13新增之cat-jam-free、step-5-preview-free已於2026-10-18下架並移除)
     {
         id: 'oc:opencode/beam-free',
         model: 'opencode/beam-free',
@@ -452,22 +427,34 @@ let providers = [
         //【注意: 上游不穩】同日共10次中4次於75~81s後失敗(stderr: Upstream request failed: Endpoint is unavailable, exec失敗),
         //屬暫時失敗故仍收錄(依檔頭之保留哲學), 並排在opencode免費條目後段(其後僅nemotron三條); 全取者遇此每次約多耗80s才換家
     },
-    //以下三條2026-10-18新增(使用者指示; 使用者告知額度少且慢, 故排在opencode免費條目之末): 官方文件〈Models〉〈Pricing〉皆列Free、
-    //端點/chat/completions, CLI清單(--refresh)有; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError。
-    //官方說明為限時開放、團隊藉此收集回饋改進模型; 〈Privacy〉載明為NVIDIA免費端點、僅供試用, 勿送個人或機密資料。
-    //匿名CLI實測皆以opencode 1.19.3: 簡答、推理題(答對)、read工具讀相對路徑(正確)、要求寫檔(被OC_READONLY擋下未落地, 回空字串而ok:true)四項皆過
+    //flint-40b-free(2026-10-30新增, 見檔頭漂移紀錄): 置於上游不穩之glm之後、額度少且慢之nemotron兩條之前。
+    //官方說明未查(本輪未讀官方文件, 以CLI目錄與實測為準); CLI目錄(`opencode models opencode --verbose`, opencode 1.19.5)有, status active、cost全0、
+    //release_date 2026-10-21; 推理模型(capabilities.reasoning)、context 262144、輸出上限65536、僅文字輸入(無圖片/影片/PDF); 檔位low/medium/high/xhigh/max(有high)。
+    //匿名CLI實測(2026-10-30, opencode 1.19.5、variant high、OC_READONLY): 簡答6.2s與5.1s(皆回「完成」)、推理題9.5s答對(variant low 6.8s亦答對, 兩檔位推理token皆為0、
+    //未見檔位差異, 僅證明CLI接受--variant high)、read工具讀相對路徑24.8s正確(Glob＋Read)、寫檔金絲雀12.8s被OC_READONLY擋下未落地
+    //(write工具不在清單: Available tools為bash/glob/grep/invalid/read/skill/task/todowrite/webfetch/websearch; bash要求被自動拒絕; 此時回空字串而ok:true, 呼叫端宜帶validate)。
+    //REST不收zen:版——同日匿名REST(/inference/v1與目錄所列之/inference/openai/v1各2次)皆429 FreeUsageLimitError
+    //(Free usage limit reached. Free models work in OpenCode), 同時段已收錄之beam-free與big-pickle對照組亦同(免費層閘門之現行形態, 見檔頭; 先前記載為403 FreeTierError)。
+    //第1把金鑰之REST未測(本輪不讀.env)。
+    //【脈絡長度(2026-10-30實測, opencode 1.19.5)】與型錄一致: 以針在乾草堆(針在開頭、問題在結尾)經CLI實測, 預設設定下總token 191,422答對(10.5s、未於本機壓縮);
+    //本機覆寫limit令伺服器自判, 輸入255,626 token時伺服器約5s即回ContextOverflowError(事件時戳; 行程至66s才結束)「maximum context length is 262144 tokens... 255626 tokens from the input messages
+    //and 32000 tokens for the completion」——上限為262144(含completion預留, opencode預設預留32000, 故輸入實際上限約230K), 不覆寫limit。未二分逼近確切上限, 亦未測本機壓縮之觸發點。
+    //證據: 本輪報告(opensrcOper dnow/20261030054322/agent-out/run01-修正報告.md)
     {
-        id: 'oc:opencode/nemotron-3-ultra-free',
-        model: 'opencode/nemotron-3-ultra-free',
+        id: 'oc:opencode/flint-40b-free',
+        model: 'opencode/flint-40b-free',
         kind: 'opencode',
         provider: 'opencode',
         useStoredAuth: false,
         config: {
             permission: OC_READONLY,
         },
-        //CLI目錄release_date 2026-06-04; 推理模型, context 1000000、輸出上限128000、僅文字輸入; 無檔位故不帶OC_EFFORT。
-        //實測: 簡答7.9s、推理題9.0s、讀檔12.7s、寫檔金絲雀9.3s
+        extraArgs: OC_EFFORT,
     },
+    //以下兩條2026-10-18新增(使用者指示; 使用者告知額度少且慢, 故排在opencode免費條目之末; 同批之nemotron-3-ultra-free已於2026-10-30下架並移除, 見檔頭漂移紀錄):
+    //官方文件〈Models〉〈Pricing〉皆列Free、端點/chat/completions, CLI清單(--refresh)有; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError。
+    //官方說明為限時開放、團隊藉此收集回饋改進模型; 〈Privacy〉載明為NVIDIA免費端點、僅供試用, 勿送個人或機密資料。
+    //匿名CLI實測皆以opencode 1.19.3: 簡答、推理題(答對)、read工具讀相對路徑(正確)、要求寫檔(被OC_READONLY擋下未落地, 回空字串而ok:true)四項皆過
     {
         id: 'oc:opencode/nemotron-3.5-lightning-free',
         model: 'opencode/nemotron-3.5-lightning-free',

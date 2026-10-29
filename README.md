@@ -46,6 +46,7 @@ Note:
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
 | `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated; a `;` in a `*_KEYS` variable is treated as a comma with a `warnings` entry, see "ANTHROPIC_KEYS 的分隔符"; missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
 | `probeAnthropicKeys(keys, opt)` | probe each Anthropic API key with a tiny request (`max_tokens: 1`, default `claude-haiku-5-5`): returns per key `ok`／`no-credit`／`key-invalid`／`no-permission`／`rate-limit`／`overloaded`／`network`／`other` and the per-minute rate-limit headers; only index and length are returned, never the key. Anthropic has **no balance endpoint** for ordinary keys — this only tells whether a call works *right now* |
+| `filterOpencodeFree(providers, opt)` | filter the catalog's opencode free entries (id or model contains `free`, plus `big-pickle`) by the output of `opencode models`: returns `available` (still served), `removed` (not in the list = delisted, 1 of the 2 conditions in the `providers.mjs` header's precedent), `unchecked` (free-looking but not an `opencode/<id>` CLI entry, e.g. `zen:` REST entries) and `uncatalogued` (free ids the list has but the catalog lacks). Call it once before building a fallback chain or a benchmark roster. **A failed query (`opencode` missing, non-zero exit, timeout, empty output) returns `ok: false` with `errorType` and `null` lists — never an empty list that could be mistaken for "all delisted"**; `query` is injectable for tests; `refresh: true` appends `--refresh` (`opencode models` has a local cache). Only reads the list, calls no model, spends no free quota |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
 | `budgetFor(providers)` | derive the time budget to walk a whole fallback chain (sum of per-entry `timeoutMs`, defaults applied; async `validate` time is counted within each attempt, not added) |
 | `createFileStore(opt)` | file-persisted `store` for `dispatchAiFallback` (cursors and cooling survive across processes), exclusion-style passthrough |
@@ -290,6 +291,11 @@ await test()
 
 **未發布（同批次）**（Codex 新增 `gpt-6.1-terra`；僅新增條目，**既有條目之 id、欄位與行為不變**）：
 53. 內建 providers 新增 `codex:gpt-6.1-terra`（kind `codex`；`sandbox: 'read-only'` 與思考強度 `--config model_reasoning_effort="high"` 皆同 `codex:gpt-6.1-sol` 條目，除 `id`、`model` 外欄位相同）。Codex CLI 0.163.0 之 `codex debug models` 已列此模型（脈絡 500K、支援 low～max 與 ultra），**但型錄預設強度為 low**（未明給且執行機 `config.toml` 未設定時即跑最淺），故條目明給強度（沿用統一之 high 常數，不另寫 max）。排在 `codex:gpt-5.6-luna` 之後、`codex:gpt-6.1-sol` 之前（codex 群組內 terra 先於 sol；luna 仍在最前，其餘條目之相對順序不變）。以既有 id 做 `pick` 者，選出之條目與順序不變（`pick` 查無 id 時之 `hints` 候選集多一條）；**全取者遞補鏈多一條**（內建 `providers` 由 30 條變 31 條；此條無 `envVar`，故 `resolveProviders` 輸出之 `providers.length` 不論 `.env` 內容為何皆多 1），原排其後之 `codex:gpt-6.1-sol` 在未啟用 `cooldownMs` 重排（terra 遇限流或逾時被移至鏈尾時，sol 可先被嘗試）且遞補持續進行時，要在 terra 失敗後才輪到。需要 max 強度者（如外審）以 `patch` 覆寫該條 `extraArgs` 為 `['--config', 'model_reasoning_effort="max"']`，唯讀檔位（`sandbox` 欄位）不受影響。`dispatchCodex` 之 `model` 說明例示補列 `'gpt-6.1-terra'`。實測紀錄（使用者2026-10-27 改以 terra 為首選）：主控以 Codex CLI 0.163.0 `-m gpt-6.1-terra -c model_reasoning_effort="max"` 實跑通過，並以 `dispatchCodex`＋`sandbox: 'workspace-write'` 讀中文檔並寫檔通過；本套件之測試全程使用假 codex 執行檔、未對 terra 發真實請求，唯讀沙箱之寫檔金絲雀未對 terra 重測（沿用 sol 條目之實測）。
+
+**未發布（同批次，2026-10-30 opencode 免費條目漂移修正；Gitea issue #25）**（**含破壞性變更：三個 id 被移除，指名者將失敗**）：
+54. **內建 providers 移除三條 opencode 免費條目**：`oc:opencode/minimax-m3.1-flash-free`、`oc:opencode/longcat-2.5-preview-free`、`oc:opencode/nemotron-3-ultra-free`。當日重查（opencode 1.19.5）三者皆不在 `opencode models`（含 `--refresh`），依條目呼叫 6 次皆約 1.5 秒即回 `UnknownError`（離開碼 1），符合 `providers.mjs` 檔頭先例之兩條件。**以這三個 id 做 `pick` 者會落入 `missing`**（`resolveProviders` 不靜默忽略）；遞補鏈設定若指名這三個 id 者請改指（無同模型之替代；`oc:opencode/glm-5.3-flash-free`、`oc:opencode/beam-free` 等仍在）；**全取者遞補鏈少三條**。下游若自備免費名單（如評比工具之預設免費模型清單），請同步剔除。注意 `nemotron-3-ultra-free` 曾於同日第 1 次不帶 `--refresh` 之 `opencode models` 仍被列出（本機快取未同步），但依條目呼叫已失敗。
+55. **內建 providers 新增 `oc:opencode/flint-40b-free`**（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），排在 `oc:opencode/glm-5.3-flash-free` 之後、`oc:opencode/nemotron-3.5-lightning-free` 之前。實測（2026-10-30，opencode 1.19.5）：簡答 5.1～6.2 秒、讀檔 24.8 秒正確、寫檔金絲雀被 `OC_READONLY` 擋下未落地（回空字串而 `ok: true`，呼叫端宜帶 `validate`）；context 262144（含 completion 預留，輸入實際上限約 230K；191K token 針在乾草堆答對）、僅文字輸入、有 high 檔位；REST 無 `zen:` 版（匿名 REST 回 429 `FreeUsageLimitError`，同時段 `beam-free`、`big-pickle` 亦同）。全取者遞補鏈多一條；內建 providers 由 31 條改為 29 條（-3 +1；量級感受隨之更正）。
+56. **新增匯出 `filterOpencodeFree(providers, opt)`**（`WDispatchAi` 鍵由 24 個變 25 個）：以 `opencode models` 之輸出過濾目錄之 opencode 免費條目（免費＝id 或 model 含 `free`，另加 `big-pickle`；只判 kind 為 `opencode` 且 model 為 `opencode/<id>` 者），回傳 `available`／`removed`／`unchecked`／`uncatalogued`／`listed`；**查詢失敗（`opencode` 不存在 `notfound`、非零離開 `exit`、逾時 `timeout`、輸出解析不出任何 id `empty`、注入之 `query` 出錯 `query`、輸入不合規 `params`）回 `ok: false` 與 `errorType`，各清單為 `null` 而非空陣列**，不會被誤讀為「全部下架」；`query` 可注入（單元測試用），`refresh: true` 附 `--refresh`。不呼叫任何模型、不耗免費額度。用法見「免費條目漂移檢查」。新增連網守門測試 `test/api-providersOpencodeFree.test.mjs`（`npm test` 時對當日 `opencode models --refresh` 比對；opencode 不存在或離線時略過而非通過）。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -797,7 +803,7 @@ timeoutMs（單次嘗試，統一預設300000）
 | `runRolePipeline` | Σ各階段（**序列**） | ≈M×K×timeoutMs |
 | `runFanoutPipeline` | 上兩者相加 | ≈(2+M)×K×timeoutMs |
 
-量級感受：內建providers 31條全上陣時，一個名額最壞31×300s＝155min；3階段RolePipeline最壞約7.8小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
+量級感受：內建providers 29條全上陣時，一個名額最壞29×300s＝145min；3階段RolePipeline最壞約7.3小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
 
 **外部調整四層**（細者覆蓋粗者，全部免改套件程式）：
 1. **全域**：`dispatchAiWkf({ defaults: { timeoutMs, budgetMs, minAttemptMs } })`
@@ -875,6 +881,24 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 **推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；內建之 `poolside:laguna-s-2.1`（開啟思考）即用 32768。
 
 **警語：動「輸入」、不要動「回傳」**——把條目 push 進回傳的 `providers` 陣列不會同步進 `table`，兩者當場分歧；合併輸入再呼叫則兩種輸出同源產出、必然一致。另同 id 重複條目屬設定錯誤（共用游標、日誌無法區分），合併時務必如上例先濾再接。
+
+**免費條目漂移檢查：`filterOpencodeFree`**：opencode 之免費模型日日漂移（2026-10-29 即有三條已不被供應而目錄仍收，呼叫約 2 秒回 `UnknownError`），**下游組遞補鏈或評比名單前請對一次**：
+
+```alias
+let r = await wdi.filterOpencodeFree() //預設查內建目錄; 要最新事實加 { refresh: true }（opencode models 有本機快取）
+if (!r.ok) {
+    //opencode 不存在／查詢失敗／空輸出: 不可當成「全部下架」(此時 r.available 等皆為 null), 沿用原清單或回報
+    console.log(r.errorType, r.error) //'notfound'｜'exit'｜'timeout'｜'empty'｜'query'｜'params'
+}
+else {
+    console.log(r.removed.map((p) => p.id))  //不在 opencode models 之免費條目(疑似下架; 依 providers.mjs 檔頭先例另需「依條目呼叫約 2s 回 UnknownError」才判定下架)
+    console.log(r.uncatalogued)              //清單有列之免費 id 而目錄未收者(如新上線之模型), 供提示新增
+    let gone = new Set(r.removed.map((p) => p.id))
+    let alive = wdi.providers.filter((p) => !gone.has(p.id)) //剔除疑似下架者後再 resolveProviders
+}
+```
+
+「有列」不等於「能用」（清單與上游狀態不同步時，已下架之模型仍可能被列出，如 2026-10-30 之 `nemotron-3-ultra-free`），實際可用性仍以呼叫實測為準；「不在清單」則是下架之必要條件，可機械判定。`unchecked` 列出含 `free` 字樣但無從以 `opencode models` 判定者（`zen:` REST 條目、須注入 config 之第三方 provider 條目），不判下架。
 
 **配套工具**（皆為選用，深層引入或由聚合物件取用）：
 

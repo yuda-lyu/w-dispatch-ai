@@ -14,6 +14,7 @@ import dispatchApiOpenaiResponses from '../src/dispatchApiOpenaiResponses.mjs'
 import dispatchApiAnthropic from '../src/dispatchApiAnthropic.mjs'
 import dispatchApiTypesafeSystemone from '../src/dispatchApiTypesafeSystemone.mjs'
 import probeAnthropicKeys from '../src/probeAnthropicKeys.mjs'
+import filterOpencodeFree from '../src/filterOpencodeFree.mjs'
 import providers from '../src/providers.mjs'
 import resolveProviders from '../src/resolveProviders.mjs'
 import getQuotaClaude from '../src/quota/getQuotaClaude.mjs'
@@ -40,6 +41,7 @@ describe('WDispatchAi', function() {
             'dispatchApiAnthropic',
             'dispatchApiTypesafeSystemone',
             'probeAnthropicKeys', //2026-10-25新增(dispatch-run01): 金鑰探測
+            'filterOpencodeFree', //2026-10-30新增(run01): 以opencode models過濾目錄之免費條目
             'providers',
             'resolveProviders',
             'readEnvFile',
@@ -62,7 +64,7 @@ describe('WDispatchAi', function() {
 
     it('各鍵值型別正確(KINDS與providers為物件, NO_SIDE_EFFECT為字串, 其餘為函數)', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
+        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
         assert.strict.deepEqual(r, rr)
     })
 
@@ -85,8 +87,9 @@ describe('WDispatchAi', function() {
             wi.getQuotaCodex === getQuotaCodex,
             wi.getQuotaAntigravity === getQuotaAntigravity,
             wi.probeAnthropicKeys === probeAnthropicKeys,
+            wi.filterOpencodeFree === filterOpencodeFree,
         ]
-        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 
