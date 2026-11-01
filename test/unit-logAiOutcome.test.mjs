@@ -10,6 +10,8 @@ import logAiOutcome, { createAiEventLogger, OUTCOME_TEXT } from '../src/wkf/logA
 //     渲染四行: ①使用 AI(INFO) ②AI 遞補歷程(WARN; 濾掉ok) ③AI 供應商未納入(WARN; providersSkipped) ④providerPick 有無效 id(ERROR; providersMissing);
 //     一律以成員呼叫形式觸發記錄器(class-based logger之this不可失);
 //   createAiEventLogger({ log, tag }): cooled事件時WARN'AI 供應商進入冷卻 → …'。
+// 2026-11-01 da42(Gitea #42)改回srcRunner原契約: tag原樣接在每行之前、「使用 AI」以providerId有值為準(不看ok)、遞補歷程耗時toFixed(1)、冷卻分鐘數Math.round;
+//   原契約字面逐字對照見unit-srcRunnerContract.test.mjs。
 // 另依診斷輸出與遮罩規格(D3/D4): 日誌不含金鑰、記錄器自身失敗不影響呼叫端。
 // 全部為純函數測試（記錄器為測試替身）。
 
@@ -213,7 +215,8 @@ describe('logAiOutcome', function() {
         assert.strict.deepEqual(lg.lines, [['INFO', '使用 AI p／key#1（k／m，tokens 1+2；截斷內容放行（finish_reason=length））']])
     })
 
-    it('①失敗結果（ok非true）不寫「使用 AI」，仍寫遞補歷程', function() {
+    // 原契約 core/ai/logAiOutcome.mjs:56: 以providerId有值為準, 不看ok（Gitea #42 §2）
+    it('①providerId有值即寫「使用 AI」，不看ok（ok為false亦寫），再寫遞補歷程；providerId缺或空字串不寫', function() {
         let lg = mkLog()
         logAiOutcome({
             result: {
@@ -224,7 +227,20 @@ describe('logAiOutcome', function() {
             },
             log: lg,
         })
-        assert.strict.deepEqual(lg.lines, [['WARN', 'AI 遞補歷程 → p／key#1（整組跳過：timeout／TIMEOUT 300000ms，300s）']])
+        assert.strict.deepEqual(lg.lines, [
+            ['INFO', '使用 AI p／key#1'],
+            ['WARN', 'AI 遞補歷程 → p／key#1（整組跳過：timeout／TIMEOUT 300000ms，300.0s）'],
+        ])
+        let lg2 = mkLog()
+        logAiOutcome({ result: { ok: true, tried: [{ providerId: 'p', outcome: 'skip-group', errorType: 'timeout' }] }, log: lg2 })
+        logAiOutcome({ result: { ok: true, providerId: '' }, log: lg2 })
+        assert.strict.deepEqual(lg2.lines.map((x) => x[0]), ['WARN'])
+    })
+
+    it('①無ok之結果（{ providerId, kind, model }）照記「使用 AI」（srcRunner契約）', function() {
+        let lg = mkLog()
+        logAiOutcome({ result: { providerId: 'p', kind: 'k', model: 'm' }, log: lg })
+        assert.strict.deepEqual(lg.lines, [['INFO', '使用 AI p（k／m）']])
     })
 
     // 第②行
@@ -253,8 +269,8 @@ describe('logAiOutcome', function() {
             log: lg,
         })
         assert.strict.deepEqual(lg.lines, [['WARN', [
-            'AI 遞補歷程 → a／key#1（換金鑰：http／e1，1s）',
-            'b（整組跳過：spawn／ENOENT，0.02s）',
+            'AI 遞補歷程 → a／key#1（換金鑰：http／e1，1.0s）',
+            'b（整組跳過：spawn／ENOENT，0.0s）',
             'c／key#4（budget-out）',
             'd／key#1（skip-key：http／HTTP 400）',
             'e（constructor：x）',
@@ -296,15 +312,25 @@ describe('logAiOutcome', function() {
         ])
     })
 
-    // 規格句: tag
-    it('tag: 非空字串時每行前綴[tag] ；空或非字串無前綴', function() {
+    // 規格句: tag原樣接在每行之前（Gitea #42 §1; 原契約 core/ai/logAiOutcome.mjs:51-53）
+    it('tag: 原樣接在每行之前（不加括號與空白，分隔符由呼叫端自帶）；空字串或非字串視為空', function() {
         let lg = mkLog()
-        logAiOutcome({ result: full(), log: lg, tag: 'news' })
-        assert.strict.deepEqual(lg.lines.map((x) => x[1].slice(0, 7)), ['[news] ', '[news] ', '[news] ', '[news] '])
-        let lg2 = mkLog()
-        logAiOutcome({ result: full(), log: lg2, tag: '' })
-        logAiOutcome({ result: full(), log: lg2, tag: 5 })
-        assert.strict.equal(lg2.lines.every((x) => !x[1].startsWith('[')), true)
+        logAiOutcome({ result: full(), log: lg, tag: 'news：' })
+        assert.strict.deepEqual(lg.lines.map((x) => x[1].slice(0, 'news：'.length + 2)), ['news：使用', 'news：AI', 'news：AI', 'news：pr'])
+        let lg3 = mkLog()
+        logAiOutcome({ result: full(), log: lg3, tag: 'a ' })
+        assert.strict.equal(lg3.lines.every((x) => x[1].startsWith('a ')), true) //尾端空白為呼叫端自帶, 原樣保留
+        let lg4 = mkLog()
+        logAiOutcome({ result: full(), log: lg4, tag: 'x' })
+        assert.strict.equal(lg4.lines.every((x) => x[1].startsWith('x') && !x[1].includes('[x]')), true) //不加括號與空白
+        assert.strict.equal(lg4.lines[0][1].startsWith('x使用 AI '), true)
+        let base = mkLog()
+        logAiOutcome({ result: full(), log: base })
+        for (let tag of ['', 5, null, undefined, true, {}, []]) {
+            let lg2 = mkLog()
+            logAiOutcome({ result: full(), log: lg2, tag })
+            assert.strict.deepEqual(lg2.lines, base.lines)
+        }
     })
 
     // 診斷輸出與遮罩D3: 日誌不含憑證
@@ -394,16 +420,18 @@ describe('createAiEventLogger', function() {
         assert.strict.deepEqual(lg.lines, [])
     })
 
-    it('錯誤壓單行並以60字截斷（補刪節號）；分鐘數至多一位小數；cooldownMs無效不寫分鐘數', function() {
+    it('錯誤壓單行並以60字截斷（補刪節號）；分鐘數為Math.round整數（90000→2、30000→1）；cooldownMs無效不寫分鐘數', function() {
         let lg = mkLog()
         let onEvent = createAiEventLogger({ log: lg })
         onEvent({ type: 'cooled', providerId: 'p', error: 'a\n b\t' + 'y'.repeat(100), cooldownMs: 90000 })
         onEvent({ type: 'cooled', providerId: 'p', error: '', cooldownMs: 'x' })
         onEvent({ type: 'cooled', providerId: 'p', cooldownMs: 30000 })
+        onEvent({ type: 'cooled', providerId: 'p', cooldownMs: 70000 }) //1.17分鐘: round得1（非ceil之2、非一位小數之1.2）
         assert.strict.deepEqual(lg.lines.map((x) => x[1]), [
-            `AI 供應商進入冷卻 → p（a b ${'y'.repeat(56)}...，1.5 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）`,
+            `AI 供應商進入冷卻 → p（a b ${'y'.repeat(56)}...，2 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）`,
             'AI 供應商進入冷卻 → p（冷卻視窗內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）',
-            'AI 供應商進入冷卻 → p（0.5 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）',
+            'AI 供應商進入冷卻 → p（1 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）',
+            'AI 供應商進入冷卻 → p（1 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）',
         ])
     })
 
@@ -428,10 +456,10 @@ describe('createAiEventLogger', function() {
         }
     })
 
-    it('class-based logger與介面B: 成員呼叫形式（this不失）；tag前綴', function() {
+    it('class-based logger與介面B: 成員呼叫形式（this不失）；tag原樣接在行首', function() {
         let lg = new ClassLogger()
-        createAiEventLogger({ log: lg, tag: 'news' })({ type: 'cooled', providerId: 'p', error: 'e', cooldownMs: 60000 })
-        assert.strict.deepEqual(lg.buf, [['WARN', '[news] AI 供應商進入冷卻 → p（e，1 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）']])
+        createAiEventLogger({ log: lg, tag: 'news：' })({ type: 'cooled', providerId: 'p', error: 'e', cooldownMs: 60000 })
+        assert.strict.deepEqual(lg.buf, [['WARN', 'news：AI 供應商進入冷卻 → p（e，1 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）']])
         let lg2 = mkLogB()
         createAiEventLogger({ log: lg2 })({ type: 'cooled', providerId: 'p', cooldownMs: 60000 })
         assert.strict.equal(lg2.lines[0][0], 'WARN')

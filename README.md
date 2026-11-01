@@ -303,7 +303,10 @@ await test()
 
 **未發布（同批次，2026-11-01 Gitea #40，自專案端執行殼 srcRunner 移入；皆為新增，既有函數之行為不變）**：
 57. **新增匯出 8 個**（`WDispatchAi` 鍵由 25 個變 33 個）：`resolveCatalogue`（目錄展開，另自 `src/resolveCatalogue.mjs` 具名匯出 `mergeCatalogue`、`timeoutPatch`）、`createAiCaller`（原始遞補呼叫器，與 `dispatchAiWkf`／`callAiWithFallback` **並存**、語意不同，見「原始呼叫器 vs 工作流（選型）」）、`logAiOutcome`／`createAiEventLogger`／`OUTCOME_TEXT`（結果日誌）、`parseJsonArray`／`parseIndexList`／`makeArrayCoverageValidator`（嚴格解析與涵蓋率驗證，與 `extractJsonLoose`／`salvageTruncatedArray` 之寬鬆／搶救版並存）。依賴 `WDispatchAi` 鍵清單完全相等者請納入。
-58. 移入時沿用原行為契約與訊息字面：`ai.extraProviders 須為陣列`、`ai.extraProviders[i] 須為含 id 之條目物件`、`timeoutPatch 需要 merged（條目陣列）`、`logAiOutcome 需要 log（記錄器）`、日誌之 `providerPick 有無效 id`／`AI 遞補歷程`／`AI 供應商未納入`／`AI 供應商進入冷卻` 等字樣**不改字**（使用端有以字樣比對之測試）；`createAiCaller` 與 `logAiOutcome` 不依賴 w-data-pipeline（日誌之 `oneline` 以 wsemi `strTruncate` 內嵌）。**移入時補強之處**（皆為原契約未載明或原契約之邊界）：①`logAiOutcome` 對每一行套 Anthropic 金鑰樣式遮蔽、記錄器自身失敗吞掉；②`createAiEventLogger` 對 `scope: 'key'` 之 `cooled` 事件如實寫「降至組內最後」；③`timeoutPatch` 某層無效（非正整數）時落到下一層、數字字串轉為數字使用；④`createAiCaller` 之零供應商失敗之括號內列出缺金鑰略過者與 `pick` 查無者。
+58. 移入時沿用原行為契約與訊息字面：`ai.extraProviders 須為陣列`、`ai.extraProviders[i] 須為含 id 之條目物件`、`timeoutPatch 需要 merged（條目陣列）`、`logAiOutcome 需要 log（記錄器）`、日誌之 `providerPick 有無效 id`／`AI 遞補歷程`／`AI 供應商未納入`／`AI 供應商進入冷卻` 等字樣**不改字**（使用端有以字樣比對之測試）；`createAiCaller` 與 `logAiOutcome` 不依賴 w-data-pipeline（日誌之 `oneline` 以 wsemi `strTruncate` 內嵌）。**移入時補強之處**（皆為原契約未載明或原契約之邊界）：①`logAiOutcome` 對每一行套 Anthropic 金鑰樣式遮蔽、記錄器自身失敗吞掉；②`createAiEventLogger` 對 `scope: 'key'` 之 `cooled` 事件如實寫「降至組內最後」；③`timeoutPatch` 某層無效（非正整數）時落到下一層、數字字串轉為數字使用。（原④「零供應商失敗之括號內列出缺金鑰略過者與 `pick` 查無者」及 `tag` 之 `[tag] ` 前綴等 1.0.63 之推定處，已於第 59 條改回原契約。）
+
+**未發布（Gitea #42，專案方 tai-kns-trade 以 srcRunner 原始碼與測試核對 1.0.63；依「行為與契約隨件移動、不改語意」改回原契約字面。**含行為變更**：1.0.63 已使用下列任一字面者請對照）**：
+59. 五處改回 srcRunner 原契約（其餘行為不變）：①`logAiOutcome`／`createAiEventLogger` 之 `tag` **原樣接在每行訊息之前**（1.0.63 為 `[tag] `；現為不加括號與空白，分隔符由呼叫端自帶，如 `tag: '步驟6：'` → `步驟6：使用 AI …`；非字串視為 `''`）。②「使用 AI」行**以 `result.providerId` 有值為準，不再要求 `ok === true`**（1.0.63 要求 `ok === true`；注意 `dispatchAiFallback` 全數失敗之結果亦帶最後嘗試之 `providerId`，故失敗結果也會有此行，其後接遞補歷程；`kind`／`model` 皆缺時仍省略括號，避免印出 `undefined`）。③遞補歷程耗時改為 `toFixed(1)`（1234 ms → `1.2s`，1.0.63 為 `1.234s`；整秒為 `2.0s`、`300.0s`）；`createAiEventLogger` 之冷卻分鐘數改為 `Math.round(cooldownMs / 60000)`（90000 → `2 分鐘內`，1.0.63 為一位小數 `1.5 分鐘內`）；金鑰冷卻行（`scope: 'key'`）與 `冷卻視窗內` 字樣之擴充保留。④`createAiCaller.callAI` 零供應商之 `error` 為 `無可用的 AI 供應商` 後接 `（<providersSkipped 以「、」相接>）`，**無 `providersSkipped` 則無括號**，`pick` 查無者不進 `error`（1.0.63 為 `（缺金鑰略過：…；pick 查無：…）`，皆無時 `（條目清單為空）`；`providersSkipped`／`providersMissing`／`attempts`／`tried` 不變）。⑤`makeArrayCoverageValidator` 之 `indices` 非陣列之 `TypeError` 訊息改為 `makeArrayCoverageValidator 之 indices 須為陣列`（1.0.63 為 `makeArrayCoverageValidator: opt.indices 須為陣列`）。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -776,7 +779,7 @@ let caller = wdi.createAiCaller({
     timeoutMs: 300000,                                   //全域逾時, 寫進各條目（逐次 timeoutMs 只對沒有逾時的條目生效）
     budgetMs: 600000,
     store: wdi.createFileStore({ dir: './state' }),
-    onEvent: wdi.createAiEventLogger({ log: console, tag: 'news' }),
+    onEvent: wdi.createAiEventLogger({ log: console, tag: 'news：' }), //tag 原樣接在每行之前, 分隔符(此例「：」)由呼叫端自帶
 })
 if (caller.missing.length > 0) {
     console.log(caller.missing, caller.hints) //pick 打錯字: 不拋, 由呼叫端決定
@@ -786,11 +789,11 @@ if (caller.missing.length > 0) {
 let r = await caller.callAI(prompt, {
     validate: wdi.makeArrayCoverageValidator({ indices: [1, 2, 3], contentFields: ['t'], maxLengths: { t: 600 } }),
 })
-wdi.logAiOutcome({ result: r, log: console, tag: 'news' })
+wdi.logAiOutcome({ result: r, log: console, tag: 'news：' })
 let arr = r.ok ? wdi.parseJsonArray(r.stdout) : null
 ```
 
-**零供應商**（`pick` 全為未知 id、全部缺金鑰或條目清單為空）時 `callAI` 不送任何請求，回與套件同形之失敗：`{ ok: false, stdout: '', stderr: '', code: null, durationMs: 0, attempts: 0, error: '無可用的 AI 供應商（…）', tried: [], providersSkipped, providersMissing }`（括號內列缺金鑰略過者與 `pick` 查無者）。
+**零供應商**（`pick` 全為未知 id、全部缺金鑰或條目清單為空）時 `callAI` 不送任何請求，回與套件同形之失敗：`{ ok: false, stdout: '', stderr: '', code: null, durationMs: 0, attempts: 0, error: '無可用的 AI 供應商（…）', tried: [], providersSkipped, providersMissing }`。`error` 為 `無可用的 AI 供應商` 後接 `（<providersSkipped 各字串以「、」相接>）`（各形如 `id（ENVVAR 無金鑰）`），**無 `providersSkipped` 則無括號**；`pick` 查無者（`providersMissing`）**不進 `error`**，由 `providersMissing` 欄位與 `logAiOutcome` 之 ERROR 行表達。
 
 **截斷**：預設（未給 `acceptTruncated`）REST 文字類截斷即判失敗換家（`errorType: 'incomplete'`）；`callAI(prompt, { acceptTruncated: true, validate })` 則把截斷內容交 `validate` 裁決，通過者結果標 `truncated: true`、`logAiOutcome` 加註「截斷內容放行」。`acceptTruncated` 只在給布林時透傳。截斷之兩種策略（換家重產 vs 搶救前段）由呼叫端選，見「嚴格解析與涵蓋率驗證」。
 
@@ -996,15 +999,17 @@ console.log(resolved.skipped, resolved.missing, resolved.hints, resolved.warning
 
 | 行 | 等級 | 條件 | 內容 |
 | --- | --- | --- | --- |
-| 使用 AI | INFO | `result.ok === true` | `使用 AI <providerId>／key#<n>（<kind>／<model>，tokens P+C（含思考 R）；截斷內容放行（finish_reason=…））`（`key#` 僅有金鑰者；`tokens` 僅 REST 類有 `usage` 者，OpenAI 系與 Anthropic 系皆收；截斷加註僅 `truncated === true`） |
-| AI 遞補歷程 | WARN | `tried` 內有非 `ok` 之嘗試 | `<providerId>／key#<n>（<outcome 人話>：<errorType>／<原因壓單行 80 字>，<耗時>s）`，多筆以「、」相接；`next-key`→換金鑰、`skip-group`→整組跳過（`OUTCOME_TEXT`），其餘原樣；原因取 `reason`、無則 `error` |
+| 使用 AI | INFO | `result.providerId` 有值（不看 `ok`；`dispatchAiFallback` 全數失敗之結果亦帶最後嘗試之 `providerId`，故失敗結果也會有此行，其後接遞補歷程） | `使用 AI <providerId>／key#<n>（<kind>／<model>，tokens P+C（含思考 R）；截斷內容放行（finish_reason=…））`（`key#` 僅有金鑰者；`tokens` 僅 REST 類有 `usage` 者，OpenAI 系與 Anthropic 系皆收；截斷加註僅 `truncated === true`） |
+| AI 遞補歷程 | WARN | `tried` 內有非 `ok` 之嘗試 | `<providerId>／key#<n>（<outcome 人話>：<errorType>／<原因壓單行 80 字>，<耗時>s）`（耗時固定一位小數，`toFixed(1)`：1234 ms → `1.2s`），多筆以「、」相接；`next-key`→換金鑰、`skip-group`→整組跳過（`OUTCOME_TEXT`），其餘原樣；原因取 `reason`、無則 `error` |
 | AI 供應商未納入 | WARN | `providersSkipped` 非空 | 缺金鑰而停用者 |
 | providerPick 有無效 id | ERROR | `providersMissing` 非空 | `providerPick 有無效 id → …（請對照供應商目錄）` |
 
-`createAiEventLogger({ log, tag })` 回 `(ev) => void`，可直接作 `onEvent`：`cooled` 事件時 WARN 一行（供應商冷卻：降至鏈尾；`scope: 'key'` 之金鑰冷卻：降至組內最後）。
+`createAiEventLogger({ log, tag })` 回 `(ev) => void`，可直接作 `onEvent`：`cooled` 事件時 WARN 一行（供應商冷卻：降至鏈尾；`scope: 'key'` 之金鑰冷卻：降至組內最後）。冷卻分鐘數為 `Math.round(cooldownMs / 60000)`（900000 → `15 分鐘內`、90000 → `2 分鐘內`）；`cooldownMs` 無效時寫「冷卻視窗內」。
+
+**`tag`**：原樣接在每行訊息之前，**不加括號與空白，分隔符由呼叫端自帶**（`tag: '步驟6：'` → `步驟6：使用 AI …`、`步驟6：AI 遞補歷程 → …`）；非字串（含省略）視為 `''`。
 
 ```alias
-wdi.logAiOutcome({ result: r, log: console, tag: 'news' })     //每行前綴 [news] ; tag 省略則無前綴
+wdi.logAiOutcome({ result: r, log: console, tag: 'news：' })    //tag 原樣接在每行之前(此例 `news：使用 AI …`), 分隔符由呼叫端自帶; tag 省略則無前綴
 let onEvent = wdi.createAiEventLogger({ log: myLogger })       //掛進 createAiCaller({ onEvent }) 或 dispatchAiFallback 的 onEvent
 ```
 
@@ -1019,7 +1024,7 @@ let onEvent = wdi.createAiEventLogger({ log: myLogger })       //掛進 createAi
 | --- | --- |
 | `parseJsonArray(stdout)` | `extractJsonLoose` 之陣列限定版：取**第一個**完整片段，結果不是陣列、或括號未閉合（截斷）即回 `null`，不搶救半成品 |
 | `parseIndexList(text, { min = 1, max = Infinity, topN = Infinity })` | 取「數字個數最多的那一串」（逗號／頓號分隔，同長度取最先）為答案——模型偶把推理混進輸出（實測 `5,6,15,16,28 Wait, let me reconsider…`），提示詞含數量上限時模型複述該數字極易帶出獨立的數字；**單一個 `0` 約定為空集合** → `{ isZero: true, indices: [] }`；其餘依 `min`／`max` 過濾、`topN` 截取，回 `{ isZero, indices }` |
-| `makeArrayCoverageValidator({ indices, indexField = 'index', contentFields, maxLengths, onReject })` | 回可直接作 `validate` 之 `(stdout) => Boolean`：非陣列或截斷 → 不合格；任一項任一受限欄位（`maxLengths`）超過上限 → **整體不合格（不剔除該項）**；`indices` 內每個編號須被**涵蓋**（同一編號可回多筆，且 `contentFields` 任一欄位非空才算有內容）；每次不合格以 `onReject(reason)` 回報原因（`非 JSON 陣列或輸出截斷`／`第 N 項之 f 為 L 字，超過上限 M`／`未涵蓋編號 …（缺項或內容為空）`）。`indices` 給了但非陣列拋 `TypeError`（不可靜默改空陣列，否則形同放行）；編號須為數字（字串數字不算涵蓋） |
+| `makeArrayCoverageValidator({ indices, indexField = 'index', contentFields, maxLengths, onReject })` | 回可直接作 `validate` 之 `(stdout) => Boolean`：非陣列或截斷 → 不合格；任一項任一受限欄位（`maxLengths`）超過上限 → **整體不合格（不剔除該項）**；`indices` 內每個編號須被**涵蓋**（同一編號可回多筆，且 `contentFields` 任一欄位非空才算有內容）；每次不合格以 `onReject(reason)` 回報原因（`非 JSON 陣列或輸出截斷`／`第 N 項之 f 為 L 字，超過上限 M`／`未涵蓋編號 …（缺項或內容為空）`）。`indices` 給了但非陣列拋 `TypeError`（訊息 `makeArrayCoverageValidator 之 indices 須為陣列`；不可靜默改空陣列，否則形同放行）；編號須為數字（字串數字不算涵蓋） |
 
 ```alias
 let validate = wdi.makeArrayCoverageValidator({

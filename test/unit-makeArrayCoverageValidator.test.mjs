@@ -109,9 +109,10 @@ describe('makeArrayCoverageValidator', function() {
     })
 
     // 規格句: indices給了但非陣列拋TypeError; 省略不拋
-    it('indices給了但非陣列: 拋TypeError（含null；不可靜默改空陣列形同放行）', function() {
+    it('indices給了但非陣列: 拋TypeError（含null；不可靜默改空陣列形同放行），訊息為「makeArrayCoverageValidator 之 indices 須為陣列」（srcRunner原契約，Gitea #42 §5）', function() {
         for (let v of ['1,2', 5, {}, null, true]) {
             assert.throws(() => makeArrayCoverageValidator({ indices: v }), TypeError)
+            assert.throws(() => makeArrayCoverageValidator({ indices: v }), { message: 'makeArrayCoverageValidator 之 indices 須為陣列' })
         }
     })
 

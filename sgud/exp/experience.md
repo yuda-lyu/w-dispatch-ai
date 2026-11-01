@@ -88,3 +88,10 @@
 - **lodash `get` 以字串路徑讀逐 id 物件有點號陷阱**:id 如 `oc:opencode/glm-5.3-flash-free` 含 `.`,`get(obj, id)` 在物件**有**該鍵時 lodash 先判整串為鍵而正常、**無**該鍵時才拆路徑(結果仍是預設值,不出錯);`resolveProviders` 自身即此寫法.新程式逐 id 讀改用 `Object.prototype.hasOwnProperty.call` ＋ 直接索引(`timeoutPatch`),同時避開 `toString` 等原型成員.
 - **替身端點與測試工具的坑**:①`slow` 路由之 `setTimeout(…, 10000)` 要 `unref()`,否則 mocha 結束後行程為等它而多活 10 秒;②REST 的 `maxRetries` 重試間隔為 `retryDelayMs × 次數`(預設 5 秒),而 `createAiCaller` 不開放 `retryDelayMs`——驗證 `maxRetries` 透傳的案例必然約 5 秒(只放一條);③eslint 的 `object-curly-newline` 對測試檔內「多屬性物件字面量與匿名函式同行」不放行,`npx eslint --fix <檔>` 可自動修(新增的 `test/` 檔先 `--fix` 再手改 `no-new-wrappers`,包裝物件用 `Object('…')`);④測試臨時檔放 `test/_tmp/<案名>/` 並以 `fileURLToPath(import.meta.url)` 衍生,`after` 刪除;`createFakeCli` 的名稱每個測試檔須唯一(平行執行).
 - **變異驗證用副本**:`tmp/da40/mutate.mjs` 複製 `src` 與新測試到 `tmp/da40/mut/work`,逐一以字串替換套用、`from` 須在原檔恰出現一次(否則 SKIP,避免靜默變異失效)、用 `quiet-run --lock` 跑對應測試檔、還原;62 個變異約 8 分鐘.以 `nohup node … &` 跑成 detached,輪詢輸出檔,不把整批變異掛在單一有時限之工具呼叫上.
+
+## 自他處移入之件:「契約未載明而推定」處即字面不符之高風險處(2026-11-01 da42,Gitea #42)
+
+- **移入的件,字面與條件都是契約**:da40 把 srcRunner 的 AI 件移入時,原始碼本機無複本,只靠建議檔轉述之行為契約實作,凡「契約未載明」之處(`tag` 前綴格式、零供應商 `error` 括號內容、使用 AI 觸發條件、耗時小數位、冷卻分鐘取整、TypeError 訊息)皆自行推定,其後專案方一對照,6 處中 5 處不符.教訓:①「由實作推定」不應順手加修飾(括號、空白、小數位、關鍵詞),**無依據時取最樸素的字面**(原樣接、原樣取整);②推定處要在對外說明(README、發布留言)明列,請提出端對照,這次 da40 這麼做才及早揪出;③有原始碼複本時先對照再寫,沒有時寧可少做、不要「補強」。
+- **失敗結果也帶 `providerId`**:`dispatchAiFallback` 全數失敗時回 `{ ...lastResult, ...lastMeta, tried }`,`providerId`／`keyIndex`／`kind`／`model` 為最後嘗試者;所以「`providerId` 有值」≠「成功」.原契約的「使用 AI」行以 `providerId` 為準,失敗結果也會印(其後接遞補歷程);若要只在成功時印,呼叫端自行判 `ok`,不是日誌件的責任.
+- **變異要覆蓋「相鄰但不同」的值**:`Math.round` 的分鐘數測 90000／30000 抓不到 `Math.ceil`(兩者同為 2／1),補 70000(1.17 分鐘:round→1、ceil→2)才抓到;凡「改回舊寫法」之變異外,再加「同族不同取整／不同分隔符」之鄰近變異(floor／ceil、`，`／`、`)。
+- **變異腳本之 `from` 錨點要避開註解**:`Math.round(ms / 60000)` 同時出現在 JSDoc 與程式碼,`from` 出現 2 次被 SKIP;錨點連同前後語法(`? Math.round(ms / 60000) : null`)取唯一者.腳本加「只跑符合某正規表達式之變異」的篩選參數,補跑時不必整批重來.

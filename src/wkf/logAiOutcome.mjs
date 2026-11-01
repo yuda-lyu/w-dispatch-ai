@@ -25,7 +25,8 @@ import { maskApiKeys } from '../redactText.mjs'
 // 【不外洩憑證】日誌內容來自結果之tried／error(轉接器已就注入之金鑰遮蔽, 見redactText.mjs), 本層再對整行套Anthropic金鑰樣式遮蔽(sk-ant-…)
 //   作底線防護; 不輸出金鑰、不輸出stdout內容(模型輸出)。
 //
-// 【tag】多個呼叫點共用同一記錄器時區分來源: 非空字串時每行前綴`[tag] `。
+// 【tag】多個呼叫點共用同一記錄器時區分來源: tag原樣接在每行訊息之前(不加括號與空白, 分隔符由呼叫端自帶, 如tag: '步驟6：'),
+//   非字串視為''; 與執行殼srcRunner原契約一致, 使用端的步驟行皆以`步驟N：`起頭, AI行須同形才能逐步驟grep。
 //
 // 【oneline】錯誤字串壓成單行並截斷(wsemi strTruncate, 刪節號`...`), 內嵌於本檔——不依賴w-data-pipeline。
 
@@ -111,13 +112,13 @@ function emitLine(log, level, msg) {
 
 
 /**
- * 前綴: tag為非空字串時為`[tag] `，否則空字串
+ * 前綴: tag為字串時原樣回傳(不加括號與空白)，否則空字串
  *
  * @param {*} tag 輸入tag
  * @returns {String} 回傳前綴字串
  */
 function prefixOf(tag) {
-    return isestr(tag) ? `[${tag}] ` : ''
+    return typeof tag === 'string' ? tag : ''
 }
 
 
@@ -133,13 +134,13 @@ function keyText(keyIndex) {
 
 
 /**
- * 冷卻分鐘數: 毫秒換算為分鐘(至多一位小數)，無效回null
+ * 冷卻分鐘數: 毫秒換算為分鐘並四捨五入為整數(Math.round(ms / 60000))，無效回null
  *
  * @param {*} ms 輸入冷卻毫秒
  * @returns {Number|null} 回傳分鐘數
  */
 function minutesOf(ms) {
-    return (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) ? Number((ms / 60000).toFixed(1)) : null
+    return (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) ? Math.round(ms / 60000) : null
 }
 
 
@@ -174,7 +175,7 @@ function usedDetail(r) {
 
 
 /**
- * 遞補歷程單筆: `providerId／key#n（outcome人話：errorType／原因，耗時s）`
+ * 遞補歷程單筆: `providerId／key#n（outcome人話：errorType／原因，耗時s）`，耗時為秒且固定一位小數(toFixed(1)，1234ms為1.2s)
  *
  * @param {Object} t 輸入tried單筆
  * @returns {String} 回傳字串
@@ -184,7 +185,7 @@ function triedText(t) {
     let ocText = Object.prototype.hasOwnProperty.call(OUTCOME_TEXT, oc) ? OUTCOME_TEXT[oc] : oc
     let reason = isestr(t.reason) ? t.reason : t.error
     let why = [isestr(t.errorType) ? t.errorType : '', oneline(reason, 80)].filter((v) => v !== '').join('／')
-    let sec = (typeof t.durationMs === 'number' && Number.isFinite(t.durationMs)) ? `，${t.durationMs / 1000}s` : ''
+    let sec = (typeof t.durationMs === 'number' && Number.isFinite(t.durationMs)) ? `，${(t.durationMs / 1000).toFixed(1)}s` : ''
     return `${isestr(t.providerId) ? t.providerId : '?'}${keyText(t.keyIndex)}（${ocText}${why === '' ? '' : `：${why}`}${sec}）`
 }
 
@@ -193,7 +194,7 @@ function triedText(t) {
  * 把一次dispatchAiFallback(或createAiCaller.callAI)之結果渲染成日誌
  *
  * 特點：
- * 至多四行：①成功時「使用 AI」(INFO；含kind／model、REST類之token用量含思考、截斷內容放行之加註)；
+ * 至多四行：①result.providerId有值時「使用 AI」(INFO；以providerId有值為準，不看ok；含kind／model、REST類之token用量含思考、截斷內容放行之加註)；
  * ②有非ok之嘗試時「AI 遞補歷程」(WARN；逐筆含key#、outcome人話、errorType、原因壓單行80字、耗時)；
  * ③providersSkipped非空時「AI 供應商未納入」(WARN)；④providersMissing非空時「providerPick 有無效 id」(ERROR)；
  * 記錄器接受log／logWarn／logError或info／warn／error兩種介面，一律以成員呼叫形式觸發(class-based logger之this不失)；
@@ -202,7 +203,7 @@ function triedText(t) {
  * @param {Object} opt 輸入設定物件
  * @param {Object} opt.result 輸入dispatchAiFallback或callAI之結果物件
  * @param {Object} opt.log 輸入記錄器物件(console亦可)
- * @param {String} [opt.tag=''] 輸入來源標籤字串，非空時每行前綴`[tag] `，預設''
+ * @param {String} [opt.tag=''] 輸入來源標籤字串，原樣接在每行之前(不加括號與空白，分隔符由呼叫端自帶，如'步驟6：')，非字串視為''，預設''
  * @returns {undefined} 無回傳值
  * @example
  *
@@ -222,11 +223,11 @@ function triedText(t) {
  *     providersSkipped: ['my:model（MY_KEYS 無金鑰）'],
  *     providersMissing: ['claude/sonnet'],
  * }
- * logAiOutcome({ result, log: console, tag: 'news' })
- * // => [news] 使用 AI agnes:agnes-3.0-flash／key#2（api-openai-compat／agnes-3.0-flash，tokens 120+80（含思考 30））
- * // => [news] AI 遞補歷程 → agnes:agnes-3.0-flash／key#1（換金鑰：http／HTTP 429 quota exceeded，1.2s）
- * // => [news] AI 供應商未納入 → my:model（MY_KEYS 無金鑰）
- * // => [news] providerPick 有無效 id → claude/sonnet（請對照供應商目錄）
+ * logAiOutcome({ result, log: console, tag: '步驟6：' }) //tag原樣接在每行之前, 分隔符由呼叫端自帶
+ * // => 步驟6：使用 AI agnes:agnes-3.0-flash／key#2（api-openai-compat／agnes-3.0-flash，tokens 120+80（含思考 30））
+ * // => 步驟6：AI 遞補歷程 → agnes:agnes-3.0-flash／key#1（換金鑰：http／HTTP 429 quota exceeded，1.2s）
+ * // => 步驟6：AI 供應商未納入 → my:model（MY_KEYS 無金鑰）
+ * // => 步驟6：providerPick 有無效 id → claude/sonnet（請對照供應商目錄）
  *
  */
 function logAiOutcome(opt) {
@@ -237,8 +238,8 @@ function logAiOutcome(opt) {
     }
     let pre = prefixOf(get(opt, 'tag', ''))
 
-    //① 使用 AI
-    if (result.ok === true && isestr(result.providerId)) {
+    //① 使用 AI, 以providerId有值為準(不看ok; dispatchAiFallback失敗結果亦帶最後嘗試之providerId, 原契約如此)
+    if (isestr(result.providerId)) {
         let d = usedDetail(result)
         emitLine(log, 'info', `${pre}使用 AI ${result.providerId}${keyText(result.keyIndex)}${d === '' ? '' : `（${d}）`}`)
     }
@@ -272,15 +273,15 @@ function logAiOutcome(opt) {
  *
  * @param {Object} opt 輸入設定物件
  * @param {Object} opt.log 輸入記錄器物件
- * @param {String} [opt.tag=''] 輸入來源標籤字串，預設''
+ * @param {String} [opt.tag=''] 輸入來源標籤字串，原樣接在每行之前(不加括號與空白，分隔符由呼叫端自帶)，非字串視為''，預設''
  * @returns {Function} 回傳事件記錄函數(ev)=>void
  * @example
  *
  * import { createAiEventLogger } from './src/wkf/logAiOutcome.mjs'
  *
- * let onEvent = createAiEventLogger({ log: console, tag: 'news' })
+ * let onEvent = createAiEventLogger({ log: console, tag: '步驟6：' })
  * onEvent({ type: 'cooled', providerId: 'agnes:agnes-3.0-flash', error: 'HTTP 429', cooldownMs: 600000 })
- * // => [news] AI 供應商進入冷卻 → agnes:agnes-3.0-flash（HTTP 429，10 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）
+ * // => 步驟6：AI 供應商進入冷卻 → agnes:agnes-3.0-flash（HTTP 429，10 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）
  *
  * //掛進呼叫器: createAiCaller({ pick, onEvent })
  *

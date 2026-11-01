@@ -97,7 +97,7 @@ function makeArrayCoverageValidator(opt = {}) {
         indices = []
     }
     if (!isarr(indices)) {
-        throw new TypeError('makeArrayCoverageValidator: opt.indices 須為陣列')
+        throw new TypeError('makeArrayCoverageValidator 之 indices 須為陣列')
     }
     indices = [...indices]
 

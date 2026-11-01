@@ -17,7 +17,7 @@ import fakeServerForCallerTest from './tools/fakeServerForCallerTest.mjs'
 //   createAiCaller({ pick, env, envFile, catalogue, extraProviders, exes, patch, providerTimeouts, timeoutMs, maxRetries, budgetMs, minAttemptMs,
 //     cooldownMs, coolDetect, cwd, store, onUsage, onEvent }) → { callAI, providers, skipped(字樣`${id}（${envVar} 無金鑰）`), missing, hints };
 //   callAI(prompt, { timeoutMs, validate, acceptTruncated, onEvent }): 零供應商回與套件同形之失敗
-//     { ok:false, stdout:'', stderr:'', code:null, durationMs:0, attempts:0, error:'無可用的 AI 供應商（…）', tried:[], providersSkipped, providersMissing };
+//     { ok:false, stdout:'', stderr:'', code:null, durationMs:0, attempts:0, error:'無可用的 AI 供應商'＋（skipped以、相接; 無skipped則無括號; missing不進error）, tried:[], providersSkipped, providersMissing };
 //     否則回dispatchAiFallback原始結果並掛providersSkipped／providersMissing; acceptTruncated僅布林時透傳;
 //     onEvent包一層: type==='try'時呼叫onUsage(providerId), 再轉呼建構期onEvent與逐次onEvent; 不掛NO_SIDE_EFFECT前綴、不解析JSON。
 // 全程以本機替身端點與假CLI實跑, 不連外網。
@@ -142,7 +142,7 @@ describe('createAiCaller', function() {
             assert.strict.equal(r.ok, false)
             assert.strict.equal(r.attempts, 0)
             assert.strict.deepEqual([r.stdout, r.stderr, r.code, r.durationMs, r.tried], ['', '', null, 0, []])
-            assert.strict.equal(r.error.startsWith('無可用的 AI 供應商（'), true)
+            assert.strict.equal(r.error, '無可用的 AI 供應商') //只有missing: 無skipped則無括號, missing不進error（Gitea #42 §4）
             assert.strict.deepEqual([r.providersSkipped, r.providersMissing], [[], ['no-such-id']])
             let lines = []
             logAiOutcome({ result: r, log: { log: (m) => lines.push(['INFO', m]), logWarn: (m) => lines.push(['WARN', m]), logError: (m) => lines.push(['ERROR', m]) } })
@@ -154,15 +154,16 @@ describe('createAiCaller', function() {
             let r = await c.callAI('x')
             assert.strict.deepEqual([r.ok, r.attempts, r.tried], [false, 0, []])
             assert.strict.deepEqual(r.providersSkipped, ['a（DA40_A_KEYS 無金鑰）', 'b（DA40_B_KEYS 無金鑰）'])
-            assert.strict.equal(r.error, '無可用的 AI 供應商（缺金鑰略過：a（DA40_A_KEYS 無金鑰）、b（DA40_B_KEYS 無金鑰））')
+            assert.strict.equal(r.error, '無可用的 AI 供應商（a（DA40_A_KEYS 無金鑰）、b（DA40_B_KEYS 無金鑰））')
         })
 
-        it('同時有缺金鑰與pick查無、以及條目清單為空: 失敗原因分別如實列出', async function() {
+        it('同時有缺金鑰與pick查無、以及條目清單為空: error只列skipped（以「、」相接），missing由providersMissing表達；無skipped則無括號', async function() {
             let c = createAiCaller({ env: {}, catalogue: [{ id: 'a', kind: 'claude', envVar: 'DA40_A_KEYS' }], pick: ['a', 'zz'] })
             let r = await c.callAI('x')
-            assert.strict.equal(r.error, '無可用的 AI 供應商（缺金鑰略過：a（DA40_A_KEYS 無金鑰）；pick 查無：zz）')
+            assert.strict.equal(r.error, '無可用的 AI 供應商（a（DA40_A_KEYS 無金鑰））')
+            assert.strict.deepEqual([r.providersSkipped, r.providersMissing], [['a（DA40_A_KEYS 無金鑰）'], ['zz']])
             let e = await createAiCaller({ catalogue: [] }).callAI('x')
-            assert.strict.equal(e.error, '無可用的 AI 供應商（條目清單為空）')
+            assert.strict.equal(e.error, '無可用的 AI 供應商')
         })
 
         it('零供應商之失敗不含金鑰與envVar值（只列id與變數名）', async function() {
