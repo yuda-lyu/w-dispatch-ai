@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>createAiCaller.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">createAiCaller.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isbol from 'wsemi/src/isbol.mjs'
+import dispatchAiFallback from './dispatchAiFallback.mjs'
+import resolveCatalogue from './resolveCatalogue.mjs'
+import castPintOr from './castPintOr.mjs'
+import { callHookSync } from './callUserFn.mjs'
+
+
+// createAiCaller.mjs — 原始遞補呼叫器: 設定轉dispatchAiFallback參數, 回「原始結果」(不解析、不加前綴)
+//
+// 【契約: 原始遞補呼叫】validate由呼叫端逐次給; 回傳dispatchAiFallback之原始結果(stdout／tried／usage／providerId／keyIndex／durationMs…),
+//   供logAiOutcome渲染; 只做接線不做策略。不掛NO_SIDE_EFFECT前綴、不解析JSON。
+//
+// 【與工作流callAiWithFallback／dispatchAiWkf.callAi的選型(兩者語意不同、並存)】
+//   本件: 條目來源為「內建目錄＋extraProviders → resolveCatalogue → pick順序之條目陣列」; 回原始結果(＋providersSkipped／providersMissing);
+//         回覆不解析(呼叫端自行解析, validate逐次給); 不掛prompt前綴; pick到不存在之id不throw、不失敗而是列入missing／hints由呼叫端以ERROR記;
+//         用量以onUsage(providerId)於try事件入帳。
+//   工作流: 條目來源為呼叫端自備之定義表(名稱 → 條目), spec:{use,fallback}展開; 回結構化{ ok, json, providerId, … };
+//         parse＋check接進validate(預設extractJsonLoose); 預設掛NO_SIDE_EFFECT前綴(promptPrefix:''關閉); 未知名稱直接失敗(errorType params);
+//         用量由呼叫端掛createUsageCounter(...).onEvent。
+//   要「自行解析回覆、要看原始tried／usage」(排程殼)用本件; 要「JSON任務＋多名額工作流」用工作流。
+//
+// 【條目於建構時解析一次】排程為短生命行程, 不隨呼叫重解析; 解析結果含金鑰(resolved.providers之keys), 回傳之providers勿寫入日誌。
+//
+// 【missing與skipped分開回報】missing＝pick到不存在之id(設定錯誤, 常是打錯字); skipped＝缺金鑰而停用(暫時少一層備援)。
+//   兩者皆不使建構失敗; 全部條目都不可用時callAI回同形失敗(attempts為0)。
+//
+// 【已知限制(移入時不改)】budgetMs是建構參數, callAI不收逐次預算。
+
+
+/**
+ * 建立原始遞補呼叫器：條目於建構時由resolveCatalogue解析一次，callAI回dispatchAiFallback之原始結果
+ *
+ * 特點：
+ * 條目來源＝內建目錄＋extraProviders，依pick順序(即遞補優先序)，envVar → keys、exes、patch、逾時三層取值皆同resolveCatalogue；
+ * pick到不存在之id列入missing(附hints拼寫提示)、缺金鑰者列入skipped，皆不throw；
+ * callAI回dispatchAiFallback原始結果，另掛providersSkipped與providersMissing；零供應商時回同形失敗(ok為false、attempts為0、tried為空陣列)；
+ * 不解析回覆、不掛NO_SIDE_EFFECT前綴；本函數不會reject，extraProviders不合規時建構throw(見resolveCatalogue)；
+ * onUsage於try事件(實際送出嘗試)時以providerId呼叫，與createUsageCounter(...).onEvent於try事件記帳之時機相同(後者預設記到keyId，改記到條目請給keyOf: (ev) => ev.providerId，則與onUsage(providerId)等價)，純觀測，拋錯與回傳Promise皆忽略
+ *
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Array} [opt.pick=null] 輸入自選id字串陣列(順序即遞補優先序)，預設null代表全取內建目錄(含計費條目，通常應明給pick)
+ * @param {Object} [opt.env=null] 輸入金鑰來源物件，與envFile二擇一，預設null
+ * @param {String} [opt.envFile=null] 輸入.env檔路徑字串，預設null(皆無時用process.env)
+ * @param {Array} [opt.catalogue=內建目錄] 輸入條目物件陣列，非陣列時用內建目錄
+ * @param {Array} [opt.extraProviders=[]] 輸入安裝方自帶條目陣列(各須含id；新id追加、同id逐欄覆蓋)，預設[]
+ * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件，預設null
+ * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件，優先於逾時三層，預設null
+ * @param {Object} [opt.providerTimeouts=null] 輸入逐id逾時毫秒物件(逾時三層最優先層)，預設null
+ * @param {Number} [opt.timeoutMs=null] 輸入全域逾時毫秒正整數(逾時三層最後備援，寫入各條目)，預設null
+ * @param {Number} [opt.maxRetries=null] 輸入同家重試次數，原樣交dispatchAiFallback，預設null代表其預設
+ * @param {Number} [opt.budgetMs=null] 輸入整輪遞補時間上限毫秒(建構參數，callAI不收逐次預算)，預設null代表不限
+ * @param {Number} [opt.minAttemptMs=null] 輸入單次嘗試最低剩餘預算毫秒，預設null代表其預設
+ * @param {Number} [opt.cooldownMs=null] 輸入供應商冷卻視窗毫秒，預設null代表不啟用
+ * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，預設null
+ * @param {String} [opt.cwd=null] 輸入CLI類條目之工作目錄字串，預設null
+ * @param {Object} [opt.store=null] 輸入狀態持久化物件{get,set}，建議createFileStore({ dir })令游標與冷卻跨行程保留，預設null代表行程內記憶體
+ * @param {Function} [opt.onUsage=null] 輸入用量回調(providerId)=>void，於try事件呼叫，預設null
+ * @param {Function} [opt.onEvent=null] 輸入事件回調(ev)=>void，每個遞補事件皆轉呼叫，預設null
+ * @returns {Object} 回傳物件，內含callAI(async函數(prompt, { timeoutMs, validate, acceptTruncated, onEvent })，回dispatchAiFallback原始結果並另掛providersSkipped與providersMissing)、providers(解析後條目陣列，含金鑰勿寫入日誌)、skipped(缺金鑰而停用之字串陣列，形如'id（ENVVAR 無金鑰）')、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之提示物件)
+ * @example
+ * //need .env with AGNES_KEYS; claude cli in system PATH
+ *
+ * import createAiCaller from './src/createAiCaller.mjs'
+ * import createFileStore from './src/wkf/createFileStore.mjs'
+ * import createUsageCounter from './src/wkf/createUsageCounter.mjs'
+ * import logAiOutcome from './src/wkf/logAiOutcome.mjs'
+ * import parseJsonArray from './src/wkf/parseJsonArray.mjs'
+ *
+ * let usage = createUsageCounter({ dir: './state' })
+ * let caller = createAiCaller({
+ *     envFile: './.env',
+ *     pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'],
+ *     timeoutMs: 300000,
+ *     budgetMs: 600000,
+ *     store: createFileStore({ dir: './state' }),
+ *     onEvent: usage.onEvent, //等價於onUsage, 改掛createUsageCounter更完整(預設記到keyId)
+ * })
+ * console.log(caller.providers.map((p) => p.id), caller.skipped, caller.missing)
+ * // => [ 'agnes:agnes-3.0-flash', 'claude:sonnet' ] [] []
+ *
+ * let test = async () => {
+ *     let r = await caller.callAI('只回覆JSON陣列: [{"index":1,"t":"..."}]', {
+ *         validate: (stdout) => parseJsonArray(stdout) !== null, //回覆不由本件解析, validate逐次給
+ *     })
+ *     console.log(r.ok, r.providerId, r.tried.length)
+ *     // => true 'agnes:agnes-3.0-flash' 1
+ *     logAiOutcome({ result: r, log: console, tag: 'news' })
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+function createAiCaller(opt = {}) {
+
+    //resolved, 建構時解析一次
+    let { resolved } = resolveCatalogue({
+        pick: get(opt, 'pick', null),
+        env: get(opt, 'env', null),
+        envFile: get(opt, 'envFile', null),
+        catalogue: get(opt, 'catalogue', null),
+        extraProviders: get(opt, 'extraProviders', null),
+        exes: get(opt, 'exes', null),
+        patch: get(opt, 'patch', null),
+        providerTimeouts: get(opt, 'providerTimeouts', null),
+        timeoutMs: get(opt, 'timeoutMs', null),
+    })
+    let providers = resolved.providers
+    let skipped = resolved.skipped.map((s) => `${s.id}（${s.envVar} 無金鑰）`)
+    let missing = resolved.missing
+    let hints = resolved.hints
+
+    //建構期設定, 只收有給(非undefined與null)者原樣交dispatchAiFallback, 其檢核與預設由其負責
+    let base = {}
+    for (let k of ['maxRetries', 'budgetMs', 'minAttemptMs', 'cooldownMs', 'coolDetect', 'cwd', 'store']) {
+        let v = get(opt, k, null)
+        if (v !== null &amp;&amp; v !== undefined) {
+            base[k] = v
+        }
+    }
+    let onUsage = get(opt, 'onUsage', null)
+    let onEventB = get(opt, 'onEvent', null)
+
+    let callAI = async (prompt, o = {}) => {
+        let co = isobj(o) ? o : {}
+
+        //零供應商: 回與套件同形之失敗(attempts為0)
+        if (providers.length === 0) {
+            let why = []
+            if (skipped.length > 0) {
+                why.push(`缺金鑰略過：${skipped.join('、')}`)
+            }
+            if (missing.length > 0) {
+                why.push(`pick 查無：${missing.join('、')}`)
+            }
+            if (why.length === 0) {
+                why.push('條目清單為空')
+            }
+            return {
+                ok: false,
+                stdout: '',
+                stderr: '',
+                code: null,
+                durationMs: 0,
+                attempts: 0,
+                error: `無可用的 AI 供應商（${why.join('；')}）`,
+                tried: [],
+                providersSkipped: [...skipped],
+                providersMissing: [...missing],
+            }
+        }
+
+        //逐次設定: timeoutMs(有效正整數)、validate(有給)、acceptTruncated(僅布林時透傳)、onEvent
+        let callOpt = { providers, ...base }
+        let timeoutMs = castPintOr(get(co, 'timeoutMs', null), null)
+        if (timeoutMs !== null) {
+            callOpt.timeoutMs = timeoutMs
+        }
+        let validate = get(co, 'validate', null)
+        if (validate !== null &amp;&amp; validate !== undefined) {
+            callOpt.validate = validate
+        }
+        let acceptTruncated = get(co, 'acceptTruncated', null)
+        if (isbol(acceptTruncated)) {
+            callOpt.acceptTruncated = acceptTruncated
+        }
+
+        //onEvent, try事件先記用量(按實際嘗試入帳), 再轉呼建構期onEvent與逐次onEvent; 三者互相隔離, 拋錯與回傳Promise皆忽略
+        let onEventC = get(co, 'onEvent', null)
+        callOpt.onEvent = (ev) => {
+            if (isfun(onUsage) &amp;&amp; get(ev, 'type', null) === 'try') {
+                callHookSync(() => onUsage(ev.providerId))
+            }
+            if (isfun(onEventB)) {
+                callHookSync(() => onEventB(ev))
+            }
+            if (isfun(onEventC)) {
+                callHookSync(() => onEventC(ev))
+            }
+        }
+
+        let r = await dispatchAiFallback(prompt, callOpt)
+        return { ...r, providersSkipped: [...skipped], providersMissing: [...missing] }
+    }
+
+    return { callAI, providers, skipped, missing, hints }
+}
+
+
+export default createAiCaller
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Nov 01 2026 17:15:21 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

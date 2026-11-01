@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>wkf/makeArrayCoverageValidator.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">wkf/makeArrayCoverageValidator.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import isarr from 'wsemi/src/isarr.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import ispint from 'wsemi/src/ispint.mjs'
+import cint from 'wsemi/src/cint.mjs'
+import { callHookSync } from '../callUserFn.mjs'
+import parseJsonArray from './parseJsonArray.mjs'
+
+
+// makeArrayCoverageValidator.mjs — 逐項編號之JSON陣列涵蓋率驗證器(可直接作dispatchAiFallback／callAI之validate)
+//
+// 【為何驗涵蓋率】逐則摘要/翻譯類任務, 提示詞給N則並要求每則一筆回覆; 實戰上模型會漏項、空內容、
+//   或單項過長(Telegram單則訊息硬限4,096字元, 實戰超限5次; 某供應商長摘要為規格之2.6～4.4倍)。
+//   缺項輸出即不完整, 與其部分接受不如整體不合格換家重產——故為嚴格版: 配合parseJsonArray(截斷即null,不搶救)。
+//
+// 【超長即整體不合格, 不剔除該項】截去超長項會改變下游看到的內容(或缺項), 與「缺項即不完整」同理, 整體判不合格換家重產。
+//
+// 【涵蓋判定】以「涵蓋」計(同一編號可回多筆, 只要有一筆有內容即算涵蓋); 編號須為數字(字串數字不算涵蓋)。
+//
+// 【indices不可靜默改空陣列】給了但非陣列即throw TypeError——改成空陣列則「無任何編號須涵蓋」, 驗證器形同放行一切。
+
+
+/**
+ * 內容是否非空(字串修剪後非空、陣列有元素、null與undefined為空、其餘視為有內容)
+ *
+ * @param {*} v 輸入欄位值
+ * @returns {Boolean} 回傳是否非空
+ */
+function hasContent(v) {
+    if (v === null || v === undefined) {
+        return false
+    }
+    if (typeof v === 'string') {
+        return v.trim() !== ''
+    }
+    if (isarr(v)) {
+        return v.length > 0
+    }
+    return true
+}
+
+
+/**
+ * 建立逐項編號之JSON陣列涵蓋率驗證器，回傳可直接作validate之函數
+ *
+ * 特點：
+ * 回傳(stdout)=>Boolean，同步、不throw：回覆須為完整之JSON陣列(非陣列或輸出截斷即不合格)；
+ * 任一項任一受限欄位(maxLengths)字數超過上限即整體不合格(不剔除該項)；
+ * indices內每個編號須被涵蓋(同一編號可回多筆)，且該筆contentFields任一欄位非空才算有內容，缺項或內容為空即不合格；
+ * 每次不合格以onReject(reason)回報原因字串(回調拋錯或回傳Promise皆忽略)，供呼叫端寫日誌；
+ * indices給了但非陣列即throw TypeError(不可靜默改空陣列，否則形同放行)，省略視為空陣列；
+ * 其餘鍵型別不符視為未給改用預設(indexField非非空字串、contentFields非陣列、maxLengths非物件、onReject非函數；maxLengths內非正整數之上限略過)
+ *
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Array} [opt.indices=[]] 輸入須涵蓋之編號陣列(數字)，預設[]
+ * @param {String} [opt.indexField='index'] 輸入編號欄位名字串，預設'index'
+ * @param {Array} [opt.contentFields=[]] 輸入內容欄位名字串陣列，任一非空才算該筆有內容；空陣列代表只驗編號，預設[]
+ * @param {Object} [opt.maxLengths={}] 輸入欄位名對字數上限(正整數)之物件，如{ summary: 600 }，預設{}
+ * @param {Function} [opt.onReject=null] 輸入不合格回報函數(reason)=>void，預設null代表不回報
+ * @returns {Function} 回傳驗證函數(stdout)=>Boolean
+ * @example
+ *
+ * import makeArrayCoverageValidator from './src/wkf/makeArrayCoverageValidator.mjs'
+ *
+ * let validate = makeArrayCoverageValidator({
+ *     indices: [1, 2],
+ *     contentFields: ['t'],
+ *     maxLengths: { t: 3 },
+ *     onReject: (reason) => console.log(reason),
+ * })
+ *
+ * console.log(validate('[{"index":1,"t":"a"},{"index":2,"t":"b"}]'))
+ * // => true
+ *
+ * console.log(validate('[{"index":1,"t":"abcd"},{"index":2,"t":"x"}]')) //超長, 整體不合格
+ * // => 第 1 項之 t 為 4 字，超過上限 3
+ * // => false
+ *
+ * console.log(validate('[{"index":1,"t":"a"},{"index":2,"t":" "}]')) //第2項內容為空
+ * // => 未涵蓋編號 2（缺項或內容為空）
+ * // => false
+ *
+ * console.log(validate('[{"index":1,"t":"a"},{"index":2')) //截斷
+ * // => 非 JSON 陣列或輸出截斷
+ * // => false
+ *
+ * //可直接作callAI／dispatchAiFallback之validate: caller.callAI(prompt, { validate })
+ *
+ */
+function makeArrayCoverageValidator(opt = {}) {
+
+    //indices, 給了但非陣列即throw(null亦屬給了); 省略(undefined)視為空陣列
+    let indices = get(opt, 'indices', undefined)
+    if (indices === undefined) {
+        indices = []
+    }
+    if (!isarr(indices)) {
+        throw new TypeError('makeArrayCoverageValidator: opt.indices 須為陣列')
+    }
+    indices = [...indices]
+
+    //其餘鍵: 無效視為未給
+    let indexField = get(opt, 'indexField', null)
+    if (!isestr(indexField)) {
+        indexField = 'index'
+    }
+    let contentFields = get(opt, 'contentFields', null)
+    contentFields = isarr(contentFields) ? contentFields.filter((f) => isestr(f)) : []
+    let maxLengths = get(opt, 'maxLengths', null)
+    let limits = []
+    if (isobj(maxLengths)) {
+        for (let f of Object.keys(maxLengths)) {
+            if (ispint(maxLengths[f])) {
+                limits.push([f, cint(maxLengths[f])])
+            }
+        }
+    }
+    let onReject = get(opt, 'onReject', null)
+
+    let reject = (reason) => {
+        if (isfun(onReject)) {
+            callHookSync(() => onReject(reason))
+        }
+        return false
+    }
+
+    return (stdout) => {
+
+        //完整之JSON陣列, 截斷或非陣列即不合格
+        let arr = parseJsonArray(stdout)
+        if (arr === null) {
+            return reject('非 JSON 陣列或輸出截斷')
+        }
+        let items = arr.filter((it) => isobj(it))
+
+        //超長: 任一項任一受限欄位, 整體不合格(不剔除該項)
+        for (let it of items) {
+            for (let [f, max] of limits) {
+                let v = it[f]
+                if (typeof v === 'string' &amp;&amp; v.length > max) {
+                    let no = (typeof it[indexField] === 'number') ? it[indexField] : '?' //只回報數字編號, 不回顯回覆中的任意值
+                    return reject(`第 ${no} 項之 ${f} 為 ${v.length} 字，超過上限 ${max}`)
+                }
+            }
+        }
+
+        //涵蓋: 同一編號可回多筆, contentFields任一非空才算有內容(contentFields為空則只驗編號)
+        let covered = new Set()
+        for (let it of items) {
+            let idx = it[indexField]
+            if (typeof idx !== 'number') {
+                continue
+            }
+            if (contentFields.length === 0 || contentFields.some((f) => hasContent(it[f]))) {
+                covered.add(idx)
+            }
+        }
+        let lack = [...new Set(indices.filter((i) => !covered.has(i)))]
+        if (lack.length > 0) {
+            return reject(`未涵蓋編號 ${lack.join('、')}（缺項或內容為空）`)
+        }
+
+        return true
+    }
+}
+
+
+export default makeArrayCoverageValidator
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Nov 01 2026 17:15:21 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
