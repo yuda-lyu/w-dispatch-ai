@@ -17,6 +17,12 @@ import probeAnthropicKeys from '../src/probeAnthropicKeys.mjs'
 import filterOpencodeFree from '../src/filterOpencodeFree.mjs'
 import providers from '../src/providers.mjs'
 import resolveProviders from '../src/resolveProviders.mjs'
+import resolveCatalogue from '../src/resolveCatalogue.mjs'
+import createAiCaller from '../src/createAiCaller.mjs'
+import logAiOutcome, { createAiEventLogger, OUTCOME_TEXT } from '../src/wkf/logAiOutcome.mjs'
+import parseJsonArray from '../src/wkf/parseJsonArray.mjs'
+import parseIndexList from '../src/wkf/parseIndexList.mjs'
+import makeArrayCoverageValidator from '../src/wkf/makeArrayCoverageValidator.mjs'
 import getQuotaClaude from '../src/quota/getQuotaClaude.mjs'
 import getQuotaCodex from '../src/quota/getQuotaCodex.mjs'
 import getQuotaAntigravity from '../src/quota/getQuotaAntigravity.mjs'
@@ -44,11 +50,19 @@ describe('WDispatchAi', function() {
             'filterOpencodeFree', //2026-10-30新增(run01): 以opencode models過濾目錄之免費條目
             'providers',
             'resolveProviders',
+            'resolveCatalogue', //2026-11-01新增(da40, Gitea #40): 目錄展開
             'readEnvFile',
             'budgetFor',
+            'createAiCaller', //同上: 原始遞補呼叫器
             'createFileStore',
             'createUsageCounter',
+            'logAiOutcome', //同上: 結果日誌
+            'createAiEventLogger',
+            'OUTCOME_TEXT',
             'salvageTruncatedArray',
+            'parseJsonArray', //同上: 嚴格解析與涵蓋率驗證
+            'parseIndexList',
+            'makeArrayCoverageValidator',
             'getQuotaClaude',
             'getQuotaCodex',
             'getQuotaAntigravity',
@@ -62,9 +76,17 @@ describe('WDispatchAi', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('各鍵值型別正確(KINDS與providers為物件, NO_SIDE_EFFECT為字串, 其餘為函數)', function() {
+    it('各鍵值型別正確(KINDS、providers與OUTCOME_TEXT為物件, NO_SIDE_EFFECT為字串, 其餘為函數)', function() {
         let r = map(keys(wi), (k) => typeof wi[k])
-        let rr = ['object', 'string', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'object', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function', 'function']
+        let fn = (n) => Array(n).fill('function')
+        let rr = [
+            'object', 'string', //KINDS, NO_SIDE_EFFECT
+            ...fn(13), //dispatchAi ~ filterOpencodeFree
+            'object', //providers
+            ...fn(9), //resolveProviders ~ createAiEventLogger
+            'object', //OUTCOME_TEXT
+            ...fn(7), //salvageTruncatedArray ~ getQuotaAntigravity
+        ]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -88,8 +110,16 @@ describe('WDispatchAi', function() {
             wi.getQuotaAntigravity === getQuotaAntigravity,
             wi.probeAnthropicKeys === probeAnthropicKeys,
             wi.filterOpencodeFree === filterOpencodeFree,
+            wi.resolveCatalogue === resolveCatalogue,
+            wi.createAiCaller === createAiCaller,
+            wi.logAiOutcome === logAiOutcome,
+            wi.createAiEventLogger === createAiEventLogger,
+            wi.OUTCOME_TEXT === OUTCOME_TEXT,
+            wi.parseJsonArray === parseJsonArray,
+            wi.parseIndexList === parseIndexList,
+            wi.makeArrayCoverageValidator === makeArrayCoverageValidator,
         ]
-        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 

@@ -35,6 +35,7 @@ Note:
 | `dispatchAi(kind, prompt, opt)` | dispatch to the adapter of `kind`, one of `'opencode'`、`'claude'`、`'codex'`、`'antigravity'`、`'api-openai-compat'`、`'api-openai-responses'`、`'api-anthropic'`、`'api-typesafe-systemone'` |
 | `dispatchAiFallback(prompt, opt)` | call ai with an ordered provider list, auto rotating keys within a group and falling back to the next group |
 | `dispatchAiWkf(opt)` | workflow factory: inject a named provider table once, returns bound `callAi`／`runFanout`／`runRolePipeline`／`runFanoutPipeline` |
+| `createAiCaller(opt)` | **raw fallback caller** (alongside the workflow factory, not a replacement): builds the provider chain once from the built-in catalogue + your own entries (`resolveCatalogue`), `callAI(prompt, { validate, acceptTruncated, ... })` returns the **raw** `dispatchAiFallback` result (no JSON parsing, no prompt prefix; unknown picked ids are reported in `missing`/`providersMissing`, not thrown); see "原始呼叫器 vs 工作流（選型）" |
 | `dispatchOpencode(prompt, opt)` | call an ai model by opencode cli, supports per-call api key and provider config |
 | `dispatchClaude(prompt, opt)` | call a claude model by claude code cli (subscription login by default; give `opt.key` to bill an Anthropic Console API key instead, see "Claude以API金鑰計費") |
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
@@ -45,6 +46,7 @@ Note:
 | `dispatchApiTypesafeSystemone(prompt, opt)` | call TypeSafe's **jev** decision model (`POST /v1/systemone`): not text generation — the prompt is the state to evaluate and `opt.questions` defines typed yes/no, choice and score questions; returns typed `answers` with probabilities (API only, TypeSafe has no cli) |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
 | `resolveProviders(providers, opt)` | expand `envVar` → `keys` from env (comma-separated; a `;` in a `*_KEYS` variable is treated as a comma with a `warnings` entry, see "ANTHROPIC_KEYS 的分隔符"; missing vars auto-skipped), supports `pick` subset by id, `exes` per-kind exe injection and `patch` per-id field override; unknown picked ids are reported in `missing` with fuzzy spelling `hints` |
+| `resolveCatalogue(opt)` | catalogue expansion in one call: merge your own `extraProviders` into the built-in catalogue (new id appended, same id overridden field by field), resolve the three-layer timeout (`providerTimeouts[id]` → entry's own `timeoutMs` → global `timeoutMs`) into `patch`, then `resolveProviders` (`env`／`envFile`, `pick`, `exes`, `patch`); returns `{ merged, env, resolved }`; see "目錄展開：`resolveCatalogue`" |
 | `probeAnthropicKeys(keys, opt)` | probe each Anthropic API key with a tiny request (`max_tokens: 1`, default `claude-haiku-5-5`): returns per key `ok`／`no-credit`／`key-invalid`／`no-permission`／`rate-limit`／`overloaded`／`network`／`other` and the per-minute rate-limit headers; only index and length are returned, never the key. Anthropic has **no balance endpoint** for ordinary keys — this only tells whether a call works *right now* |
 | `filterOpencodeFree(providers, opt)` | filter the catalog's opencode free entries (id or model contains `free`, plus `big-pickle`) by the output of `opencode models`: returns `available` (still served), `removed` (not in the list = delisted, 1 of the 2 conditions in the `providers.mjs` header's precedent), `unchecked` (free-looking but not an `opencode/<id>` CLI entry, e.g. `zen:` REST entries) and `uncatalogued` (free ids the list has but the catalog lacks). Call it once before building a fallback chain or a benchmark roster. **A failed query (`opencode` missing, non-zero exit, timeout, empty output) returns `ok: false` with `errorType` and `null` lists — never an empty list that could be mistaken for "all delisted"**; `query` is injectable for tests; `refresh: true` appends `--refresh` (`opencode models` has a local cache). Only reads the list, calls no model, spends no free quota |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
@@ -52,6 +54,8 @@ Note:
 | `createFileStore(opt)` | file-persisted `store` for `dispatchAiFallback` (cursors and cooling survive across processes), exclusion-style passthrough |
 | `createUsageCounter(opt)` | per-day per-key usage counter fed by `onEvent` (observation only, never throttles) |
 | `salvageTruncatedArray(text)` | salvage the complete leading elements of a truncated JSON array (opt-in, not part of default parsing) |
+| `logAiOutcome({ result, log, tag })`／`createAiEventLogger({ log, tag })`／`OUTCOME_TEXT` | render one call's result into the log (which provider answered with key#/model/tokens, the fallback history, providers left out for missing keys, invalid `pick` ids) and cooldown events; accepts `log／logWarn／logError` or `info／warn／error` loggers, invoked as member calls; Anthropic key patterns are masked in every line; see "把一次呼叫之結果寫進日誌" |
+| `parseJsonArray(text)`／`parseIndexList(text, opt)`／`makeArrayCoverageValidator(opt)` | strict parsing for per-item tasks, kept **alongside** the loose/salvaging parsers: first complete JSON array or `null` (no salvage); the longest comma/頓號-separated number run as an index list (single `0` = empty set); a `validate` that checks every expected index is covered with content and no field is over its length limit; see "嚴格解析與涵蓋率驗證" |
 | `NO_SIDE_EFFECT` | the no-side-effect prompt prefix (single source), auto-applied by workflow `callAi`, prepend manually for direct `dispatchAiFallback` calls |
 | `getQuotaClaude(email, opt)` | read the current subscription quota windows (5h / 7d / per-model 7d) of the locally logged-in Claude Code account via Anthropic's OAuth usage API; `email` is compared against the local account, not used to look one up |
 | `getQuotaCodex(email, opt)` | same for the Codex CLI account: primary path `codex app-server` JSON-RPC (auth handled by codex), fallback to chatgpt.com's usage endpoint |
@@ -296,6 +300,10 @@ await test()
 54. **內建 providers 移除三條 opencode 免費條目**：`oc:opencode/minimax-m3.1-flash-free`、`oc:opencode/longcat-2.5-preview-free`、`oc:opencode/nemotron-3-ultra-free`。當日重查（opencode 1.19.5）三者皆不在 `opencode models`（含 `--refresh`），依條目呼叫 6 次皆約 1.5 秒即回 `UnknownError`（離開碼 1），符合 `providers.mjs` 檔頭先例之兩條件。**以這三個 id 做 `pick` 者會落入 `missing`**（`resolveProviders` 不靜默忽略）；遞補鏈設定若指名這三個 id 者請改指（無同模型之替代；`oc:opencode/glm-5.3-flash-free`、`oc:opencode/beam-free` 等仍在）；**全取者遞補鏈少三條**。下游若自備免費名單（如評比工具之預設免費模型清單），請同步剔除。注意 `nemotron-3-ultra-free` 曾於同日第 1 次不帶 `--refresh` 之 `opencode models` 仍被列出（本機快取未同步），但依條目呼叫已失敗。
 55. **內建 providers 新增 `oc:opencode/flint-40b-free`**（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），排在 `oc:opencode/glm-5.3-flash-free` 之後、`oc:opencode/nemotron-3.5-lightning-free` 之前。實測（2026-10-30，opencode 1.19.5）：簡答 5.1～6.2 秒、讀檔 24.8 秒正確、寫檔金絲雀被 `OC_READONLY` 擋下未落地（回空字串而 `ok: true`，呼叫端宜帶 `validate`）；context 262144（含 completion 預留，輸入實際上限約 230K；191K token 針在乾草堆答對）、僅文字輸入、有 high 檔位；REST 無 `zen:` 版（匿名 REST 回 429 `FreeUsageLimitError`，同時段 `beam-free`、`big-pickle` 亦同）。全取者遞補鏈多一條；內建 providers 由 31 條改為 29 條（-3 +1；量級感受隨之更正）。
 56. **新增匯出 `filterOpencodeFree(providers, opt)`**（`WDispatchAi` 鍵由 24 個變 25 個）：以 `opencode models` 之輸出過濾目錄之 opencode 免費條目（免費＝id 或 model 含 `free`，另加 `big-pickle`；只判 kind 為 `opencode` 且 model 為 `opencode/<id>` 者），回傳 `available`／`removed`／`unchecked`／`uncatalogued`／`listed`；**查詢失敗（`opencode` 不存在 `notfound`、非零離開 `exit`、逾時 `timeout`、輸出解析不出任何 id `empty`、注入之 `query` 出錯 `query`、輸入不合規 `params`）回 `ok: false` 與 `errorType`，各清單為 `null` 而非空陣列**，不會被誤讀為「全部下架」；`query` 可注入（單元測試用），`refresh: true` 附 `--refresh`。不呼叫任何模型、不耗免費額度。用法見「免費條目漂移檢查」。新增連網守門測試 `test/api-providersOpencodeFree.test.mjs`（`npm test` 時對當日 `opencode models --refresh` 比對；opencode 不存在或離線時略過而非通過）。
+
+**未發布（同批次，2026-11-01 Gitea #40，自專案端執行殼 srcRunner 移入；皆為新增，既有函數之行為不變）**：
+57. **新增匯出 8 個**（`WDispatchAi` 鍵由 25 個變 33 個）：`resolveCatalogue`（目錄展開，另自 `src/resolveCatalogue.mjs` 具名匯出 `mergeCatalogue`、`timeoutPatch`）、`createAiCaller`（原始遞補呼叫器，與 `dispatchAiWkf`／`callAiWithFallback` **並存**、語意不同，見「原始呼叫器 vs 工作流（選型）」）、`logAiOutcome`／`createAiEventLogger`／`OUTCOME_TEXT`（結果日誌）、`parseJsonArray`／`parseIndexList`／`makeArrayCoverageValidator`（嚴格解析與涵蓋率驗證，與 `extractJsonLoose`／`salvageTruncatedArray` 之寬鬆／搶救版並存）。依賴 `WDispatchAi` 鍵清單完全相等者請納入。
+58. 移入時沿用原行為契約與訊息字面：`ai.extraProviders 須為陣列`、`ai.extraProviders[i] 須為含 id 之條目物件`、`timeoutPatch 需要 merged（條目陣列）`、`logAiOutcome 需要 log（記錄器）`、日誌之 `providerPick 有無效 id`／`AI 遞補歷程`／`AI 供應商未納入`／`AI 供應商進入冷卻` 等字樣**不改字**（使用端有以字樣比對之測試）；`createAiCaller` 與 `logAiOutcome` 不依賴 w-data-pipeline（日誌之 `oneline` 以 wsemi `strTruncate` 內嵌）。**移入時補強之處**（皆為原契約未載明或原契約之邊界）：①`logAiOutcome` 對每一行套 Anthropic 金鑰樣式遮蔽、記錄器自身失敗吞掉；②`createAiEventLogger` 對 `scope: 'key'` 之 `cooled` 事件如實寫「降至組內最後」；③`timeoutPatch` 某層無效（非正整數）時落到下一層、數字字串轉為數字使用；④`createAiCaller` 之零供應商失敗之括號內列出缺金鑰略過者與 `pick` 查無者。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -742,6 +750,50 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 
 **全數失敗時，頂層`error`／`errorType`只反映「最後一次」嘗試**：多把金鑰或多家依序失敗時（例如第一把本體非 JSON、第二把以剩餘預算重打而逾時），只記最終錯誤會誤判歸因。記日誌或評比時請一併記下各次嘗試，例如`` r.tried.filter((t) => t.outcome !== 'ok').map((t) => `${t.keyId}:${t.errorType}`) ``。
 
+#### 原始呼叫器 vs 工作流（選型）：`createAiCaller` / `dispatchAiWkf`
+兩者都建立在 `dispatchAiFallback` 之上，**語意不同、刻意並存**，依「回覆誰來解析」選：
+
+| 面向 | `createAiCaller`（原始呼叫器） | `dispatchAiWkf` 之 `callAi`／`callAiWithFallback`（工作流） |
+| --- | --- | --- |
+| 條目來源 | 內建目錄＋`extraProviders` → `resolveCatalogue` → 依 `pick` 順序之條目**陣列** | 呼叫端自備定義表（名稱 → 條目），以 `spec: { use, fallback }` 展開 |
+| 回傳 | `dispatchAiFallback` **原始結果**（`stdout`／`tried`／`usage`／`providerId`／`keyIndex`／`durationMs`…），另掛 `providersSkipped`／`providersMissing` | 結構化 `{ ok, json, providerId, keyIndex, keyId, ms, tried, usage, finishReason, truncated, error, errorType… }` |
+| 回覆解析 | **無**（呼叫端自行解析，`validate` 逐次給） | `parse`＋`check` 接進 `validate`，預設 `extractJsonLoose` |
+| prompt 前綴 | **無** | 預設掛 `NO_SIDE_EFFECT`（`promptPrefix: ''` 關閉） |
+| 未知 id | **不拋**：建構期回報 `missing`／`hints`，`callAI` 在零供應商時回同形失敗並帶 `providersMissing`，由呼叫端以 ERROR 記 | `unknown provider name(s)` 直接失敗（`errorType: 'params'`） |
+| 缺金鑰之條目 | 建構期列入 `skipped`（字樣 `id（ENVVAR 無金鑰）`）、結果帶 `providersSkipped`，暫時少一層備援 | 由呼叫端自備定義表，無此機制 |
+| 用量 | `onUsage(providerId)` 於 `try` 事件（與 `createUsageCounter(...).onEvent` 同為「按實際嘗試入帳」；後者預設記到 `keyId`，給 `keyOf: (ev) => ev.providerId` 即與 `onUsage` 等價） | 無（由呼叫端掛 `createUsageCounter(...).onEvent`） |
+| 狀態持久化 | `store` 透傳（建議 `createFileStore({ dir })`） | `store` 透傳 |
+
+選型：**要自行解析回覆、要看原始 `tried`／`usage`、排程殼一行程一建構**用 `createAiCaller`；**JSON 任務、多名額工作流（Fanout／RolePipeline）**用 `dispatchAiWkf`。條目於 `createAiCaller` 建構時解析一次（排程為短生命行程）；`budgetMs` 是建構參數，`callAI` 不收逐次預算。
+
+```alias
+let caller = wdi.createAiCaller({
+    envFile: './.env',                                   //或 env: wdi.readEnvFile('./.env')
+    extraProviders: [{ id: 'my:model', kind: 'api-openai-compat', baseURL: 'https://example.com/v1', model: 'm1', envVar: 'MY_KEYS' }],
+    pick: ['agnes:agnes-3.0-flash', 'my:model', 'claude:sonnet'],  //順序即遞補優先序
+    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },
+    providerTimeouts: { 'claude:sonnet': 360000 },
+    timeoutMs: 300000,                                   //全域逾時, 寫進各條目（逐次 timeoutMs 只對沒有逾時的條目生效）
+    budgetMs: 600000,
+    store: wdi.createFileStore({ dir: './state' }),
+    onEvent: wdi.createAiEventLogger({ log: console, tag: 'news' }),
+})
+if (caller.missing.length > 0) {
+    console.log(caller.missing, caller.hints) //pick 打錯字: 不拋, 由呼叫端決定
+}
+
+//回覆不由呼叫器解析: validate 逐次給(此例回覆須為涵蓋 1~3 號之完整 JSON 陣列)
+let r = await caller.callAI(prompt, {
+    validate: wdi.makeArrayCoverageValidator({ indices: [1, 2, 3], contentFields: ['t'], maxLengths: { t: 600 } }),
+})
+wdi.logAiOutcome({ result: r, log: console, tag: 'news' })
+let arr = r.ok ? wdi.parseJsonArray(r.stdout) : null
+```
+
+**零供應商**（`pick` 全為未知 id、全部缺金鑰或條目清單為空）時 `callAI` 不送任何請求，回與套件同形之失敗：`{ ok: false, stdout: '', stderr: '', code: null, durationMs: 0, attempts: 0, error: '無可用的 AI 供應商（…）', tried: [], providersSkipped, providersMissing }`（括號內列缺金鑰略過者與 `pick` 查無者）。
+
+**截斷**：預設（未給 `acceptTruncated`）REST 文字類截斷即判失敗換家（`errorType: 'incomplete'`）；`callAI(prompt, { acceptTruncated: true, validate })` 則把截斷內容交 `validate` 裁決，通過者結果標 `truncated: true`、`logAiOutcome` 加註「截斷內容放行」。`acceptTruncated` 只在給布林時透傳。截斷之兩種策略（換家重產 vs 搶救前段）由呼叫端選，見「嚴格解析與涵蓋率驗證」。
+
 #### dispatchAiWkf (workflow factory):
 注入一次provider定義表(名稱 → `dispatchAiFallback`條目)與共用預設，之後以名稱宣告工作流；名稱查無定義即回報錯誤(fail fast)。回覆經寬鬆JSON解析(`extractJsonLoose`)＋自訂`check`驗證，非法回覆視為該家失敗而自動遞補；`parse`、`check`與各工作流之`prompt`函式可為 async（1.0.49 起；`parse`／`check`與該次嘗試共用`timeoutMs`，`prompt`以該段`timeoutMs`與`budgetMs`取小為上限，拋錯、reject、逾時皆以失敗回報而不 reject；`check`須恰回`true`）；呼叫層`validate`（`callAi`之 opt、名額／階段之覆寫鍵、`defaults`）與工作流之`parse`＋`check`及條目`validate`取交集（皆過才算過）；成果`json`為通過驗證時之解析結果（不重解析，`check`就地修改之物件會帶出）；預設於prompt前掛「禁止建檔」約束(`promptPrefix: ''`可關閉)；措辭豁免唯讀查閱——codex以shell讀檔，一律禁指令會令其無法讀取專案檔案且靜默回拒答(2026-08-13實測)。
 
@@ -874,6 +926,8 @@ let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)),
 let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```
 
+上列合併與逐條逾時取值，亦可一次交給 `resolveCatalogue({ extraProviders, providerTimeouts, timeoutMs, ... })`（見下方「目錄展開」），不必自行合併。
+
 **內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（原僅 `zen:space-bunny-free`，該條已於 2026-10-13 移除，現無內建 REST 條目帶此欄），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效（codex 條目例外：其防寫為獨立之 `sandbox` 欄位而不在 `extraArgs`，覆寫 `extraArgs` 只需帶上強度旗標，唯讀檔位不受影響）。
 
 **Anthropic API 金鑰條目（2026-10-24 起，`claude-api:`×3 與 `anthropic:`×3）**：`envVar` 為 `ANTHROPIC_KEYS`（**不是** `ANTHROPIC_API_KEY`，理由與用法見「Claude以API金鑰計費」）；思考強度同樣 high——`claude-api:` 為 `--effort high`，`anthropic:` 為條目欄位 `effort: 'high'`（轉為 `output_config.effort`；Opus 5.5 與 Haiku 5.5 之 API 預設為 medium，故必須明給）。
@@ -909,6 +963,75 @@ else {
 | `budgetFor(chain)` | 遞補鏈走滿全鏈之時間預算（Σ各條目`timeoutMs`，未帶者以統一預設300000計；非同步驗證計入單次嘗試，不另加；條目之`maxRetries`不計入，見`budgetMs`列之已知限制）；與外部排程硬上限取小者交`budgetMs` |
 | `salvageTruncatedArray(text)` | 截斷JSON陣列之前段搶救（救回的每個元素皆完整合法）；**不併入預設解析**——「判失敗換家重產」與「搶救前段部分接受」是同一問題的兩種合法策略，組成自訂`parse`注入即可。REST 文字類截斷預設失敗，但工作流`callAi`之`acceptTruncated`預設為「有自訂`parse`且非`rawText`」，故注入自訂`parse`即同意接受截斷內容、既有用法不必改；結果之`truncated: true`可辨識救回的是半批；**直接呼叫`dispatchAiFallback`或轉接器、把搶救寫在`validate`裡者，須自行給`acceptTruncated: true`**（1.0.37 起，否則截斷在`validate`之前即判失敗）。限制：只救頂層元素為物件之陣列，從第一個`[`起算（外包物件如`{"items":[…`會救回內層陣列、前言含`[`會失效） |
 | `NO_SIDE_EFFECT` | 防副作用prompt前綴之單一來源（措辭含唯讀查閱豁免——codex以shell讀檔，一律禁指令等同禁讀檔）；工作流`callAi`預設自動掛上，直呼`dispatchAiFallback`者自行前綴 |
+
+#### 目錄展開：`resolveCatalogue`（安裝方自帶條目、逾時三層取值、`env`／`envFile`、`pick`、`exes`）
+`resolveProviders` 之前要做兩件事：**合併安裝方自帶條目**、**把逾時三層取值寫進 `patch`**。兩處（呼叫器、批次任務層）各寫一份必然漂移（殷鑑：逐條 timeout 只加在陣列版、工作流走 table 版全部落回預設），故收斂為 `resolveCatalogue`，陣列版與 table 版同源產出：
+
+```alias
+let { merged, env, resolved } = wdi.resolveCatalogue({
+    envFile: './.env',                       //env 與 envFile 二擇一: env 為物件則用之, 否則讀 envFile(不污染 process.env), 皆無用 process.env(此時回傳之 env 為 null)
+    extraProviders: [                        //安裝方自帶條目: 新 id 追加於末端, 同 id 逐欄覆蓋(淺合併); 不改動輸入
+        { id: 'my:model', kind: 'api-openai-compat', baseURL: 'https://example.com/v1', model: 'm1', envVar: 'MY_KEYS' },
+        { id: 'claude:sonnet', effort: 'medium' },
+    ],
+    pick: ['agnes:agnes-3.0-flash', 'my:model', 'claude:sonnet'],
+    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },
+    providerTimeouts: { 'claude:sonnet': 360000 },  //逐條(最優先)
+    timeoutMs: 300000,                              //全域(最後備援)
+    patch: { 'agnes:agnes-3.0-flash': { timeoutMs: 60000 } },  //呼叫端 patch 優先於逾時三層之結果
+})
+console.log(resolved.providers.map((p) => p.id)) //餵 dispatchAiFallback
+console.log(resolved.table)                      //餵 dispatchAiWkf
+console.log(resolved.skipped, resolved.missing, resolved.hints, resolved.warnings)
+```
+
+- **逾時三層（細者覆蓋粗者）**：`providerTimeouts[id]` → 條目自帶 `timeoutMs`（含 `extraProviders` 覆蓋後者）→ 全域 `timeoutMs`；只收正整數（數字字串轉為數字使用），某層無效視為未給而落到下一層，三層皆無則不寫入（落回轉接器預設 300000）。`patch` 與逾時結果逐 id 淺合併、**呼叫端 `patch` 優先**。
+- **`pick`**：順序即遞補優先序；查無之 id 列入 `resolved.missing` 並附 `resolved.hints`（最接近之可用 id，打錯字時直接定位），不拋錯。逾時三層亦只對 `pick` 內之 id 計算（省略或空陣列則對全目錄）。
+- **`exes`**：逐 `kind` 注入 CLI 執行檔絕對路徑（Windows 排程於 session 0 執行時 PATH 常缺 npm 全域目錄，靠指令名會 `ENOENT`）；條目自帶 `exe` 者不覆寫。
+- **`catalogue`**：預設為內建目錄，非陣列時用內建目錄；給陣列則以之為底（空陣列即「只用 `extraProviders`」）。
+- **錯誤**：`extraProviders` 給了但非陣列拋 `ai.extraProviders 須為陣列`；條目非物件或缺 `id`（非空字串）拋 `ai.extraProviders[i] 須為含 id 之條目物件`（只帶索引，不回顯值）。此二訊息之字面沿用自執行殼（srcRunner）時代，使用端有測試以字樣比對，故移入時不改字。`mergeCatalogue(catalogue, extraProviders)`、`timeoutPatch(merged, opt)` 亦自 `src/resolveCatalogue.mjs` 具名匯出（深層引入）。
+
+#### 把一次呼叫之結果寫進日誌：`logAiOutcome`／`createAiEventLogger`
+「換了一家才成功」非記不可（成功結果只有最終那一家，前面敗了幾家、為何敗全在 `tried`）。`logAiOutcome({ result, log, tag })` 把 `dispatchAiFallback`／`createAiCaller.callAI` 之結果渲染成至多四行：
+
+| 行 | 等級 | 條件 | 內容 |
+| --- | --- | --- | --- |
+| 使用 AI | INFO | `result.ok === true` | `使用 AI <providerId>／key#<n>（<kind>／<model>，tokens P+C（含思考 R）；截斷內容放行（finish_reason=…））`（`key#` 僅有金鑰者；`tokens` 僅 REST 類有 `usage` 者，OpenAI 系與 Anthropic 系皆收；截斷加註僅 `truncated === true`） |
+| AI 遞補歷程 | WARN | `tried` 內有非 `ok` 之嘗試 | `<providerId>／key#<n>（<outcome 人話>：<errorType>／<原因壓單行 80 字>，<耗時>s）`，多筆以「、」相接；`next-key`→換金鑰、`skip-group`→整組跳過（`OUTCOME_TEXT`），其餘原樣；原因取 `reason`、無則 `error` |
+| AI 供應商未納入 | WARN | `providersSkipped` 非空 | 缺金鑰而停用者 |
+| providerPick 有無效 id | ERROR | `providersMissing` 非空 | `providerPick 有無效 id → …（請對照供應商目錄）` |
+
+`createAiEventLogger({ log, tag })` 回 `(ev) => void`，可直接作 `onEvent`：`cooled` 事件時 WARN 一行（供應商冷卻：降至鏈尾；`scope: 'key'` 之金鑰冷卻：降至組內最後）。
+
+```alias
+wdi.logAiOutcome({ result: r, log: console, tag: 'news' })     //每行前綴 [news] ; tag 省略則無前綴
+let onEvent = wdi.createAiEventLogger({ log: myLogger })       //掛進 createAiCaller({ onEvent }) 或 dispatchAiFallback 的 onEvent
+```
+
+- **記錄器**：`log` 須為物件（缺或非物件拋 `logAiOutcome 需要 log（記錄器）`／`createAiEventLogger 需要 log（記錄器）`）；接受 `log／logWarn／logError` 或 `info／warn／error` 兩種介面，逐等級擇一（INFO＝`log`／`info`，WARN＝`logWarn`／`warn`，ERROR＝`logError`／`error`），WARN／ERROR 無專屬方法時退用 INFO 之方法。**一律以成員呼叫形式觸發**（`log.warn(msg)`，不先取出方法再呼叫），class-based logger 之 `this` 才不會失。
+- **不外洩憑證**：日誌只含 id、錯誤字串與計數，不輸出 `stdout`（模型輸出）；`tried` 之錯誤字串已由轉接器就注入之金鑰遮蔽，本層再對**每一行**套 Anthropic 金鑰樣式（`sk-ant-…`）遮蔽作底線防護（例如 `pick` 誤填了金鑰字串而落入 `providersMissing`）。記錄器自身拋錯或回傳 rejected Promise 一律吞掉，不影響已取得之 AI 結果。
+- `result` 非物件則無事可記（不拋錯）。
+
+#### 嚴格解析與涵蓋率驗證：`parseJsonArray`／`parseIndexList`／`makeArrayCoverageValidator`
+與寬鬆版**刻意並存**：`extractJsonLoose`（工作流預設解析器）與 `salvageTruncatedArray`（截斷搶救）偏「盡量收」，批次任務層取最後一段合格 JSON、截斷放行時搶救前段（部分接受）；下列嚴格版偏「缺項即不完整」（逐則推送之實戰結論：寧可換家重產）。**截斷之兩種策略（換家重產 vs 搶救前段）由呼叫端選。**
+
+| 函數 | 說明 |
+| --- | --- |
+| `parseJsonArray(stdout)` | `extractJsonLoose` 之陣列限定版：取**第一個**完整片段，結果不是陣列、或括號未閉合（截斷）即回 `null`，不搶救半成品 |
+| `parseIndexList(text, { min = 1, max = Infinity, topN = Infinity })` | 取「數字個數最多的那一串」（逗號／頓號分隔，同長度取最先）為答案——模型偶把推理混進輸出（實測 `5,6,15,16,28 Wait, let me reconsider…`），提示詞含數量上限時模型複述該數字極易帶出獨立的數字；**單一個 `0` 約定為空集合** → `{ isZero: true, indices: [] }`；其餘依 `min`／`max` 過濾、`topN` 截取，回 `{ isZero, indices }` |
+| `makeArrayCoverageValidator({ indices, indexField = 'index', contentFields, maxLengths, onReject })` | 回可直接作 `validate` 之 `(stdout) => Boolean`：非陣列或截斷 → 不合格；任一項任一受限欄位（`maxLengths`）超過上限 → **整體不合格（不剔除該項）**；`indices` 內每個編號須被**涵蓋**（同一編號可回多筆，且 `contentFields` 任一欄位非空才算有內容）；每次不合格以 `onReject(reason)` 回報原因（`非 JSON 陣列或輸出截斷`／`第 N 項之 f 為 L 字，超過上限 M`／`未涵蓋編號 …（缺項或內容為空）`）。`indices` 給了但非陣列拋 `TypeError`（不可靜默改空陣列，否則形同放行）；編號須為數字（字串數字不算涵蓋） |
+
+```alias
+let validate = wdi.makeArrayCoverageValidator({
+    indices: [1, 2, 3],                  //提示詞給的編號
+    contentFields: ['summary'],          //任一非空才算有內容
+    maxLengths: { summary: 600 },        //如 Telegram 單則 4,096 字元硬限制(實戰超限 5 次; 某供應商長摘要為規格 2.6~4.4 倍)
+    onReject: (reason) => console.log('reject:', reason),
+})
+let r = await caller.callAI(prompt, { validate })
+let ans = wdi.parseIndexList('5,6,15,16,28 Wait, let me reconsider…', { max: 30, topN: 10 })
+// => { isZero: false, indices: [ 5, 6, 15, 16, 28 ] }
+```
 
 #### 訂閱額度查詢(quota)：`getQuotaClaude`／`getQuotaCodex`／`getQuotaAntigravity`
 

@@ -14,4 +14,6 @@
 | codex 條目 | `sgud/rule/rulebook_codex.md` | R-CODEX-1 | codex 條目欄位比照(唯讀 `sandbox`、強度常數)、強度必傳(型錄預設 low)、新首選排在舊首選之前、群組相鄰、`patch` 覆寫 max 不解除唯讀 |
 | opencode 免費條目漂移 | `sgud/rule/rulebook_opencodefree.md` | R-OCFREE-1～2 | `filterOpencodeFree`(以 `opencode models` 過濾目錄之免費條目;查詢失敗回 `ok:false`＋清單為 `null`,不得被當成「全部下架」)、下架判準(清單消失＋依條目呼叫約 2s UnknownError 兩條件)、收錄之實測項、連網守門(目錄 ⊆ 當日清單,環境不足略過不算通過)、31 個變異驗證(F1～F22、P1～P8、W1) |
 
+| 自專案端執行殼移入之 AI 件(Gitea #40) | `sgud/rule/rulebook_aishell.md` | R-AISHELL-1～4、R-CATALOGUE-1、R-CALLER-1、R-LOG-1、R-PARSE-1 | 只新增不改既有函數、不依賴 w-data-pipeline;目錄展開 `resolveCatalogue`(自帶條目合併、逾時三層、env/envFile/pick/exes)、原始呼叫器 `createAiCaller`(與工作流並存)、結果日誌 `logAiOutcome`/`createAiEventLogger`(成員呼叫、遮蔽金鑰)、嚴格解析 `parseJsonArray`/`parseIndexList`/`makeArrayCoverageValidator`;契約未載明之推定處逐條標示;變異驗證表 |
+
 引用說明:程式碼註解與測試中之「帳本R-XXX-N」仍指上表對應檔內同編號之節.
