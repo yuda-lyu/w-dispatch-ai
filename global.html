@@ -220,7 +220,7 @@ callAiWithFallback預設自動掛上(傳promptPrefix:''關閉)，
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line36">line 36</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line37">line 37</a>
     </li></ul></dd>
     
 
@@ -4901,7 +4901,7 @@ console.log(castPintOr(undefined, null))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line76">line 76</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line77">line 77</a>
     </li></ul></dd>
     
 
@@ -6294,7 +6294,7 @@ console.log(classifyRestFailure({ status: 429, apiErrorType: 'rate_limit_error',
 <p>特點：
 條目來源＝內建目錄＋extraProviders，依pick順序(即遞補優先序)，envVar → keys、exes、patch、逾時三層取值皆同resolveCatalogue；
 pick到不存在之id列入missing(附hints拼寫提示)、缺金鑰者列入skipped，皆不throw；
-callAI回dispatchAiFallback原始結果，另掛providersSkipped與providersMissing；零供應商時回同形失敗(ok為false、attempts為0、tried為空陣列)；
+callAI回dispatchAiFallback原始結果，另掛providersSkipped與providersMissing；零供應商時回同形失敗(ok為false、attempts為0、tried為空陣列，error為<code>無可用的 AI 供應商</code>後接<code>（&lt;skipped以、相接&gt;）</code>，無skipped則無括號，missing不進error)；
 不解析回覆、不掛NO_SIDE_EFFECT前綴；本函數不會reject，extraProviders不合規時建構throw(見resolveCatalogue)；
 onUsage於try事件(實際送出嘗試)時以providerId呼叫，與createUsageCounter(...).onEvent於try事件記帳之時機相同(後者預設記到keyId，改記到條目請給keyOf: (ev) =&gt; ev.providerId，則與onUsage(providerId)等價)，純觀測，拋錯與回傳Promise皆忽略</p></li></ul></dd>
     
@@ -6302,7 +6302,7 @@ onUsage於try事件(實際送出嘗試)時以providerId呼叫，與createUsageCo
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="createAiCaller.mjs.html">createAiCaller.mjs</a>, <a href="createAiCaller.mjs.html#line98">line 98</a>
+        <a href="createAiCaller.mjs.html">createAiCaller.mjs</a>, <a href="createAiCaller.mjs.html#line99">line 99</a>
     </li></ul></dd>
     
 
@@ -7269,7 +7269,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line288">line 288</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line289">line 289</a>
     </li></ul></dd>
     
 
@@ -7318,9 +7318,9 @@ await test()
     
     <pre class="prettyprint"><code>import { createAiEventLogger } from './src/wkf/logAiOutcome.mjs'
 
-let onEvent = createAiEventLogger({ log: console, tag: 'news' })
+let onEvent = createAiEventLogger({ log: console, tag: '步驟6：' })
 onEvent({ type: 'cooled', providerId: 'agnes:agnes-3.0-flash', error: 'HTTP 429', cooldownMs: 600000 })
-// => [news] AI 供應商進入冷卻 → agnes:agnes-3.0-flash（HTTP 429，10 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）
+// => 步驟6：AI 供應商進入冷卻 → agnes:agnes-3.0-flash（HTTP 429，10 分鐘內降至鏈尾；只降序不移除，前面全敗時仍會被嘗試）
 
 //掛進呼叫器: createAiCaller({ pick, onEvent })</code></pre>
 
@@ -7468,7 +7468,7 @@ onEvent({ type: 'cooled', providerId: 'agnes:agnes-3.0-flash', error: 'HTTP 429'
                 </td>
             
 
-            <td class="description last"><p>輸入來源標籤字串，預設''</p></td>
+            <td class="description last"><p>輸入來源標籤字串，原樣接在每行之前(不加括號與空白，分隔符由呼叫端自帶)，非字串視為''，預設''</p></td>
         </tr>
 
     
@@ -16962,7 +16962,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line92">line 92</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line93">line 93</a>
     </li></ul></dd>
     
 
@@ -24747,7 +24747,7 @@ console.log((await judgeTruncated({ finishReason: 'length', content: '[{"a":1},'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line130">line 130</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line131">line 131</a>
     </li></ul></dd>
     
 
@@ -25243,7 +25243,7 @@ console.log((await judgeTruncated({ finishReason: 'length', content: '[{"a":1},'
     <dt class="tag-description">Description:</dt>
     <dd class="tag-description"><ul class="dummy"><li><p>把一次dispatchAiFallback(或createAiCaller.callAI)之結果渲染成日誌</p>
 <p>特點：
-至多四行：①成功時「使用 AI」(INFO；含kind／model、REST類之token用量含思考、截斷內容放行之加註)；
+至多四行：①result.providerId有值時「使用 AI」(INFO；以providerId有值為準，不看ok；含kind／model、REST類之token用量含思考、截斷內容放行之加註)；
 ②有非ok之嘗試時「AI 遞補歷程」(WARN；逐筆含key#、outcome人話、errorType、原因壓單行80字、耗時)；
 ③providersSkipped非空時「AI 供應商未納入」(WARN)；④providersMissing非空時「providerPick 有無效 id」(ERROR)；
 記錄器接受log／logWarn／logError或info／warn／error兩種介面，一律以成員呼叫形式觸發(class-based logger之this不失)；
@@ -25253,7 +25253,7 @@ log缺或非物件即throw，result非物件則無事可記(不throw)；整行�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line232">line 232</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line233">line 233</a>
     </li></ul></dd>
     
 
@@ -25316,11 +25316,11 @@ let result = {
     providersSkipped: ['my:model（MY_KEYS 無金鑰）'],
     providersMissing: ['claude/sonnet'],
 }
-logAiOutcome({ result, log: console, tag: 'news' })
-// => [news] 使用 AI agnes:agnes-3.0-flash／key#2（api-openai-compat／agnes-3.0-flash，tokens 120+80（含思考 30））
-// => [news] AI 遞補歷程 → agnes:agnes-3.0-flash／key#1（換金鑰：http／HTTP 429 quota exceeded，1.2s）
-// => [news] AI 供應商未納入 → my:model（MY_KEYS 無金鑰）
-// => [news] providerPick 有無效 id → claude/sonnet（請對照供應商目錄）</code></pre>
+logAiOutcome({ result, log: console, tag: '步驟6：' }) //tag原樣接在每行之前, 分隔符由呼叫端自帶
+// => 步驟6：使用 AI agnes:agnes-3.0-flash／key#2（api-openai-compat／agnes-3.0-flash，tokens 120+80（含思考 30））
+// => 步驟6：AI 遞補歷程 → agnes:agnes-3.0-flash／key#1（換金鑰：http／HTTP 429 quota exceeded，1.2s）
+// => 步驟6：AI 供應商未納入 → my:model（MY_KEYS 無金鑰）
+// => 步驟6：providerPick 有無效 id → claude/sonnet（請對照供應商目錄）</code></pre>
 
 
 
@@ -25502,7 +25502,7 @@ logAiOutcome({ result, log: console, tag: 'news' })
                 </td>
             
 
-            <td class="description last"><p>輸入來源標籤字串，非空時每行前綴<code>[tag] </code>，預設''</p></td>
+            <td class="description last"><p>輸入來源標籤字串，原樣接在每行之前(不加括號與空白，分隔符由呼叫端自帶，如'步驟6：')，非字串視為''，預設''</p></td>
         </tr>
 
     
@@ -26417,13 +26417,13 @@ console.log(base)
 <dl class="details">
     
     <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>冷卻分鐘數: 毫秒換算為分鐘(至多一位小數)，無效回null</p></li></ul></dd>
+    <dd class="tag-description"><ul class="dummy"><li><p>冷卻分鐘數: 毫秒換算為分鐘並四捨五入為整數(Math.round(ms / 60000))，無效回null</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line141">line 141</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line142">line 142</a>
     </li></ul></dd>
     
 
@@ -26908,7 +26908,7 @@ console.log(normalizeFinishReason(' LENGTH '), normalizeFinishReason(null))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line57">line 57</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line58">line 58</a>
     </li></ul></dd>
     
 
@@ -28178,13 +28178,13 @@ console.log(parseJsonArray('[{"index":1},{"index":2')) //截斷, 不搶救
 <dl class="details">
     
     <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>前綴: tag為非空字串時為<code>[tag] </code>，否則空字串</p></li></ul></dd>
+    <dd class="tag-description"><ul class="dummy"><li><p>前綴: tag為字串時原樣回傳(不加括號與空白)，否則空字串</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line119">line 119</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line120">line 120</a>
     </li></ul></dd>
     
 
@@ -37429,13 +37429,13 @@ console.log(w.label, w.remainingPercent)
 <dl class="details">
     
     <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>遞補歷程單筆: <code>providerId／key#n（outcome人話：errorType／原因，耗時s）</code></p></li></ul></dd>
+    <dd class="tag-description"><ul class="dummy"><li><p>遞補歷程單筆: <code>providerId／key#n（outcome人話：errorType／原因，耗時s）</code>，耗時為秒且固定一位小數(toFixed(1)，1234ms為1.2s)</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line182">line 182</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line183">line 183</a>
     </li></ul></dd>
     
 
@@ -37593,7 +37593,7 @@ console.log(w.label, w.remainingPercent)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line152">line 152</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line153">line 153</a>
     </li></ul></dd>
     
 
@@ -38433,7 +38433,7 @@ console.log(w.label, w.remainingPercent)
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Nov 01 2026 17:15:21 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Nov 01 2026 17:52:05 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
