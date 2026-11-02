@@ -31,11 +31,19 @@
 規則:
 1. 與工作流(`callAiWithFallback`/`dispatchAiWkf.callAi`)**並存**,語意不同(回原始結果、不解析、不加 `NO_SIDE_EFFECT`、未知 id 不拋而回報 `missing`/`hints`);選型表見 README「原始呼叫器 vs 工作流（選型）」.
 2. 建構:`resolveCatalogue` 展開一次,回 `{ callAI, providers, skipped(字樣 `${id}（${envVar} 無金鑰）`), missing, hints }`;建構後改動 env 不影響已建之條目;`extraProviders` 不合規時建構 throw.
-3. `callAI(prompt, { timeoutMs, validate, acceptTruncated, onEvent })`:第二參數非物件視為 `{}`;零供應商回 `{ ok:false, stdout:'', stderr:'', code:null, durationMs:0, attempts:0, error:'無可用的 AI 供應商（…）', tried:[], providersSkipped, providersMissing }`(不含 `errorType`,依契約逐欄);否則 `dispatchAiFallback` 原始結果另掛 `providersSkipped`/`providersMissing`(每次呼叫之新陣列);`acceptTruncated` 僅布林時透傳;**逐次 `timeoutMs` 為共用預設,條目自帶(含建構期逾時三層寫入者)優先**(`dispatchAiFallback` 之既有分層).零供應商 `error` **已依原契約**(Gitea #42,見 R-AISHELL-5-4):`無可用的 AI 供應商` 後接 `（<skipped 以「、」相接>）`,無 skipped 則無括號,missing 不進 error(原 da40 推定為「缺金鑰略過：…；pick 查無：…」/「條目清單為空」,已廢).
+3. `callAI(prompt, { timeoutMs, budgetMs, validate, acceptTruncated, onEvent })`(`budgetMs` 見 R-CALLER-1-6):第二參數非物件視為 `{}`;零供應商回 `{ ok:false, stdout:'', stderr:'', code:null, durationMs:0, attempts:0, error:'無可用的 AI 供應商（…）', tried:[], providersSkipped, providersMissing }`(不含 `errorType`,依契約逐欄);否則 `dispatchAiFallback` 原始結果另掛 `providersSkipped`/`providersMissing`(每次呼叫之新陣列);`acceptTruncated` 僅布林時透傳;**逐次 `timeoutMs` 為共用預設,條目自帶(含建構期逾時三層寫入者)優先**(`dispatchAiFallback` 之既有分層).零供應商 `error` **已依原契約**(Gitea #42,見 R-AISHELL-5-4):`無可用的 AI 供應商` 後接 `（<skipped 以「、」相接>）`,無 skipped 則無括號,missing 不進 error(原 da40 推定為「缺金鑰略過：…；pick 查無：…」/「條目清單為空」,已廢).
 4. 事件:`try` 事件先 `onUsage(providerId)`、再建構期 `onEvent`、再逐次 `onEvent`;三者以 `callHookSync` 互相隔離(拋錯、回傳 Promise 皆忽略).`onUsage` 與 `createUsageCounter({ keyOf: (ev) => ev.providerId }).onEvent` 記帳等價(測試證明);預設 `keyOf` 記到 `keyId`.
-5. 已知限制(移入時不改):`budgetMs` 為建構參數,`callAI` 不收逐次預算.`warnings`(`*_KEYS` 分號)未納入回傳形狀(契約逐欄),需要者改用 `resolveCatalogue` 讀 `resolved.warnings`.
+5. 已知限制:`warnings`(`*_KEYS` 分號)未納入回傳形狀(契約逐欄),需要者改用 `resolveCatalogue` 讀 `resolved.warnings`.(原「`budgetMs` 為建構參數、`callAI` 不收逐次預算」之限制已於 da52 解除,見 R-CALLER-1-6.)
+6. **R-CALLER-1-6 逐次預算只收緊、不放寬(`createAiCaller.mjs`,Gitea #52,主控裁定 2026-11-02 da52)**:`callAI(prompt, { budgetMs })`——
+   - 逐次值有效(`castPintOr` 判為正整數;與逐次 `timeoutMs` 同法)時,本次 `callOpt.budgetMs = min(建構值, 逐次值)`;**建構值未給或非法視為不限**(與 `dispatchAiFallback` 對 `budgetMs` 之判定相同),此時取逐次值.
+   - 逐次值未給／`null`／非法(0、負數、小數、非數字字串、`NaN`、物件、布林等)視為未給,沿用建構值;逐次值大於建構值時仍為建構值(封頂,**不視為錯誤**,不 throw).
+   - 只作用於該次呼叫:`callOpt` 為每次呼叫之副本,建構期 `base` 不被改寫(下一次未給時回到建構值).
+   - `dispatchAiFallback` 之 `budgetMs`／`minAttemptMs` 語意不變(逐次預算小於 `minAttemptMs` 時依其既有規則回 `budget exhausted`、`errorType: 'budget'`,「不開工」之門檻由呼叫端先判);零供應商路徑不受影響.
+   - 盤點:`Grep "budgetMs" src/createAiCaller.mjs` 應見 base 清單、`castPintOr(get(co, 'budgetMs'…))` 與 `Math.min(budgetMsBase, budgetMs)`;`git diff --stat -- src` 本輪僅 `src/createAiCaller.mjs`.
+   - 測試(`test/unit-createAiCaller.test.mjs` 之 `describe('逐次budgetMs（Gitea #52; 帳本R-CALLER-1-6）')`,8 條):以 `minAttemptMs` 設為極大令首次嘗試前即發 `budget-out` 事件,讀其 `remainingMs`(＝本次交 `dispatchAiFallback` 之 `budgetMs` 扣去極小耗時)判別取用哪個值——事件同步、無延時判定;案:逐次<建構→逐次、逐次>建構(及相等)→建構、未給／非法 13 種→建構、建構未給(或非法)＋逐次給→逐次、皆未給→不限、不殘留(同 caller 連呼三次)、零供應商、整合(兩家皆 `slow`、建構 60000／逐次 1000／`minAttemptMs` 500 → `errorType: 'budget'`、只嘗試第一家、替身端點只見第一家之請求、耗時 <8 秒;實約 1 秒).
+   - **(推定)** 建構期 `budgetMs` 非法(如 `'abc'`、0、負數)＋逐次有效 → 取逐次值(非法視同未給,與 `dispatchAiFallback` 一致;若取 `Math.min` 於未正規化之建構值會得 `NaN` 而靜默變成不限,故建構值先經 `castPintOr`).
 
-盤點/重跑:`npx mocha --no-parallel test/unit-createAiCaller.test.mjs`(30 條;零供應商字面另見 `test/unit-srcRunnerContract.test.mjs`,含一條約 5 秒之 `maxRetries` 實跑;全程本機替身端點 `test/tools/fakeServerForCallerTest.mjs` 與假 CLI,不連外網).
+盤點/重跑:`npx mocha --no-parallel test/unit-createAiCaller.test.mjs`(38 條;零供應商字面另見 `test/unit-srcRunnerContract.test.mjs`,含一條約 5 秒之 `maxRetries` 實跑;全程本機替身端點 `test/tools/fakeServerForCallerTest.mjs` 與假 CLI,不連外網).
 
 ## R-LOG-1 結果日誌(`src/wkf/logAiOutcome.mjs`)
 
@@ -56,6 +64,10 @@
 3. `makeArrayCoverageValidator({ indices=[], indexField='index', contentFields=[], maxLengths={}, onReject })` → `(stdout)=>Boolean`:順序為 完整 JSON 陣列(否則 `非 JSON 陣列或輸出截斷`)→ 超長(`第 ${index} 項之 ${f} 為 ${len} 字，超過上限 ${max}`,整體不合格)→ 涵蓋(`未涵蓋編號 …（缺項或內容為空）`);`indices` 給了非陣列(含 `null`)拋 `TypeError('makeArrayCoverageValidator 之 indices 須為陣列')`(**已依原契約**,Gitea #42,見 R-AISHELL-5-5),省略視為 `[]`.**(推定)** 編號須為數字(字串數字不算涵蓋);`未涵蓋編號` 之編號以「、」相接;項號只回報數字編號(否則 `?`,不回顯回覆任意值);`maxLengths` 內非正整數之上限略過、只檢字串欄位;`onReject` 以 `callHookSync` 隔離.
 
 盤點/重跑:`npx mocha --no-parallel test/unit-parseJsonArray.test.mjs test/unit-parseIndexList.test.mjs test/unit-makeArrayCoverageValidator.test.mjs`(6＋12＋18 條).
+
+## 變異驗證表(da52,R-CALLER-1-6;`tmp/da52/mutate.mjs` 直接對 `src/createAiCaller.mjs` 逐一套用、跑新 describe〔`--grep 逐次budgetMs`〕、`finally` 還原並比對 sha256;皆經 `quiet-run --lock`)
+
+共 7 個變異,**7/7 被抓到**(括號為失敗條數):M1 `min` 改 `max`(逐次可放寬;4)、M2 逐次直接覆蓋建構值(1)、M3 逐次值不經 `castPintOr`(1)、M4 建構未給時忽略逐次值(1)、M5 逐次結果寫回 `base`(殘留到下一次;1)、M6 建構值不經 `castPintOr`(建構非法時 `Math.min` 得 `NaN`;1)、M7 逐次值只檢有限數(0、負數、小數照收;1).**修前紅**:未改 src(僅加測試)時新 describe 8 條中 4 條 failing(逐次<建構、建構未給＋逐次給、不殘留、整合)、4 條 passing(皆為「不得改變」守門:逐次>建構、未給／非法、皆未給、零供應商).重跑:自 repo 根 `node tmp/da52/mutate.mjs [M編號]`(腳本存於任務證據夾 `agent-out/da52-evidence/`,不入版控).
 
 ## 變異驗證表(da42,R-AISHELL-5;`tmp/da42/mutate.mjs` 於 `tmp/da42/mut/work` 副本逐一套用,每個變異跑兩組:A=契約檔 `unit-srcRunnerContract` 單獨、B=該功能既有單元檔單獨;皆經 `quiet-run --lock`)
 

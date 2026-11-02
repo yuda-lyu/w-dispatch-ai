@@ -20,6 +20,8 @@ import fakeServerForCallerTest from './tools/fakeServerForCallerTest.mjs'
 //     { ok:false, stdout:'', stderr:'', code:null, durationMs:0, attempts:0, error:'無可用的 AI 供應商'＋（skipped以、相接; 無skipped則無括號; missing不進error）, tried:[], providersSkipped, providersMissing };
 //     否則回dispatchAiFallback原始結果並掛providersSkipped／providersMissing; acceptTruncated僅布林時透傳;
 //     onEvent包一層: type==='try'時呼叫onUsage(providerId), 再轉呼建構期onEvent與逐次onEvent; 不掛NO_SIDE_EFFECT前綴、不解析JSON。
+// 逐次預算(2026-11-02 da52, Gitea #52; 帳本R-CALLER-1-6): callAI(prompt, { …, budgetMs })——有效(正整數)時本次budgetMs＝min(建構值 ?? Infinity, 逐次值),
+//   只能收緊、不得放寬; 未給／null／非法視為未給(與timeoutMs之castPintOr同法); dispatchAiFallback之budgetMs／minAttemptMs語意不變。
 // 全程以本機替身端點與假CLI實跑, 不連外網。
 
 
@@ -43,6 +45,34 @@ let memStore = () => {
 
 //reqOf, 替身端點收到的某model之請求
 let reqOf = (model) => svr.requests.filter((r) => r.model === model)
+
+//reqOfKey, 替身端點收到的某條目(以其自帶金鑰k-<id>辨識)之請求
+let reqOfKey = (id) => svr.requests.filter((r) => r.auth.includes(`k-${id}`))
+
+//probeSeq, probeBudget之條目編號
+let probeSeq = 0
+
+//probeBudget, 觀察本次callAI實際交給dispatchAiFallback之budgetMs:
+//  建構期minAttemptMs設為極大, 有預算時首次嘗試前即發budget-out事件(不送請求、無計時器), 其remainingMs＝budgetMs扣去建立deadline至檢查之耗時;
+//  無預算(budgetMs不限)時minAttemptMs不作用, 照常送出請求而無budget-out事件, 回remainingMs為null
+let probeBudget = async (ctorOpt, callOpt) => {
+    probeSeq++
+    let id = `t:bp${probeSeq}`
+    let c = createAiCaller({ extraProviders: [ent(id, 'echo')], pick: [id], store: memStore(), minAttemptMs: 1000000000, ...ctorOpt })
+    let outs = []
+    let r = await c.callAI('go', {
+        ...callOpt,
+        onEvent: (ev) => {
+            if (ev.type === 'budget-out') {
+                outs.push(ev.remainingMs)
+            }
+        }
+    })
+    return { r, remainingMs: outs.length > 0 ? outs[0] : null, budgetOuts: outs.length, sent: reqOfKey(id).length }
+}
+
+//isNear, remainingMs是否為expected扣去極小耗時(30秒內)之值; budgetMs間距皆遠大於30秒, 足以分辨取用哪個值
+let isNear = (remainingMs, expected) => typeof remainingMs === 'number' && remainingMs <= expected && remainingMs > expected - 30000
 
 
 describe('createAiCaller', function() {
@@ -451,6 +481,101 @@ describe('createAiCaller', function() {
             let echo = JSON.parse(r.stdout)
             assert.strict.equal(path.resolve(echo.cwd), path.resolve(TMP))
             assert.strict.equal(echo.stdin, 'CLI-PROMPT-ASIS')
+        })
+
+    })
+
+    describe('逐次budgetMs（Gitea #52; 帳本R-CALLER-1-6）', function() {
+
+        // 建議檔§1.4案1／主控裁定: 逐次小於建構 → 本次用逐次值
+        it('逐次budgetMs小於建構budgetMs: 交dispatchAiFallback之budgetMs為逐次值（收緊）', async function() {
+            let p = await probeBudget({ budgetMs: 600000 }, { budgetMs: 120000 })
+            assert.strict.deepEqual([p.r.ok, p.r.errorType, p.r.error, p.budgetOuts, p.sent], [false, 'budget', 'budget exhausted', 1, 0])
+            assert.strict.equal(isNear(p.remainingMs, 120000), true, `remainingMs=${p.remainingMs}`)
+        })
+
+        // 建議檔§1.4案2／主控裁定: 逐次大於建構 → 仍為建構值（只能收緊、不得放寬）
+        it('逐次budgetMs大於建構budgetMs: 仍為建構值（封頂，不放寬）；相等亦為該值', async function() {
+            let p = await probeBudget({ budgetMs: 120000 }, { budgetMs: 600000 })
+            assert.strict.equal(isNear(p.remainingMs, 120000), true, `remainingMs=${p.remainingMs}`)
+            let q = await probeBudget({ budgetMs: 120000 }, { budgetMs: 120000 })
+            assert.strict.equal(isNear(q.remainingMs, 120000), true, `remainingMs=${q.remainingMs}`)
+        })
+
+        // 建議檔§1.4案3／主控裁定: 未給／null／非法視為未給 → 建構值
+        it('逐次budgetMs未給、null或非法（非正整數）: 視為未給，仍為建構值', async function() {
+            let bad = [undefined, null, 0, -1, -120000, 1.5, 'abc', '', NaN, {}, [], true, false]
+            for (let v of bad) {
+                let p = await probeBudget({ budgetMs: 120000 }, { budgetMs: v })
+                assert.strict.equal(isNear(p.remainingMs, 120000), true, `budgetMs=${String(v)} remainingMs=${p.remainingMs}`)
+            }
+            let none = await probeBudget({ budgetMs: 120000 }, {})
+            assert.strict.equal(isNear(none.remainingMs, 120000), true, `remainingMs=${none.remainingMs}`)
+        })
+
+        // 建議檔§1.4案4／主控裁定: 建構未給、逐次給 → 逐次值
+        it('建構budgetMs未給（或非法視同未給）、逐次budgetMs給: 為逐次值', async function() {
+            let p = await probeBudget({}, { budgetMs: 120000 })
+            assert.strict.equal(isNear(p.remainingMs, 120000), true, `remainingMs=${p.remainingMs}`)
+            for (let v of [null, 0, -1, 'abc', 1.5]) {
+                let q = await probeBudget({ budgetMs: v }, { budgetMs: 120000 })
+                assert.strict.equal(isNear(q.remainingMs, 120000), true, `ctor budgetMs=${String(v)} remainingMs=${q.remainingMs}`)
+            }
+        })
+
+        // 主控裁定: 兩者皆未給 → 不限（語意不變）
+        it('建構與逐次budgetMs皆未給或非法: 不限預算（無budget-out事件、請求照常送出）', async function() {
+            let p = await probeBudget({}, {})
+            assert.strict.deepEqual([p.r.ok, p.remainingMs, p.budgetOuts, p.sent], [true, null, 0, 1])
+            let q = await probeBudget({ budgetMs: 'abc' }, { budgetMs: 0 })
+            assert.strict.deepEqual([q.r.ok, q.remainingMs, q.budgetOuts, q.sent], [true, null, 0, 1])
+        })
+
+        // 逐次值只作用於該次呼叫: 建構期base不得被改寫
+        it('逐次budgetMs只作用於該次呼叫: 同一caller下一次未給時回到建構值，不殘留', async function() {
+            probeSeq++
+            let id = `t:bp${probeSeq}`
+            let c = createAiCaller({ extraProviders: [ent(id, 'echo')], pick: [id], store: memStore(), budgetMs: 600000, minAttemptMs: 1000000000 })
+            let seen = []
+            let onEvent = (ev) => {
+                if (ev.type === 'budget-out') {
+                    seen.push(ev.remainingMs)
+                }
+            }
+            await c.callAI('go', { budgetMs: 120000, onEvent })
+            await c.callAI('go', { onEvent })
+            await c.callAI('go', { budgetMs: 300000, onEvent })
+            assert.strict.deepEqual(seen.map((v) => [120000, 300000, 600000].find((e) => isNear(v, e))), [120000, 600000, 300000])
+        })
+
+        // 零供應商路徑與逐次budgetMs無關: 仍同形失敗
+        it('零供應商時給逐次budgetMs: 仍回同形失敗（不送請求、不throw）', async function() {
+            let c = createAiCaller({ pick: ['no-such-id'], budgetMs: 600000 })
+            let r = await c.callAI('x', { budgetMs: 1000 })
+            assert.strict.deepEqual([r.ok, r.attempts, r.tried, r.error], [false, 0, [], '無可用的 AI 供應商'])
+        })
+
+        // 建議檔§2-2（整合）: 兩個會逾時之替身條目, 建構60000、逐次1000、minAttemptMs 500
+        it('整合: 兩家皆會逾時之條目，建構budgetMs 60000、逐次1000、minAttemptMs 500 → 第一家以約1秒逾時後預算用盡，第二家不被嘗試', async function() {
+            let ev = []
+            let c = createAiCaller({
+                extraProviders: [ent('t:ib1', 'slow'), ent('t:ib2', 'slow')],
+                pick: ['t:ib1', 't:ib2'],
+                store: memStore(),
+                budgetMs: 60000,
+                minAttemptMs: 500,
+                onEvent: (e) => ev.push(e),
+            })
+            let t0 = Date.now()
+            let r = await c.callAI('go', { budgetMs: 1000 })
+            let elapsed = Date.now() - t0
+
+            //未依逐次值收緊時: 建構60000、條目預設逾時遠大於10秒，第一家於10秒後回'too late'而ok為true
+            assert.strict.deepEqual([r.ok, r.errorType, r.error], [false, 'budget', 'budget exhausted'])
+            assert.strict.deepEqual(r.tried.map((t) => [t.providerId, t.outcome, t.errorType]), [['t:ib1', 'skip-group', 'timeout'], ['t:ib2', 'budget-out', undefined]])
+            assert.strict.deepEqual(ev.filter((e) => e.type === 'try').map((e) => e.providerId), ['t:ib1']) //只嘗試一家
+            assert.strict.deepEqual([reqOfKey('t:ib1').length, reqOfKey('t:ib2').length], [1, 0]) //替身端點亦只見第一家之請求
+            assert.strict.equal(elapsed < 8000, true, `elapsed=${elapsed}`) //遠小於替身'slow'路由之10秒回應
         })
 
     })

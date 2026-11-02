@@ -95,3 +95,10 @@
 - **失敗結果也帶 `providerId`**:`dispatchAiFallback` 全數失敗時回 `{ ...lastResult, ...lastMeta, tried }`,`providerId`／`keyIndex`／`kind`／`model` 為最後嘗試者;所以「`providerId` 有值」≠「成功」.原契約的「使用 AI」行以 `providerId` 為準,失敗結果也會印(其後接遞補歷程);若要只在成功時印,呼叫端自行判 `ok`,不是日誌件的責任.
 - **變異要覆蓋「相鄰但不同」的值**:`Math.round` 的分鐘數測 90000／30000 抓不到 `Math.ceil`(兩者同為 2／1),補 70000(1.17 分鐘:round→1、ceil→2)才抓到;凡「改回舊寫法」之變異外,再加「同族不同取整／不同分隔符」之鄰近變異(floor／ceil、`，`／`、`)。
 - **變異腳本之 `from` 錨點要避開註解**:`Math.round(ms / 60000)` 同時出現在 JSDoc 與程式碼,`from` 出現 2 次被 SKIP;錨點連同前後語法(`? Math.round(ms / 60000) : null`)取唯一者.腳本加「只跑符合某正規表達式之變異」的篩選參數,補跑時不必整批重來.
+
+## `createAiCaller.callAI` 逐次預算(2026-11-02 da52,Gitea #52;帳本 `rulebook_aishell.md` R-CALLER-1-6)
+
+- **測「交給下游的值」而下游無注入接縫時,讀下游自己發的事件**:`createAiCaller` 直接 `import dispatchAiFallback`,無法替身替換,也不為測試開接縫.做法:建構期 `minAttemptMs` 設為極大(1e9),有預算時 `dispatchAiFallback` 於首次嘗試前即發 `budget-out` 事件,其 `remainingMs`＝本次 `budgetMs` 扣去極小耗時;以「落在 (期望−30 秒, 期望]」判別取用哪個值(各案之預算間距遠大於 30 秒).無預算(不限)時 `minAttemptMs` 不作用、照常送請求而無事件——可一併斷言「皆未給＝不限」.全程事件同步,無 `sleep`、不靠計時判定;整合案(`slow` 路由、逐次 1000)的 1 秒是被測規格本身之逾時,斷言以結果語意(`errorType: 'budget'`、只嘗試第一家、替身端點只見第一家請求)為主,耗時 <8 秒僅防懸置.
+- **建構值要先正規化再 `Math.min`**:建構期 `budgetMs` 放在 `base` 時是原樣(「非 undefined/null 即收」,檢核交 `dispatchAiFallback`),若直接 `Math.min(base.budgetMs, 逐次值)`,建構值為 `'abc'` 時得 `NaN`,`dispatchAiFallback` 的 `castPintOr(NaN)` 視為不限,**靜默放寬**(變異 M6 抓到).故建構值也經 `castPintOr`,非法視同未給——與 `dispatchAiFallback` 對 `budgetMs` 之判定一致.
+- **逐次值要「不殘留」**:`callOpt` 每次呼叫自 `{ providers, ...base }` 新建,逐次結果只寫 `callOpt`、不寫 `base`;同一 caller 連呼三次(逐次 120000／未給／逐次 300000 → 期望 120000／600000／300000)證明,變異 M5(寫回 `base`)抓到.
+- **就地變異 src 時,跨行 `from` 會因 CRLF 對不上**:本套件檔案為 CRLF,`'…\n…'` 形式之 `from` 不吻合(M4 第一次 APPLY_FAILED);錨點改取單行唯一片段.變異腳本於 `finally` 還原並以 sha256 回驗(`RESTORED_OK`),且先備份一份到 `tmp/`.

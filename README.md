@@ -308,6 +308,9 @@ await test()
 **未發布（Gitea #42，專案方 tai-kns-trade 以 srcRunner 原始碼與測試核對 1.0.63；依「行為與契約隨件移動、不改語意」改回原契約字面。**含行為變更**：1.0.63 已使用下列任一字面者請對照）**：
 59. 五處改回 srcRunner 原契約（其餘行為不變）：①`logAiOutcome`／`createAiEventLogger` 之 `tag` **原樣接在每行訊息之前**（1.0.63 為 `[tag] `；現為不加括號與空白，分隔符由呼叫端自帶，如 `tag: '步驟6：'` → `步驟6：使用 AI …`；非字串視為 `''`）。②「使用 AI」行**以 `result.providerId` 有值為準，不再要求 `ok === true`**（1.0.63 要求 `ok === true`；注意 `dispatchAiFallback` 全數失敗之結果亦帶最後嘗試之 `providerId`，故失敗結果也會有此行，其後接遞補歷程；`kind`／`model` 皆缺時仍省略括號，避免印出 `undefined`）。③遞補歷程耗時改為 `toFixed(1)`（1234 ms → `1.2s`，1.0.63 為 `1.234s`；整秒為 `2.0s`、`300.0s`）；`createAiEventLogger` 之冷卻分鐘數改為 `Math.round(cooldownMs / 60000)`（90000 → `2 分鐘內`，1.0.63 為一位小數 `1.5 分鐘內`）；金鑰冷卻行（`scope: 'key'`）與 `冷卻視窗內` 字樣之擴充保留。④`createAiCaller.callAI` 零供應商之 `error` 為 `無可用的 AI 供應商` 後接 `（<providersSkipped 以「、」相接>）`，**無 `providersSkipped` 則無括號**，`pick` 查無者不進 `error`（1.0.63 為 `（缺金鑰略過：…；pick 查無：…）`，皆無時 `（條目清單為空）`；`providersSkipped`／`providersMissing`／`attempts`／`tried` 不變）。⑤`makeArrayCoverageValidator` 之 `indices` 非陣列之 `TypeError` 訊息改為 `makeArrayCoverageValidator 之 indices 須為陣列`（1.0.63 為 `makeArrayCoverageValidator: opt.indices 須為陣列`）。
 
+**未發布（Gitea #52，專案方 tai-kns-trade 建議；純新增選項，未給逐次 `budgetMs` 之既有呼叫行為不變）**：
+60. `createAiCaller(...).callAI(prompt, { budgetMs })` 新增**逐次預算**：`budgetMs` 為有效（正整數）時，本次整輪遞補預算＝`min(建構 budgetMs（未給或非法視為不限）, 逐次 budgetMs)`，即**逐次值只能收緊、不得放寬**建構預算；未給、`null` 或非法（非正整數）視為未給，沿用建構值（判定與逐次 `timeoutMs` 同法）。用途：整輪有總時間預算時，以「剩餘時間」封頂單次呼叫，免為逐次預算另建一次性 caller（另建會重跑 `resolveCatalogue`，且 `store`／用量計數器須自行共用）。逐次值只作用於該次呼叫，不改建構期設定；`dispatchAiFallback` 之 `budgetMs`／`minAttemptMs` 語意不變（逐次預算小於 `minAttemptMs` 時依其既有規則回 `budget exhausted`，是否「不開工」由呼叫端先判）。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -767,7 +770,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | 用量 | `onUsage(providerId)` 於 `try` 事件（與 `createUsageCounter(...).onEvent` 同為「按實際嘗試入帳」；後者預設記到 `keyId`，給 `keyOf: (ev) => ev.providerId` 即與 `onUsage` 等價） | 無（由呼叫端掛 `createUsageCounter(...).onEvent`） |
 | 狀態持久化 | `store` 透傳（建議 `createFileStore({ dir })`） | `store` 透傳 |
 
-選型：**要自行解析回覆、要看原始 `tried`／`usage`、排程殼一行程一建構**用 `createAiCaller`；**JSON 任務、多名額工作流（Fanout／RolePipeline）**用 `dispatchAiWkf`。條目於 `createAiCaller` 建構時解析一次（排程為短生命行程）；`budgetMs` 是建構參數，`callAI` 不收逐次預算。
+選型：**要自行解析回覆、要看原始 `tried`／`usage`、排程殼一行程一建構**用 `createAiCaller`；**JSON 任務、多名額工作流（Fanout／RolePipeline）**用 `dispatchAiWkf`。條目於 `createAiCaller` 建構時解析一次（排程為短生命行程）；`budgetMs` 為建構預算，`callAI` 另可收逐次 `budgetMs` 以剩餘時間收緊單次呼叫（**逐次預算以建構預算封頂**：本次預算＝`min(建構值, 逐次值)`，只能收緊、不得放寬；未給或非法視為未給）。
 
 ```alias
 let caller = wdi.createAiCaller({
@@ -788,6 +791,7 @@ if (caller.missing.length > 0) {
 //回覆不由呼叫器解析: validate 逐次給(此例回覆須為涵蓋 1~3 號之完整 JSON 陣列)
 let r = await caller.callAI(prompt, {
     validate: wdi.makeArrayCoverageValidator({ indices: [1, 2, 3], contentFields: ['t'], maxLengths: { t: 600 } }),
+    budgetMs: 120000, //逐次預算(如整輪剩餘時間): 取 min(建構 budgetMs 600000, 120000)＝120000; 給大於建構值者仍以 600000 為限
 })
 wdi.logAiOutcome({ result: r, log: console, tag: 'news：' })
 let arr = r.ok ? wdi.parseJsonArray(r.stdout) : null

@@ -28,7 +28,10 @@ import { callHookSync } from './callUserFn.mjs'
 //   兩者皆不使建構失敗; 全部條目都不可用時callAI回同形失敗(attempts為0), 其error只列skipped(`無可用的 AI 供應商（<skipped以、相接>）`, 無skipped則無括號),
 //   missing不進error, 由providersMissing欄位與logAiOutcome之ERROR行表達(原契約如此)。
 //
-// 【已知限制(移入時不改)】budgetMs是建構參數, callAI不收逐次預算。
+// 【逐次預算只收緊、不放寬】budgetMs為建構參數(整輪遞補之上限), callAI另收逐次opt.budgetMs, 供呼叫端以「剩餘時間」封頂單次呼叫而免為逐次預算另建caller;
+//   逐次值有效(正整數)時, 本次budgetMs＝min(建構值(未給或非法視為不限), 逐次值), 即逐次值只能收緊建構預算、不得放寬;
+//   逐次值未給／null／非法視為未給(與timeoutMs之castPintOr同法), 沿用建構值; dispatchAiFallback之budgetMs／minAttemptMs語意不變
+//   (逐次預算小於minAttemptMs時依其既有規則回budget exhausted, 是否「不開工」由呼叫端自行先判)。逐次值只作用於該次呼叫, 不改建構期設定。
 
 
 /**
@@ -52,7 +55,7 @@ import { callHookSync } from './callUserFn.mjs'
  * @param {Object} [opt.providerTimeouts=null] 輸入逐id逾時毫秒物件(逾時三層最優先層)，預設null
  * @param {Number} [opt.timeoutMs=null] 輸入全域逾時毫秒正整數(逾時三層最後備援，寫入各條目)，預設null
  * @param {Number} [opt.maxRetries=null] 輸入同家重試次數，原樣交dispatchAiFallback，預設null代表其預設
- * @param {Number} [opt.budgetMs=null] 輸入整輪遞補時間上限毫秒(建構參數，callAI不收逐次預算)，預設null代表不限
+ * @param {Number} [opt.budgetMs=null] 輸入整輪遞補時間上限毫秒正整數(建構期預算，callAI另可逐次收緊，見callAI之budgetMs)，預設null代表不限
  * @param {Number} [opt.minAttemptMs=null] 輸入單次嘗試最低剩餘預算毫秒，預設null代表其預設
  * @param {Number} [opt.cooldownMs=null] 輸入供應商冷卻視窗毫秒，預設null代表不啟用
  * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，預設null
@@ -60,7 +63,7 @@ import { callHookSync } from './callUserFn.mjs'
  * @param {Object} [opt.store=null] 輸入狀態持久化物件{get,set}，建議createFileStore({ dir })令游標與冷卻跨行程保留，預設null代表行程內記憶體
  * @param {Function} [opt.onUsage=null] 輸入用量回調(providerId)=>void，於try事件呼叫，預設null
  * @param {Function} [opt.onEvent=null] 輸入事件回調(ev)=>void，每個遞補事件皆轉呼叫，預設null
- * @returns {Object} 回傳物件，內含callAI(async函數(prompt, { timeoutMs, validate, acceptTruncated, onEvent })，回dispatchAiFallback原始結果並另掛providersSkipped與providersMissing)、providers(解析後條目陣列，含金鑰勿寫入日誌)、skipped(缺金鑰而停用之字串陣列，形如'id（ENVVAR 無金鑰）')、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之提示物件)
+ * @returns {Object} 回傳物件，內含callAI(async函數(prompt, { timeoutMs, budgetMs, validate, acceptTruncated, onEvent })，回dispatchAiFallback原始結果並另掛providersSkipped與providersMissing；逐次budgetMs為正整數時本次整輪預算取min(建構budgetMs，逐次budgetMs)，只收緊不放寬，未給、null或非法視為未給而沿用建構值)、providers(解析後條目陣列，含金鑰勿寫入日誌)、skipped(缺金鑰而停用之字串陣列，形如'id（ENVVAR 無金鑰）')、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之提示物件)
  * @example
  * //need .env with AGNES_KEYS; claude cli in system PATH
  *
@@ -85,6 +88,7 @@ import { callHookSync } from './callUserFn.mjs'
  * let test = async () => {
  *     let r = await caller.callAI('只回覆JSON陣列: [{"index":1,"t":"..."}]', {
  *         validate: (stdout) => parseJsonArray(stdout) !== null, //回覆不由本件解析, validate逐次給
+ *         budgetMs: 120000, //逐次預算, 與建構budgetMs(600000)取小, 本次整輪至多120000; 給大於建構值者仍以建構值為限
  *     })
  *     console.log(r.ok, r.providerId, r.tried.length)
  *     // => true 'agnes:agnes-3.0-flash' 1
@@ -145,11 +149,18 @@ function createAiCaller(opt = {}) {
             }
         }
 
-        //逐次設定: timeoutMs(有效正整數)、validate(有給)、acceptTruncated(僅布林時透傳)、onEvent
+        //逐次設定: timeoutMs(有效正整數)、budgetMs(有效正整數, 與建構值取小)、validate(有給)、acceptTruncated(僅布林時透傳)、onEvent
         let callOpt = { providers, ...base }
         let timeoutMs = castPintOr(get(co, 'timeoutMs', null), null)
         if (timeoutMs !== null) {
             callOpt.timeoutMs = timeoutMs
+        }
+
+        //budgetMs, 逐次值有效時與建構值(無效視為不限, 同dispatchAiFallback)取小, 只收緊不放寬; 無效視為未給; callOpt為本次副本, 不改base
+        let budgetMs = castPintOr(get(co, 'budgetMs', null), null)
+        if (budgetMs !== null) {
+            let budgetMsBase = castPintOr(get(base, 'budgetMs', null), null)
+            callOpt.budgetMs = (budgetMsBase === null) ? budgetMs : Math.min(budgetMsBase, budgetMs)
         }
         let validate = get(co, 'validate', null)
         if (validate !== null && validate !== undefined) {
