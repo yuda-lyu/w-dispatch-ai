@@ -3,6 +3,7 @@ import isobj from 'wsemi/src/isobj.mjs'
 import isarr from 'wsemi/src/isarr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
+import iseint from 'wsemi/src/iseint.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import { callHookSync } from '../callUserFn.mjs'
 import { maskApiKeys } from '../redactText.mjs'
@@ -29,6 +30,8 @@ import { maskApiKeys } from '../redactText.mjs'
 //   非字串視為''; 與執行殼srcRunner原契約一致, 使用端的步驟行皆以`步驟N：`起頭, AI行須同形才能逐步驟grep。
 //
 // 【oneline】錯誤字串壓成單行並截斷(wsemi strTruncate, 刪節號`...`), 內嵌於本檔——不依賴w-data-pipeline。
+//   截斷字數n由oneline自行檢查(wsemi iseint之count), 有效才Number(n)交給strTruncate, 無效則不截斷(回壓平之整行),
+//   不依賴strTruncate對無效maxLen之處置(其maxLen為必須參數, 無效即拋錯); 呼叫處n皆為字面80／60。
 
 
 /**
@@ -51,8 +54,13 @@ let METHODS = {
 /**
  * 壓成單行並截斷：先遮蔽Anthropic金鑰樣式，空白(含換行)壓為單一空格、修剪頭尾，超過n字以strTruncate截斷(補刪節號)
  *
+ * n之檢查由本函數自行負責，不依賴strTruncate對無效maxLen之處置(其maxLen為必須參數，無效即拋錯)：
+ * 以wsemi iseint之count判定(0～4294967295之安全整數，數字或可無損轉數字之字串皆可，如80、'80')，有效才轉為數字(Number(n))交給strTruncate；
+ * 非有效值(未給、null、負數、小數、Infinity、'abc'、包裝物件、BigInt等)則不截斷，回壓平後之整行(與w-data-pipeline之oneline同語意)。
+ * 本函數僅供本檔使用(呼叫處n皆為字面80／60)，匯出僅為單元測試取用，不列入套件對外介面
+ *
  * @param {*} s 輸入文字(null與undefined視為空；無法轉字串者視為空)
- * @param {Number} n 輸入保留字數非負整數
+ * @param {Number|String} n 輸入保留字數非負整數(或可無損轉為非負整數之字串)，非有效個數則不截斷
  * @returns {String} 回傳單行字串
  */
 function oneline(s, n) {
@@ -63,7 +71,11 @@ function oneline(s, n) {
     catch {
         t = ''
     }
-    return strTruncate(t.replace(/\s+/g, ' ').trim(), n)
+    let line = t.replace(/\s+/g, ' ').trim()
+    if (!iseint(n, { use: 'count' })) {
+        return line
+    }
+    return strTruncate(line, Number(n))
 }
 
 
@@ -306,4 +318,4 @@ function createAiEventLogger(opt) {
 
 
 export default logAiOutcome
-export { createAiEventLogger, OUTCOME_TEXT }
+export { createAiEventLogger, OUTCOME_TEXT, oneline }

@@ -5,7 +5,7 @@
 ## 通則
 
 - **R-AISHELL-1 既有函數行為不變**:本批只新增(`resolveCatalogue.mjs`、`createAiCaller.mjs`、`wkf/logAiOutcome.mjs`、`wkf/parseJsonArray.mjs`、`wkf/parseIndexList.mjs`、`wkf/makeArrayCoverageValidator.mjs`),唯一改動既有檔者為 `WDispatchAi.mjs`(多 8 個匯出鍵,25 → 33)與其測試;`dispatchAiFallback`、`callAiWithFallback`、`dispatchAiWkf`、`createFileStore`、`createUsageCounter`、`extractJsonLoose`、`salvageTruncatedArray`、`resolveProviders`、`readEnvFile` 零改動.盤點:`git diff --stat -- src` 僅應見 `src/WDispatchAi.mjs`.
-- **R-AISHELL-2 不依賴 w-data-pipeline**:盤點指令 `Grep "w-data-pipeline" src` 應僅見說明註解(`wkf/logAiOutcome.mjs` 檔頭)、不得有 import;`oneline` 於 `logAiOutcome.mjs` 內嵌(`strTruncate(String(s ?? '').replace(/\s+/g, ' ').trim(), n)` 等價,另先遮蔽金鑰樣式).
+- **R-AISHELL-2 不依賴 w-data-pipeline**:盤點指令 `Grep "w-data-pipeline" src` 應僅見說明註解(`wkf/logAiOutcome.mjs` 檔頭)、不得有 import;`oneline` 於 `logAiOutcome.mjs` 內嵌(`strTruncate(String(s ?? '').replace(/\s+/g, ' ').trim(), n)` 等價,另先遮蔽金鑰樣式;2026-11-02 r3da 起 `n` 先經 `iseint` 之 count 把關,無效則不截斷,見 R-LOG-2).
 - **R-AISHELL-3 失敗通道(規格〈輸入參數之檢測機制〉§5.1)**:同步工廠/組裝(`mergeCatalogue`、`timeoutPatch`、`resolveCatalogue`、`createAiCaller`、`makeArrayCoverageValidator`、`logAiOutcome`、`createAiEventLogger`)之必要參數不合規即 throw,先於副作用;`callAI` 為回結果物件者,不 reject,失敗以結果物件回報;opt 選填鍵不合規一律視為未給、改用預設(K3),不 throw;錯誤訊息不回顯輸入值(K9).
 - **R-AISHELL-4 日誌不外洩憑證(規格〈診斷輸出與遮罩〉D3/D4)**:`logAiOutcome`/`createAiEventLogger` 每行輸出前套 `maskApiKeys`,記錄器自身失敗吞掉;`createAiCaller` 回傳之 `providers` 含金鑰(JSDoc 警示勿寫日誌),其 `skipped`/`error` 字串只含 id 與變數名.
 - **R-AISHELL-5 與 srcRunner 原契約之字面一致(Gitea #42,2026-11-01 da42;主控裁定「行為與契約隨件移動、不改語意」)**:五處已改回原契約,各附盤點指令與判準(已套/刻意不套);契約字面逐字對照測試 `test/unit-srcRunnerContract.test.mjs`(18 條),其期望輸出逐字取自建議檔所引之 srcRunner 測試斷言(`unit-runner.test.mjs:263-297,359-384`、`unit-check-ai.test.mjs:44-97`)與建議檔 §7 驗證案;輸入物件依建議檔對各斷言之描述重建(srcRunner 原始碼本機無複本).
@@ -55,6 +55,26 @@
 5. 補強(規格 D3/D4):每行 `maskApiKeys`;記錄器拋錯/rejected Promise 吞掉(`callHookSync`).
 
 盤點/重跑:`npx mocha --no-parallel test/unit-logAiOutcome.test.mjs`(34 條).
+
+## R-LOG-2 `oneline` 自行檢查截斷字數 n(`src/wkf/logAiOutcome.mjs`;2026-11-02 r3da,wsemi 第 221 項第二批第 3 輪「下游先行」)
+
+背景:wsemi 第 3 輪後 `strTruncate(str, maxLen, opt)` 之 `maxLen` 為必須參數(`iseint` 之 count),未給或非預期即拋錯(現行 1.9.44 為「原樣回傳不截斷」).下游先自行檢查、轉型其傳入值,不依賴 wsemi 之寬鬆處置(dspec〈輸入參數之檢測機制〉§11 第 18 項).
+
+規則:
+1. `oneline(s, n)` 以 `iseint(n, { use: 'count' })`(0～4294967295 之安全整數,數字或可無損轉數字之字串,如 `80`、`'80'`、`'1.5e1'`)判定 n:**有效才 `strTruncate(line, Number(n))`**(交給它的恆為 number);**無效(未給、`null`、負數、小數、`Infinity`、`'abc'`、`''`、`'0x10'`、`>4294967295`、包裝物件、陣列、BigInt、Symbol、取值即拋錯之物件…)一律不截斷,回壓平後之整行**,不 throw.與 w-data-pipeline 1.0.25 之 `oneline` 同語意.
+2. **有效輸入之輸出逐字不變**:對照修前公式 `strTruncate(壓平行, n)`(以現行 wsemi 為底),20 種輸入 × 16 個有效 n 共 320 組全等(`unit-onelineStrictN`).修前後之行為差異僅限**無效 n**,現行 wsemi 下 4 案:`'0x10'`(修前截 16)、`new Number(80)`／`new String('80')`(修前截 80)、取值即拋錯之物件(修前拋錯),現況皆回整行;呼叫處 n 皆為字面 `80`／`60`,故對外輸出不變.
+3. `oneline` 具名匯出**僅供單元測試取用**,不在 `WDispatchAi` 之匯出鍵內(`WDispatchAi.mjs` 只引 `default`、`createAiEventLogger`、`OUTCOME_TEXT`).
+4. **src 內全部 wsemi `strTruncate(` 呼叫站點之 `maxLen` 須為非負整數字面**(字面恆為 `iseint` count 有效值),唯一例外為 `wkf/logAiOutcome.mjs` 之 `Number(n)`(前有 `iseint` 把關).盤點(2026-11-02):46 站點 = 45 字面(`500`×31、`1000`×7、`200`×3、`80`×2、`64`×1、`60`×1)＋1 例外;分佈:`dispatchApiAnthropic` 15、`dispatchApiOpenaiResponses` 10、`dispatchApiOpenaiCompat` 7、`dispatchApiTypesafeSystemone` 5、`probeAnthropicKeys` 4、`runExecCli` 2、`callUserFn` 1、`filterOpencodeFree` 1、`logAiOutcome` 1.新增站點若 `maxLen` 為變數或運算式,盤點測試即失敗,須先檢查再於本節登記.
+5. `interp1`／`arrGroupByMaxmin`／`arrLookupByMaxmin`:本套件 `src` 內零站點(`Grep "interp1|arrGroupByMaxmin|arrLookupByMaxmin" src` 0 筆).
+
+前瞻驗證(嚴格版替身):`test/tools/strictStrTruncateForTest.mjs` 依第 3 輪契約實作(`maxLen` 先查、須 `iseint` count,否則拋錯;有效時輸出與現行 `strTruncate` 逐字相同並記錄呼叫之 `maxLen` 型別);`test/tools/strictStrTruncateHooksForTest.mjs` 以 `module.register` 的 resolve hook 依「解析後 URL」把 `wsemi/src/strTruncate.mjs` 換成替身(src 與 wsemi 皆不改);`test/tools/probeOnelineStrictForTest.mjs` 於子行程在替身下跑 src 之 `oneline`／`logAiOutcome`／`createAiEventLogger`.n 輸入表 `test/tools/onelineCasesForTest.mjs`(40 案)測試與探針共用.
+
+測試:`test/unit-onelineStrictN.test.mjs`(9 條)、`test/unit-strTruncateSites.test.mjs`(6 條).
+盤點/重跑:`node node_modules/mocha/bin/mocha.js --no-parallel test/unit-onelineStrictN.test.mjs test/unit-strTruncateSites.test.mjs test/unit-logAiOutcome.test.mjs`(49 條);站點盤點 `Grep "strTruncate\(" src`(46 筆).
+
+## 變異驗證表(r3da,R-LOG-2;`tmp/r3da/variants.mjs` 於 `tmp/r3da/v/<id>/` 建 `src`＋`test` 副本逐一套用,跑 `unit-onelineStrictN`＋`unit-strTruncateSites`＋`unit-logAiOutcome` 三檔;repo 內檔案不動;經 `quiet-run --lock`)
+
+共 15 個變異,**15/15 被抓到**(括號為失敗條數):M1 移除 `iseint` 檢查(6)、M2 `strTruncate(line, n)` 不轉數字(4)、M3 `iseint(n)` 預設 safe 範圍(3;現行 wsemi 下輸出不變,直接呼叫之測試抓不到,由嚴格版替身與站點盤點之原始碼檢查抓到)、M4 `use: 'byte'`(5)、M5 以 `Number.isInteger(Number(n))` 取代 `iseint`(6)、M6 無效 n 回空字串(4)、M7 無效 n 當 0 截斷(5)、M8 `parseInt(n)` 取代 `Number(n)`(5)、M9 不壓平空白(7)、M10 `oneline(reason, 80)`→100(2)、M11 冷卻 60→80(2)、M12 他檔站點 `maxLen` 改變數(1)、M13 他檔站點缺 `maxLen`(1)、M14 測試工具:resolve hook 不重導(2)、M15 測試工具:替身不拋錯(2).**修前紅**:HEAD 之 `logAiOutcome.mjs`(僅加 `oneline` 匯出,否則因缺匯出而紅,不是因行為而紅)搭三檔,49 條中 6 failing(`unit-onelineStrictN` 4、`unit-strTruncateSites` 2)、43 passing(既有 34 條＋新增 9 條,含有效輸入逐字不變、替身自證、站點盤點不空等「不得改變」守門);嚴格版替身下修前碼對 40 案中 28 案(全部無效 n)拋錯、現況 0 案.
 
 ## R-PARSE-1 嚴格解析與涵蓋率驗證(`src/wkf/parseJsonArray.mjs`、`parseIndexList.mjs`、`makeArrayCoverageValidator.mjs`)
 

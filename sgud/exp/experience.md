@@ -102,3 +102,13 @@
 - **建構值要先正規化再 `Math.min`**:建構期 `budgetMs` 放在 `base` 時是原樣(「非 undefined/null 即收」,檢核交 `dispatchAiFallback`),若直接 `Math.min(base.budgetMs, 逐次值)`,建構值為 `'abc'` 時得 `NaN`,`dispatchAiFallback` 的 `castPintOr(NaN)` 視為不限,**靜默放寬**(變異 M6 抓到).故建構值也經 `castPintOr`,非法視同未給——與 `dispatchAiFallback` 對 `budgetMs` 之判定一致.
 - **逐次值要「不殘留」**:`callOpt` 每次呼叫自 `{ providers, ...base }` 新建,逐次結果只寫 `callOpt`、不寫 `base`;同一 caller 連呼三次(逐次 120000／未給／逐次 300000 → 期望 120000／600000／300000)證明,變異 M5(寫回 `base`)抓到.
 - **就地變異 src 時,跨行 `from` 會因 CRLF 對不上**:本套件檔案為 CRLF,`'…\n…'` 形式之 `from` 不吻合(M4 第一次 APPLY_FAILED);錨點改取單行唯一片段.變異腳本於 `finally` 還原並以 sha256 回驗(`RESTORED_OK`),且先備份一份到 `tmp/`.
+
+## `oneline` 自行檢查截斷字數 n 與 `strTruncate` 站點盤點(2026-11-02 r3da;帳本 `rulebook_aishell.md` R-LOG-2)
+
+- **下游先行:先自行檢查、轉型傳給 wsemi 之值,不倚賴 wsemi 寬鬆處置**.`iseint(n, { use: 'count' })` 有效才 `Number(n)` 交出,無效不截斷(不是當 0、也不是丟錯).與 w-data-pipeline 1.0.25 之 `oneline` 同語意;之後 wsemi 把 `strTruncate` 之 `maxLen` 改為必須參數,下游碼不必再動.
+- **舊 `isp0int`／`cint` 的寬鬆與 `iseint` 的差異點只在邊界值**(現行 wsemi 下實測 40 案中 4 案不同):`'0x10'` 舊截 16、`new Number(80)`／`new String('80')` 舊截 80、取值即拋錯之物件舊碼會拋;`undefined`／`null`／負數／小數／`Infinity`／`'abc'` 舊碼本就回整行.有效數字與數字字串(`'80'`、`' 80 '`、`'1.5e1'`)兩者一致.凡要換掉「寬鬆判斷」處,先以輸入表實跑舊碼與新碼對照,別憑印象說「行為不變」.
+- **內部函數要測 n 的全輸入表就得匯出**:`oneline` 呼叫處 n 皆為字面,從 `logAiOutcome` 外部碰不到;做法是具名匯出 `oneline`(僅供測試,`WDispatchAi` 不引、不入對外鍵),JSDoc 註明.
+- **前瞻驗證下游(讓 src 內的 import 在測試中換成嚴格版,不改 src 與 wsemi)**:`module.register` 掛 resolve hook,對 `nextResolve` 之結果以「解析後 URL」比對(`/wsemi/src/strTruncate.mjs$`)再短路到替身,這樣 src 的 `'wsemi/src/strTruncate.mjs'` 與 wsemi 內部相對 import 皆被換;**動態 `import()` 須在 `register` 之後**(靜態 import 早於 hook);替身自己的 parentURL 不重導.須在子行程(`spawnSync(process.execPath, [探針])`)跑,hook 才不污染 mocha 行程.替身要**自記錄呼叫**(`globalThis` 計數與 `maxLen` 型別),測試斷言「確實被用到、交進去的是 number」,否則 hook 失效時測試空轉(變異 M14／M15 即證此點);替身**先查 `maxLen` 再查 `str`**(空字串亦拋),比真契約更嚴.
+- **修前紅的修前碼要「HEAD 版＋僅加匯出」**:否則測試因缺匯出而 `SyntaxError`,是假紅.副本放 repo 內 `tmp/<案>/v/<id>/`(`src`＋`test` 副本),讓 `node_modules` 由上層走訪解析,不用 junction.變異與修前紅同一腳本批次跑、結果落 json.
+- **站點盤點寫成測試而非一次性報告**:掃描器(括號配平、字串、模板字串含 `${}`、註解)抓出每個 `strTruncate(` 的頂層引數,斷言第 2 引數為非負整數字面;用合成片段自測掃描器(含巢狀括號、字串內逗號、模板字串),並斷言「掃出站點數 = 檔內出現次數」防遺漏.字面恆為 `iseint` count 有效值,故不必再逐站查;新增站點若用變數即失敗.
+- **含不可見字元之測試字面(NBSP、全形空白)用 `String.fromCharCode` 組**,直接貼進原始碼在 Edit 時對不上、肉眼也看不出.測試裡的 `new Number()`／`new String()` 包裝物件測資照專案慣例加 `// eslint-disable-line no-new-wrappers`;字串內放 `${` 的合成原始碼片段加 `no-template-curly-in-string`.

@@ -220,7 +220,7 @@ callAiWithFallback預設自動掛上(傳promptPrefix:''關閉)，
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line37">line 37</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line40">line 40</a>
     </li></ul></dd>
     
 
@@ -4901,7 +4901,7 @@ console.log(castPintOr(undefined, null))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line77">line 77</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line89">line 89</a>
     </li></ul></dd>
     
 
@@ -7238,7 +7238,7 @@ onUsage於try事件(實際送出嘗試)時以providerId呼叫，與createUsageCo
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line289">line 289</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line301">line 301</a>
     </li></ul></dd>
     
 
@@ -16931,7 +16931,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line93">line 93</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line105">line 105</a>
     </li></ul></dd>
     
 
@@ -24716,7 +24716,7 @@ console.log((await judgeTruncated({ finishReason: 'length', content: '[{"a":1},'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line131">line 131</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line143">line 143</a>
     </li></ul></dd>
     
 
@@ -25222,7 +25222,7 @@ log缺或非物件即throw，result非物件則無事可記(不throw)；整行�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line233">line 233</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line245">line 245</a>
     </li></ul></dd>
     
 
@@ -26392,7 +26392,7 @@ console.log(base)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line142">line 142</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line154">line 154</a>
     </li></ul></dd>
     
 
@@ -26871,13 +26871,17 @@ console.log(normalizeFinishReason(' LENGTH '), normalizeFinishReason(null))
 <dl class="details">
     
     <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>壓成單行並截斷：先遮蔽Anthropic金鑰樣式，空白(含換行)壓為單一空格、修剪頭尾，超過n字以strTruncate截斷(補刪節號)</p></li></ul></dd>
+    <dd class="tag-description"><ul class="dummy"><li><p>壓成單行並截斷：先遮蔽Anthropic金鑰樣式，空白(含換行)壓為單一空格、修剪頭尾，超過n字以strTruncate截斷(補刪節號)</p>
+<p>n之檢查由本函數自行負責，不依賴strTruncate對無效maxLen之處置(其maxLen為必須參數，無效即拋錯)：
+以wsemi iseint之count判定(0～4294967295之安全整數，數字或可無損轉數字之字串皆可，如80、'80')，有效才轉為數字(Number(n))交給strTruncate；
+非有效值(未給、null、負數、小數、Infinity、'abc'、包裝物件、BigInt等)則不截斷，回壓平後之整行(與w-data-pipeline之oneline同語意)。
+本函數僅供本檔使用(呼叫處n皆為字面80／60)，匯出僅為單元測試取用，不列入套件對外介面</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line58">line 58</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line66">line 66</a>
     </li></ul></dd>
     
 
@@ -26980,6 +26984,9 @@ console.log(normalizeFinishReason(' LENGTH '), normalizeFinishReason(null))
             
                 
 <span class="param-type">Number</span>
+|
+
+<span class="param-type">String</span>
 
 
 
@@ -26990,7 +26997,7 @@ console.log(normalizeFinishReason(' LENGTH '), normalizeFinishReason(null))
 
             
 
-            <td class="description last"><p>輸入保留字數非負整數</p></td>
+            <td class="description last"><p>輸入保留字數非負整數(或可無損轉為非負整數之字串)，非有效個數則不截斷</p></td>
         </tr>
 
     
@@ -28153,7 +28160,7 @@ console.log(parseJsonArray('[{"index":1},{"index":2')) //截斷, 不搶救
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line120">line 120</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line132">line 132</a>
     </li></ul></dd>
     
 
@@ -37404,7 +37411,7 @@ console.log(w.label, w.remainingPercent)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line183">line 183</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line195">line 195</a>
     </li></ul></dd>
     
 
@@ -37562,7 +37569,7 @@ console.log(w.label, w.remainingPercent)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line153">line 153</a>
+        <a href="wkf_logAiOutcome.mjs.html">wkf/logAiOutcome.mjs</a>, <a href="wkf_logAiOutcome.mjs.html#line165">line 165</a>
     </li></ul></dd>
     
 
@@ -38402,7 +38409,7 @@ console.log(w.label, w.remainingPercent)
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Mon Nov 02 2026 17:26:34 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Mon Nov 02 2026 18:06:01 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
