@@ -1,0 +1,30 @@
+# 規則帳本(類型:OpenCode Console 端點與文件對齊)
+
+> 類型說明:OpenCode Zen 已改名 OpenCode Console,官方 API 基底為 `https://opencode.ai/inference` 並依協定分流.本檔記內建 `providers` 中經 `opencode.ai` 之 REST 條目之 `baseURL`、各轉接器 JSDoc/README 之範例、`providers.mjs` 檔頭「接入方式」段之對齊規則(R-CONSOLE-1).主檔索引見 `sgud/rule/rulebook.md`;免費條目之增刪與漂移判準見 `rulebook_opencodefree.md`(R-OCFREE-1～2).
+> 來源:Gitea issue #63(提出端 tai-kns-trade,2026-11-03);主控任務 20261103173524 之 da63.**草案只作參考**,以下事實皆為 2026-11-03 當日重查官方文件與實測所得(證據夾 `agent-out/da63-evidence/`).
+
+## OpenCode Console 端點與文件對齊(2026-11-03 立)
+
+### 當日事實(官方文件 + 實測;皆 2026-11-03,opencode 1.19.5)
+
+| 事項 | 官方文件 | 實測 |
+|---|---|---|
+| 基底與分流 | `https://opencode.ai/v2/docs/console/api/inference/`:基底 `https://opencode.ai/inference`;`/inference/openai/v1/chat/completions`、`…/responses`、`/inference/anthropic/v1/messages`、`/inference/google/v1beta/models/<model>:generateContent`;「Each model is served by one API family」;清單 `/inference/v1/models` | `/inference/v1/models` 匿名 200(79 個,免費 9 個)、`/inference/openai/v1/models` 404、`/zen/v1/models` 200 |
+| 端點欄 | `…/console/models/`:`jev-1.13-free` → `https://opencode.ai/inference/systemone/v1/systemone`;對話型免費 → `/inference/openai/v1/chat/completions`(列 `pulse-alpha-free`、`nemotron-3.5-super-vl-free`;仍列已下架之 `nemotron-3-ultra-free`) | `jev-1.13-free` 三路徑(新/`/inference/v1`/`/zen/v1`)匿名各 1 次皆 200(noul 0.97/0.97/0.98),新路徑帶第 1 把金鑰 200、`billing_source: free` |
+| 清單隨金鑰而異 | `…/console/api/`:金鑰前綴 `oc_sk_`,可限制權限範圍 | 本機第 1 把 9 個(皆免費)、第 2 把 79 個、匿名 79 個;`jev-1.13-free` 不在任一清單 |
+| 免費層 | `api/inference`、`harnesses`:免費對話模型離開 OpenCode 一律 403(即使帶金鑰) | 匿名、第 1、2 把金鑰直呼 `mimo-v2.6-flash-free` 皆 429 `FreeUsageLimitError`;CLI 匿名呼叫 `big-pickle`、`nemotron-3.5-super-vl-free`、`pulse-alpha-free` 皆逾時並見 `Free usage limit reached`(CLI 與 REST 共用額度) |
+| 預算 | `…/console/budgets/`:429 `Upstream request failed: Policy budget exceeded`(免費模型與 Go 額度內不計預算) | 未重現(本機無預算限制) |
+| Go | `…/console/harnesses/`:基底 `/inference/go`,必帶 `x-opencode-session`;付費與 Go 文字模型可經任一協定、非原生者由 Console 轉譯 | 假金鑰打 `/inference/go/openai/v1/chat/completions` 回 400 `MissingSessionID`(先於金鑰檢查);轉譯**未實測**(須付費模型) |
+| `/messages` 憑證 | — | 假金鑰:`x-api-key` 與 `Authorization: Bearer` 皆 401 `Upstream request failed: Invalid credential`;不帶憑證 401 `AuthError Missing API key`;成功路徑未實測 |
+| 舊網址 | — | `opencode.ai/zen`、`/docs/zen/`、`/docs/zh-tw/zen/` 皆 302 轉至 Console 頁 |
+
+### R-CONSOLE-1 規則
+
+- 規則:①內建 `providers` 中 `baseURL` 在 `https://opencode.ai/` 之條目,`baseURL` 須等於其 `kind` 之官方端點欄基底:`api-openai-compat`／`api-openai-responses` → `https://opencode.ai/inference/openai/v1`,`api-typesafe-systemone` → `https://opencode.ai/inference/systemone/v1`(轉接器在其後固定接 `/chat/completions`／`/responses`／`/systemone`);**不留 `/zen/v1`、`/inference/v1` 舊路徑退路**(舊路徑當日實測仍通,但官方已不列;`dspec` 不留相容層).②三個 REST 轉接器之 JSDoc 與 README 範例:`opencode.ai` 之 `baseURL` 用上列官方路徑、金鑰字面用 `oc_sk_` 前綴、付費模型範例用當日仍在清單之付費模型(`gpt-6-luna`,`/responses` 家族,假金鑰實測 401);歷史段(「為何需要」段之歷史事實、漂移紀錄)與**已發布版本**之行為變更條目維持原文.③`providers.mjs` 檔頭〈接入方式〉段:權威來源列 `api/inference`、`models`、`api`、`harnesses`、`budgets` 五頁;載明 `/inference/v1/models` 匿名可查、隨金鑰縮減、`jev-1.13-free` 不在清單之例外;改名與分流段;端點表為分流後完整路徑;收錄檢核①（含例外）②（kind×baseURL、`/messages` 憑證探測結果）;診斷流程:429 分 `FreeUsageLimitError`（免費額度用盡,CLI 與 REST 共用,改收 `oc:` 無濟於事)與 `Policy budget exceeded`（預算用盡,非限流),400 `MissingSessionID`.④條目 id 之 `zen:` 前綴**不改**:id 是 `pick`、遞補游標、冷卻狀態之鍵,更名為破壞性變更(`pick` 落入 `missing`).原則 14 允許破壞性變更（不做舊版相容、由下游連帶修正）,但以「程式碼品質優先」為前提;此處改名只有名稱一致性之收益（`zen:` 與 `oc:`、`agnes:` 同為不透明之路徑前綴,不要求展開為閘道現名),代價是同時動檔頭 id 命名規則、README、測試、全域技能 `dispatch-*` 與下游 `pick` 名單,且須無相容別名（原則 14）,故判不改;使用者若要改,屬機械性全面改名,列為需裁示;下游 tai-kns-trade 與 tai-news-ai 之 `providerPick` 皆不含此條,不影響但屬套件對外契約.⑤「打錯端點必然失敗」限定於**免費模型**(殷鑑為免費模型之 muse-spark);付費與 Go 模型跨協定轉譯(harnesses 頁)與「每個模型只屬一種 API 家族」(api/inference 頁)並存,須以付費模型實測後才能改此段(**待重驗**,本輪不產生費用).⑥連網守門 `test/api-providersConsoleEndpoint.test.mjs`:對官方〈Models〉頁逐條核對 REST 條目之 `baseURL＋kind 路徑` = 端點欄;離線/頁面無端點欄時略過並印原因,**頁面可讀卻查無該 model 列時紅燈**(視為官方已不列/改名,依收錄檢核重查).
+- 已知限制:①只核對官方文件頁之端點欄,不驗證模型當下是否可用(可用性見 R-OCFREE-2);②〈Models〉頁以 HTML 轉文字解析,頁面改版（無端點欄)時守門略過而非通過,須人工留意略過訊息;③付費模型之成功路徑（跨協定轉譯、`api-anthropic` 走 Console、`api-openai-responses` 走 Console）**未實測**;④`FreeUsageLimitError` 何時恢復、是否按 IP/帳號計未驗證.
+- 盤點指令:`Grep "baseURL: 'https://opencode.ai" src`(條目站點全集:僅 `zen:jev-1.13-free`);`Grep "opencode\.ai/(zen|inference/v1)|opencode\.ai/docs" src README.md`(殘留舊網址,歷史段與已發布行為變更條目不在此限);`curl -s -o /dev/null -w "%{http_code}" https://opencode.ai/inference/v1/models`(清單例外仍成立).
+- 判準:已套＝站點全集皆符合上列①;JSDoc/README 範例符合②;檔頭符合③;未套＝條目 baseURL 落在舊路徑或 kind 與路徑不符、範例沿用 `/zen/v1`、`sk-`、已下架模型;刻意不套＝歷史段與已發布版本行為變更條目(維持原文)、`zen:` 前綴(④).
+- 對應測試:`test/unit-providersConsoleEndpoint.test.mjs`(14 條,離線:kind×baseURL、無舊路徑、實際送往 `/inference/systemone/v1/systemone` 且 Bearer 帶出、範例 URL/金鑰前綴/下架模型、README 自帶條目、檔頭權威來源/清單匿名/端點表/收錄檢核/診斷段）;`test/api-providersConsoleEndpoint.test.mjs`(連網 1 條,⑥);`test/unit-providersOpencodeFreeEntries.test.mjs`（新增 2 條:`nemotron-3.5-super-vl-free` 保留、`pulse-alpha-free` 未收且條目數 29).修前紅（HEAD 之 `src`／`README.md` 解到 `tmp/da63/head/` 搭本輪三個測試檔）:22 案中 15 failing、7 passing（5 既有＋2 為「不得改變」守門）;修後 22 passing;全套 `npm test` 999 passing（開工時 982）.完整記錄見 `agent-out/da63-修正報告.md`.
+- 指令:`npx mocha --no-parallel test/unit-providersConsoleEndpoint.test.mjs test/unit-providersOpencodeFreeEntries.test.mjs test/api-providersConsoleEndpoint.test.mjs --timeout 180000`(後者連網).
+- 變異驗證(2026-11-03,`tmp/da63/mutate.mjs`〔副本存證據夾 `agent-out/da63-evidence/scripts/`〕,在 `tmp/da63/mut/` 副本上套用,node 沿祖先取 repo 之 `node_modules`):M1～M26 共 26 個,最終測試下**全數被抓到**（0 存活）;涵蓋 jev `baseURL` 五種錯值（M1～M3、M5 含連網守門;M4 `kind` 改錯）、轉接器路徑尾綴 M8、收錄決策反向（M6 收 `pulse-alpha-free`、M7 下架 `nemotron-3.5-super-vl-free`)、檔頭各段退回舊文字（M9～M19）、JSDoc/README 範例退回舊值（M20～M26）.首輪 M19（刪 x-api-key 探測結果）存活——斷言只查 `x-api-key` 字樣,而②條原文本就含該字;改為須命中「2026-11-03以假金鑰探測」該句內之 `x-api-key…Invalid credential` 後被抓到.教訓:斷言所查之字樣若在同一區段別處也出現,變異刪掉目標句仍綠,須錨定在目標句.
+- 文件同步點:`README.md`（端點表、Functions 表、jev 兩條路、自帶條目範例、行為變更紀錄第 61 條);`src/providers.mjs` 檔頭與 jev 條目註解;`dispatchApiOpenaiCompat.mjs`／`dispatchApiOpenaiResponses.mjs`／`dispatchApiTypesafeSystemone.mjs` 之 JSDoc;下游全域技能 `dispatch-*` 之文字由主控處理(本輪不改 `w-data-aisetting`).

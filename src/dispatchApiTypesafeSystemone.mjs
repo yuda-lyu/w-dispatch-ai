@@ -46,7 +46,7 @@ import describeNonJsonBody from './describeNonJsonBody.mjs'
 //   {detail:[{type,loc,msg,...}]}。皆以HTTP <code>回報、原始本體置stderr; 4xx(429除外)不重試。
 //
 // 【預設帶Accept-Encoding: identity(2026-09-24起)】防伺服器壓縮卻漏標Content-Encoding而令fetch不解壓、
-//   JSON.parse失敗; 與dispatchApiOpenaiCompat同一決策與依據(見該檔檔頭; 本kind亦經Zen之/systemone), opt.headers可覆寫。
+//   JSON.parse失敗; 與dispatchApiOpenaiCompat同一決策與依據(見該檔檔頭; 本kind亦經OpenCode Console〔原Zen〕之/inference/systemone/v1/systemone), opt.headers可覆寫。
 //   HTTP 200但本體非JSON時另報INVALID_RESPONSE: body is not JSON(附原始位元組資訊), 與「缺answers」分開
 //   (同dispatchApiOpenaiCompat, 見describeNonJsonBody.mjs)。
 //

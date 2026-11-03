@@ -23,7 +23,7 @@ Note:
 - `dispatchCodex` needs [OpenAI Codex CLI](https://github.com/openai/codex) (`codex`) in system PATH, and uses its existing login state.
 - `dispatchOpencode` needs [opencode CLI](https://opencode.ai/) (`opencode`) in system PATH. Unlike the other two, it accepts a per-call `key`+`provider`, injected through `OPENCODE_AUTH_CONTENT`, so multiple api keys can be rotated without rewriting `auth.json`.
 - `dispatchAntigravity` needs [Google Antigravity CLI](https://antigravity.google/) (`agy`, not `antigravity`) in system PATH, and uses its existing OAuth login state (first login requires an interactive desktop session). Unlike the other three, agy takes the prompt via the `--print` flag instead of stdin, so the prompt is capped at 30000 chars (Windows command line limit); longer prompts return an error result.
-- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Zen](https://opencode.ai/docs/zen) `https://opencode.ai/zen/v1` (official docs list `https://opencode.ai/inference/v1` since 2026-10-13, and both bases worked that day; same `sk-...` keys as opencode cli, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **most of its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead** (the gate is applied per model: `jev-1.13-free` on `/systemone` still accepts REST; `space-bunny-free` also did until the exception was revoked on 2026-10-13)) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
+- `dispatchApiOpenaiCompat` needs **no cli and no login**: it calls any OpenAI-compatible endpoint directly by fetch. Known-working gateways (verified 2026-08-11): [OpenCode Console](https://opencode.ai/v2/docs/console/api/inference/) (formerly Zen) `https://opencode.ai/inference/openai/v1` (the official docs split the gateway by protocol under `https://opencode.ai/inference`, so the old `https://opencode.ai/zen/v1` and `https://opencode.ai/inference/v1` bases are no longer documented; `oc_sk_...` keys from the Console, model names without the `opencode/` prefix, e.g. `kimi-k2.7-code`; **most of its free models reject REST since 2026-09-17 with 403 FreeTierError and must go through the opencode cli instead** (the gate is applied per model: `jev-1.13-free` on `/systemone` still accepts REST; `space-bunny-free` also did until the exception was revoked on 2026-10-13)) and Agnes `https://apihub.agnes-ai.com/v1` (model `agnes-3.0-flash`). Note claude/codex use subscription login state, not api keys, so they cannot be called this way.
 - Each cli adapter also accepts an `exe` option to pin the executable path, useful when the CLI is not in PATH (e.g. Windows Task Scheduler environments).
 - For the other three adapters the prompt is always passed through stdin, never as a positional argument, so a prompt of tens of thousands of characters will not cause `ENAMETOOLONG`.
 - All functions never reject. Success or failure is reported by the `ok` and `error` fields of the result object. Since 1.0.49 this also holds when injected callbacks (`validate`, workflow `check`／`parse`／`prompt`, `shouldStop`, `coolDetect`, `onEvent`, `store`, `stamp`, `getDate`, `keyOf`) throw, reject or never settle, and when caller objects cannot be read (a throwing getter or revoked Proxy in `env`／`headers`／`body`／provider entries → `errorType: 'params'`). Out of contract (may still reject, crash or hang): `opt` itself being a hostile Proxy (including throwing getters on `opt`); scalar or array option values that are revoked Proxies or whose `Symbol.toStringTag` throws (e.g. `model`, `extraArgs`, `addDirs`, an entry's `keys`／`id`, the `stages`／`agents` arrays themselves; `prompt`／`task` are read as primitive strings and reported as `params` when unreadable); injected functions that are themselves hostile objects (a function whose `Symbol.toStringTag` getter throws); a rejected native Promise whose `constructor` getter throws (its rejection cannot be handled from JavaScript); synchronous infinite loops or endless microtask chains inside a callback (timeouts need the event loop to advance); errors thrown in `onStdout`／`onStderr` (not intercepted, see Options shared); and a `store` that violates its contract (see the `store` row).
@@ -41,7 +41,7 @@ Note:
 | `dispatchCodex(prompt, opt)` | call a gpt model by openai codex cli |
 | `dispatchAntigravity(prompt, opt)` | call an ai model by google antigravity cli (`agy`), a multi-model gateway (gemini, claude, gpt-oss) |
 | `dispatchApiOpenaiCompat(prompt, opt)` | call an ai model by direct fetch to any OpenAI-compatible API (`baseURL`+`key`+`model`), no cli and no login required |
-| `dispatchApiOpenaiResponses(prompt, opt)` | same, but for the OpenAI **Responses API** (`/responses`) — required by model families that are not served on `/chat/completions` (e.g. OpenCode Zen's muse-spark and GPT families) |
+| `dispatchApiOpenaiResponses(prompt, opt)` | same, but for the OpenAI **Responses API** (`/responses`) — required by model families that are not served on `/chat/completions` (e.g. OpenCode Console's GPT and Grok families) |
 | `dispatchApiAnthropic(prompt, opt)` | call a claude model by direct fetch to the **Anthropic Messages API** (`POST /v1/messages`, `x-api-key` + `anthropic-version`), text generation only, billed to an Anthropic Console API key (`.env` `ANTHROPIC_KEYS`) |
 | `dispatchApiTypesafeSystemone(prompt, opt)` | call TypeSafe's **jev** decision model (`POST /v1/systemone`): not text generation — the prompt is the state to evaluate and `opt.questions` defines typed yes/no, choice and score questions; returns typed `answers` with probabilities (API only, TypeSafe has no cli) |
 | `providers` | curated provider entries verified by real tests (cli and rest paths), pick or use all via `resolveProviders` |
@@ -311,6 +311,9 @@ await test()
 **未發布（Gitea #52，專案方 tai-kns-trade 建議；純新增選項，未給逐次 `budgetMs` 之既有呼叫行為不變）**：
 60. `createAiCaller(...).callAI(prompt, { budgetMs })` 新增**逐次預算**：`budgetMs` 為有效（正整數）時，本次整輪遞補預算＝`min(建構 budgetMs（未給或非法視為不限）, 逐次 budgetMs)`，即**逐次值只能收緊、不得放寬**建構預算；未給、`null` 或非法（非正整數）視為未給，沿用建構值（判定與逐次 `timeoutMs` 同法）。用途：整輪有總時間預算時，以「剩餘時間」封頂單次呼叫，免為逐次預算另建一次性 caller（另建會重跑 `resolveCatalogue`，且 `store`／用量計數器須自行共用）。逐次值只作用於該次呼叫，不改建構期設定；`dispatchAiFallback` 之 `budgetMs`／`minAttemptMs` 語意不變（逐次預算小於 `minAttemptMs` 時依其既有規則回 `budget exhausted`，是否「不開工」由呼叫端先判）。
 
+**未發布（Gitea #63，專案方 tai-kns-trade 建議；OpenCode Zen 已改名 Console，對齊官方路徑與文件；僅一個條目之網址改變，id、kind、回應格式不變）**：
+61. `zen:jev-1.13-free` 之 `baseURL` 改為官方〈Models〉頁端點欄之 `https://opencode.ai/inference/systemone/v1`（實際送往 `/inference/systemone/v1/systemone`；原 `https://opencode.ai/inference/v1`，不留舊路徑退路；2026-11-03 新舊路徑匿名各 1 次皆實測 200、答案一致，新路徑帶金鑰亦 200）。連帶：`dispatchApiOpenaiCompat`／`dispatchApiOpenaiResponses` 之 JSDoc 範例與本檔端點表改為官方分流路徑（`/inference/openai/v1`）與金鑰前綴 `oc_sk_`；`providers.mjs` 檔頭之權威來源、診斷段（`429` 分 `FreeUsageLimitError`〔免費額度用盡，CLI 與 REST 共用，改走 `oc:` 無濟於事〕與 `Policy budget exceeded`〔預算用盡，非限流〕；補 `400 MissingSessionID`）依 Console 現況改寫。內建 providers 條目數不變（29 條）；`oc:opencode/pulse-alpha-free` **未收**（當日免費額度用盡，R-OCFREE-2 之收錄實測做不完，列待辦）。自行以舊網址組 `zen:jev-1.13-free` 同類條目者請改用新 `baseURL`。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -383,15 +386,17 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 
 **混用才是常態**：同一條 `dispatchAiFallback` 鏈可逐條目混搭kind，工作流各階段亦然——產生候選與整合收斂等純文字階段走API，需要翻閱專案檔案的階段換CLI。
 
-**先選對端點型別，再選kind**：同一個閘道的不同模型可能走不同端點，打錯端點會得到 **HTTP 500 而非 404**，極易被誤判為「模型故障」而反覆重試。以 OpenCode Zen 為例（[官方端點對照表](https://opencode.ai/docs/zh-tw/zen/)，2026-09-03 查證）：
+**先選對端點型別，再選kind**：同一個閘道的不同模型可能走不同端點，打錯端點會得到 **HTTP 500 而非 404**，極易被誤判為「模型故障」而反覆重試。以 OpenCode Console（原 Zen）為例（[官方端點對照表](https://opencode.ai/v2/docs/console/models/)，路徑 2026-11-03 查證；基底 `https://opencode.ai/inference`，其後依協定分流）：
 
-| 端點 | 對應kind | 該端點之模型（Zen） |
+| 端點 | 對應kind（`baseURL`） | 該端點之模型（Console） |
 | --- | --- | --- |
-| `/v1/chat/completions` | `api-openai-compat` | deepseek／glm／kimi／minimax／nemotron／ling／mimo 等 |
-| `/v1/responses` | `api-openai-responses` | muse-spark 系、GPT 系、Grok 系 |
-| `/v1/systemone` | `api-typesafe-systemone` | jev 系（TypeSafe System One 決策模型，須給 `questions`） |
-| `/v1/messages` | Anthropic 官方端點用 `api-anthropic`；Zen 之 `/messages` 是否相容未驗證，仍改用 `opencode` CLI kind | Claude 系、Qwen 系 |
-| `/v1/models/<id>` | 本套件無（改用 `opencode` CLI kind） | Gemini 系 |
+| `/inference/openai/v1/chat/completions` | `api-openai-compat`（`https://opencode.ai/inference/openai/v1`） | deepseek／glm／kimi／minimax／nemotron／mimo 等 |
+| `/inference/openai/v1/responses` | `api-openai-responses`（同上） | GPT 系、Grok 系、Muse 系 |
+| `/inference/systemone/v1/systemone` | `api-typesafe-systemone`（`https://opencode.ai/inference/systemone/v1`） | jev 系（TypeSafe System One 決策模型，須給 `questions`） |
+| `/inference/anthropic/v1/messages` | Anthropic 官方端點用 `api-anthropic`；Console 之 `/messages` 是否相容尚未驗完（2026-11-03 假金鑰：`x-api-key` 與 `Bearer` 皆被辨識為憑證，成功路徑須付費模型，未實測），仍改用 `opencode` CLI kind | Claude 系、Qwen 系 |
+| `/inference/google/v1beta/models/<id>:generateContent` | 本套件無（改用 `opencode` CLI kind） | Gemini 系 |
+
+模型清單是唯一例外：`GET https://opencode.ai/inference/v1/models`（匿名亦可查；帶金鑰時清單依該金鑰之工作區與權限縮減，2026-11-03 本機一把金鑰僅見 9 個免費模型、另一把見 79 個）。官方 `harnesses` 頁載「付費與 Go 文字模型可經任一協定，非原生者由 Console 轉譯」，與 `api/inference` 頁「每個模型只屬於一種 API 家族」並存，付費模型跨協定是否可行**尚未實測**，本表仍以各模型之原生端點為準。
 
 實測佐證：`muse-spark-1.2/1.3` 走 `/chat/completions` 連續 10 次 500，同金鑰同模型改打 `/responses` 立即 200；且 1.2 於 2026-08-21 曾以 `/chat/completions` 成功——**閘道會事後改路由，「以前能用」不構成「現在該能用」**。完整診斷流程見 [src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 檔頭。
 
@@ -399,7 +404,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `baseURL` | String | 必填 | API基底網址，將於尾端接上`/chat/completions` |
-| `model` | String | 必填 | 模型ID（Zen之模型名不帶`opencode/`前綴） |
+| `model` | String | 必填 | 模型ID（Console 之模型名不帶`opencode/`前綴） |
 | `key` | String | `''` | API key，以`Bearer`置於`Authorization`標頭，省略代表不帶認證 |
 | `system` | String | `''` | system提示詞，置於messages首位 |
 | `body` | Object | `{}` | 額外請求本體（`temperature`、`max_tokens`、`response_format`等），同名鍵覆寫預設 |
@@ -633,7 +638,7 @@ let { providers: jev } = wdi.resolveProviders(wdi.providers, { env, pick: ['type
 let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 ```
 
-- **同一個 jev 有兩條路**：TypeSafe 官方端點（`typesafe:jev-latest`，用 `TYPESAFE_KEYS`）與 OpenCode Zen 轉售（`zen:jev-1.13-free`，端點 `/inference/v1/systemone`——2026-10-13 起之官方基底，舊 `/zen/v1/systemone` 同日仍可用；用 `OPENCODE_KEYS`；不帶金鑰亦可）。兩者用同一個 kind，答案一致（2026-09-22 實測同題 `choice` 相同、`noul` 差 0.01），額度池與故障域各自獨立，可互為遞補。Zen 對話型免費模型的 403 閘門**不套用**於 `/systemone`。
+- **同一個 jev 有兩條路**：TypeSafe 官方端點（`typesafe:jev-latest`，用 `TYPESAFE_KEYS`）與 OpenCode Console（原 Zen）轉售（`zen:jev-1.13-free`，端點 `/inference/systemone/v1/systemone`——2026-11-03 查證之官方端點欄路徑，條目 `baseURL` 為 `https://opencode.ai/inference/systemone/v1`；用 `OPENCODE_KEYS`；不帶金鑰亦可）。兩者用同一個 kind，答案一致（2026-09-22 實測同題 `choice` 相同、`noul` 差 0.01），額度池與故障域各自獨立，可互為遞補。Console 對話型免費模型的 403 閘門**不套用**於 `/systemone`。
 
 - **經工作流 `callAi` 呼叫時務必傳 `promptPrefix: ''`**：預設的防寫檔前綴會被當成 state 的一部分送去評估。
 
@@ -928,7 +933,7 @@ if (pm.missing.length > 0) {
 **自帶條目（新模型上線快於套件發版時）**：`resolveProviders` 第一參數就是普通條目陣列，安裝端把自訂條目**合併進輸入**再傳入即可，同 id 時以自訂者覆蓋內建：
 
 ```alias
-let extra = [{ id: 'zen:some-new-model-free', model: 'some-new-model-free', kind: 'api-openai-compat', envVar: 'OPENCODE_KEYS', baseURL: 'https://opencode.ai/zen/v1', body: { max_tokens: 8192 } }]
+let extra = [{ id: 'zen:deepseek-v4.1-flash', model: 'deepseek-v4.1-flash', kind: 'api-openai-compat', envVar: 'OPENCODE_KEYS', baseURL: 'https://opencode.ai/inference/openai/v1', body: { max_tokens: 8192 } }] //付費模型; 免費對話模型之 REST 遭免費層閘門擋下（403／429），須收 oc: 版
 let merged = [...wdi.providers.filter((p) => !extra.some((e) => e.id === p.id)), ...extra]
 let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 ```

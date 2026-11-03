@@ -25,19 +25,29 @@
 //   - 確認「確實走API金鑰」: CLI類以`--output-format stream-json --verbose`之首個system/init事件apiKeySource須為'ANTHROPIC_API_KEY'(必要條件, 充分條件另核對Console用量); REST類以回應之usage與Console用量。
 //
 // ══════════════════════════════════════════════════════════════════════════════
-// 【OpenCode Zen 接入方式——動 zen:條目前必讀, 免得又把「打錯端點」誤判成「模型壞了」】
+// 【OpenCode Console(原OpenCode Zen) 接入方式——動 zen:條目前必讀, 免得又把「打錯端點」誤判成「模型壞了」】
 // ══════════════════════════════════════════════════════════════════════════════
 //
-//   權威來源(有疑問先查, 不要憑既有條目推論; 2026-09-22改以v2為主, 因opencode已發布v2(2.0.6)且v1文件日後將移除):
-//     https://opencode.ai/v2/docs/console/models/  ← 【主】v2之Zen資料改名置於Console區塊, 含端點欄與計價表
-//     https://opencode.ai/inference/v1/models      ← 【可用性之唯一事實】當前可用model id清單(需Bearer金鑰)
-//     `opencode models opencode --refresh`         ← CLI側之同一事實(CLI catalog, 匿名亦可查)
-//     https://opencode.ai/docs/zen/                ← v1文件網址, 2026-10-13起內容與v2頁位元組完全相同(已併入v2)
+//   權威來源(有疑問先查, 不要憑既有條目推論; 2026-11-03逐頁重查: 官方文件與網站導覽已無Zen之名, 一律稱OpenCode Console):
+//     https://opencode.ai/v2/docs/console/api/inference/ ← 【主】Inference API: 基底https://opencode.ai/inference、各協定路徑、認證(Authorization: Bearer)、usage.opencode計費欄位
+//     https://opencode.ai/v2/docs/console/models/  ← 【主】各模型之端點欄(完整URL)與計價表
+//     https://opencode.ai/v2/docs/console/api/     ← 金鑰(前綴oc_sk_、有效期、權限範圍)、服務帳戶; 撤銷或過期回401, 超出金鑰權限回403
+//     https://opencode.ai/v2/docs/console/harnesses/ ← 付費與Go文字模型可經任一協定(非原生者由Console轉譯)、Go基底/inference/go與x-opencode-session
+//     https://opencode.ai/v2/docs/console/budgets/ ← 預算用盡之429(Upstream request failed: Policy budget exceeded)
+//     https://opencode.ai/inference/v1/models      ← 當前model id清單; 匿名亦可查(2026-11-03: 79個, 其中免費9個), 帶金鑰者依該金鑰之工作區與權限縮減
+//                                                    (同日本機第1把金鑰9個且皆免費、第2把79個), 故判「能不能用」須以實際要用的那把金鑰查;
+//                                                    jev-1.13-free不在任一清單卻可用(見收錄檢核①)
+//     `opencode models opencode --refresh`         ← CLI側之清單(CLI catalog, 匿名亦可查; 有本機快取, 見R-OCFREE-2④)
+//     舊網址opencode.ai/zen、/docs/zen/、/docs/zh-tw/zen/: 2026-11-03實測皆302轉至Console頁, 不再作為來源
 //
-//   ★ 端點基底改名(2026-10-13查證) ★ 官方文件與CLI目錄之端點基底已由https://opencode.ai/zen/v1改為
-//     https://opencode.ai/inference/v1(其後路徑不變: /chat/completions、/responses、/systemone…)。同日實測舊基底仍可用
-//     (/models清單、systemone作答、免費層閘門之回應皆與新基底相同); zen:jev-1.13-free已改用新基底。本檔以下沿用/zen/v1
-//     之記載多為改名前之實測紀錄, 皆可對應改讀為/inference/v1。條目id之zen:前綴為閘道名(OpenCode Zen), 不隨網址改。
+//   ★ 端點基底改名與分流(2026-11-03查證) ★ API基底為https://opencode.ai/inference, 其後依協定分流(見下方核心事實段),
+//     不再是單一的https://opencode.ai/inference/v1(2026-10-13之基底)或更早的https://opencode.ai/zen/v1。
+//     模型清單為例外: 官方仍是/inference/v1/models(同日實測200; /inference/openai/v1/models為404)。
+//     舊式jev路徑同日仍通: zen:jev-1.13-free於/inference/systemone/v1/systemone(官方)、/inference/v1/systemone、/zen/v1/systemone
+//     匿名各1次皆200(0.4~0.8s, noul 0.97/0.97/0.98), 新路徑帶第1把金鑰亦200; 惟官方文件已不列舊路徑, 本套件不留舊路徑退路——
+//     目錄內條目一律用官方端點欄所列之路徑(由test/unit-providersConsoleEndpoint.test.mjs與連網守門test/api-providersConsoleEndpoint.test.mjs固定)。
+//     本檔以下沿用/zen/v1之記載多為改名前之實測紀錄, 皆可對應改讀為分流後路徑。條目id之zen:前綴為閘道舊名, 改名不改id
+//     (id是pick、遞補游標、冷卻狀態之鍵, 更名即破壞性變更且無對應收益)。
 //
 //   ★ 兩份文件之模型集不一致, 且皆不等於可用性(2026-09-22逐一實測) ★
 //     v2頁列為Free但實測全不可用(CLI回UnknownError、REST回400 Upstream request failed: Model is unavailable):
@@ -49,48 +59,68 @@
 //       fledge已於2026-10-13下架並移除) / cat-jam-free、step-5-preview-free(2026-10-13查證: CLI 5.6~25.6s、REST皆403)
 //     文件與CLI目錄皆列但已下架: exo-free(2026-10-13: 不在/models清單, REST回HTTP 410 ModelDeprecated、
 //       CLI回「Model exo-free has been deprecated」, 各4次皆然)——「文件與目錄皆列」不等於可用之又一例。
-//     故判準固定為: 文件只用於「端點種類與計價」, 「能不能用」一律以/inference/v1/models或`opencode models`加實測為準。
+//     文件仍列但清單與CLI皆無: nemotron-3-ultra-free(2026-11-03官方〈Models〉頁仍列, 2026-10-30已查實下架並自本目錄移除)——再一例。
+//     故判準固定為: 文件只用於「端點種類與計價」, 「能不能用」一律以實際要用之金鑰查/inference/v1/models或`opencode models`加實測為準。
 //
-//   ★ 核心事實: zen「不是」單一OpenAI相容端點, 端點依模型家族而異 ★
-//     依官方文件之端點欄(2026-09-22以v2 Console/Models頁複查, 分佈與v1一致; 2026-10-13起基底為/inference/v1, 下列以舊基底記載):
-//       /zen/v1/chat/completions   @ai-sdk/openai-compatible  ← 本套件api-openai-compat僅支援此種
+//   ★ 核心事實: Console「不是」單一OpenAI相容端點, 端點依模型家族而異(官方: Each model is served by one API family) ★
+//     依官方〈Models〉頁之端點欄(完整URL; 2026-11-03當日重查路徑, 各家族之模型清單為先前查證之快照, 現況以該頁與/inference/v1/models各項之api欄為準):
+//       /inference/openai/v1/chat/completions  @ai-sdk/openai-compatible  ← 本套件api-openai-compat僅支援此種(baseURL給到/inference/openai/v1)
 //         mimo-v2.5-free / ling-3.0-flash-fin-free / nemotron-3-ultra-free /
 //         nemotron-3.5-lightning-free / big-pickle / space-bunny-free(2026-09-24查證) /
 //         ling-3.1-flash-free / longcat-2.5-preview-free(2026-10-03查證) / cat-jam-free / step-5-preview-free(2026-10-13查證) /
 //         glm-* / kimi-* / minimax-* / deepseek-v4-*
-//       /zen/v1/responses          @ai-sdk/openai        (OpenAI Responses API, 非chat/completions)
-//         muse-spark-1.2-contributor-free / muse-spark-1.3-contributor-free / GPT系 / Grok系
-//       /zen/v1/messages           @ai-sdk/anthropic     Claude系 / Qwen系(qwen3.5~3.7-plus/max)
-//       /zen/v1/models/<model-id>  @ai-sdk/google        Gemini系
-//       /zen/v1/systemone          (TypeSafe System One)  ← 本套件api-typesafe-systemone
-//         jev-1.13-free / jev-1.13 (2026-09-22查證; 非文字生成之決策模型, 須給questions)
+//       /inference/openai/v1/responses  @ai-sdk/openai  (OpenAI Responses API, 非chat/completions; baseURL同上)
+//         muse-spark-1.2-contributor-free / muse-spark-1.3-contributor-free(兩者免費版皆已下架; 2026-11-03該頁改列付費之muse-spark-1.2/1.3與muse-wonder-1.0) / GPT系 / Grok系
+//       /inference/anthropic/v1/messages  @ai-sdk/anthropic  Claude系 / Qwen系(qwen3.5~3.7-plus/max)
+//       /inference/google/v1beta/models/<model-id>:generateContent  @ai-sdk/google  Gemini系
+//       /inference/systemone/v1/systemone  (TypeSafe System One)  ← 本套件api-typesafe-systemone(baseURL給到/inference/systemone/v1)
+//         jev-1.13-free / jev-1.13 (2026-09-22查證, 2026-11-03端點欄複查; 非文字生成之決策模型, 須給questions)
+//     Go方案另有基底https://opencode.ai/inference/go(各協定路徑同上, 必帶x-opencode-session標頭); 本目錄無Go條目, 僅記於診斷流程。
 //
 //   ★ 因此: 模型出現在/models清單 ≠ 可用kind:'api-openai-compat'收錄 ★
 //     dispatchApiOpenaiCompat固定POST至<baseURL>/chat/completions(那是它的定義, 非bug),
-//     對走/responses或/messages的模型必然失敗, 且失敗碼是HTTP 500(不是404/400),
+//     對走/responses或/messages的免費模型必然失敗, 且失敗碼是HTTP 500(不是404/400),
 //     極易被誤讀為「模型故障, 等一下就好」而反覆重試——實際上再等一年也不會通。
 //     殷鑑(2026-09-03): muse-spark-1.2/1.3走/chat/completions連續10次500,
 //     同金鑰同模型改打/responses立即200且正常作答;
 //     且1.2於2026-08-21曾以/chat/completions實測3.9s成功——即opencode「事後改過路由」,
 //     故「以前能用」不構成「現在該能用」的證據, 一律回頭查文件端點欄。
+//     待重驗(2026-11-03): 官方harnesses頁載「付費與Go文字模型可經任一協定, 非原生者由Console轉譯」, 而api/inference頁載「每個模型只屬於一種API家族」;
+//     /inference/v1/models各項之api欄亦只列一種家族(如gpt-6-luna只有responses)。二說可並存(各有原生家族, 另對付費與Go額外轉譯), 且上述殷鑑為免費模型,
+//     與「轉譯只適用付費與Go」不衝突, 故本段結論限定為「免費模型」; 付費模型跨協定是否真能轉譯須以付費模型實測(2026-11-03未測: 不耗費用),
+//     實測前不依此收錄付費條目。
 //
 //   ★ 收錄zen:條目前之檢核(缺一不可) ★
-//     ① 該model id在 /inference/v1/models(舊基底/zen/v1/models同) 清單內;
-//     ② 依官方文件端點欄挑對kind: /chat/completions → api-openai-compat;
-//        /responses → api-openai-responses; /systemone → api-typesafe-systemone(須給questions);
+//     ① 該model id在 /inference/v1/models(舊基底/zen/v1/models同) 清單內(以實際要用之金鑰查);
+//        例外: systemone之jev-1.13-free於2026-11-03不在匿名、第1把、第2把金鑰之任一清單, 但官方〈Models〉頁列之且三種路徑實測200, 以實測為準(其餘model不適用此例外);
+//     ② 依官方文件端點欄挑對kind與baseURL(三個REST轉接器分別在baseURL後固定接上路徑):
+//        /chat/completions → api-openai-compat、baseURL https://opencode.ai/inference/openai/v1;
+//        /responses → api-openai-responses、baseURL 同上; /systemone → api-typesafe-systemone(須給questions)、baseURL https://opencode.ai/inference/systemone/v1;
 //        /models/<id> 本套件尚無對應kind(/messages雖已有api-anthropic[2026-10-24起], 但它依Anthropic官方協定[x-api-key、anthropic-version]撰寫,
-//        Zen之/messages端點是否接受同樣標頭與本體未驗證, 在實測前不得收為zen:條目),
+//        Console之/inference/anthropic/v1/messages是否接受同樣標頭與本體尚未驗完——2026-11-03以假金鑰探測: 帶x-api-key與帶Authorization: Bearer皆401 Upstream request failed: Invalid credential
+//        (即兩種標頭都被辨識為憑證), 不帶憑證則401 AuthError Missing API key; 成功路徑須付費模型, 未實測, 在實測前不得收為zen:條目),
 //        不得硬收為既有kind(必失敗), 需要時改收其opencode CLI版(oc:);
+//        此項由test/unit-providersConsoleEndpoint.test.mjs(kind×baseURL)與連網守門test/api-providersConsoleEndpoint.test.mjs(逐條對官方端點欄)固定;
 //     ③ 實測至少連續數次200(端點時斷時續者仍可收, 但須於條目註解記錄可用率, 見ling條)。
 //
 //   ★ 診斷流程(收到失敗時先分類, 不要直接歸咎模型) ★
 //     HTTP 500  → 先驗端點: 查文件端點欄; 該走/responses卻打了/chat/completions即為此症。
-//                 驗法: curl -X POST https://opencode.ai/zen/v1/responses \
+//                 驗法: curl -X POST https://opencode.ai/inference/openai/v1/responses \
 //                        -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
 //                        -d '{"model":"<id>","input":"hi"}'   → 200即證明是端點問題非模型問題
 //     HTTP 503  → 上游時斷時續(server_error: Upstream request failed: Endpoint is unavailable),
 //                 暫時性, 遞補層換家即可; 判別法: 同時段打另一免費模型作對照組。
-//     HTTP 429  → 閘道容量型限流(FreeUsageLimitError), 與金鑰無關(換金鑰照樣429), 暫時性。
+//     HTTP 429  → 依本體分兩種, 都不是「閘道容量型暫時限流」:
+//                 ① FreeUsageLimitError(Free usage limit reached. Free models work in OpenCode…subscribe to OpenCode Go): 免費層用量已用盡, 與金鑰無關。
+//                    2026-11-03: 匿名、第1把、第2把金鑰直呼mimo-v2.6-flash-free各1次皆0.3~0.7s即回此錯(第2把為可見79個模型之工作區, 亦同); 同時段opencode CLI匿名呼叫
+//                    big-pickle、nemotron-3.5-super-vl-free、pulse-alpha-free亦皆見同字樣(--print-logs; opencode run此時不結束, 只到逾時)——
+//                    即CLI與REST共用同一免費額度, 改收oc:版無濟於事; 何時恢復未驗證(官方無重置時程說明, 本輪未等待重測)。
+//                    處置: 視為整個免費層暫不可用, 遞補層換付費或Go條目, 不必逐個免費條目重試。
+//                    (官方api/inference與harnesses頁載「免費對話模型離開OpenCode一律403」; 同日實測先遇額度閘429, 兩者並存時之先後次序未驗證。)
+//                 ② Upstream request failed: Policy budget exceeded: 工作區或成員之預算用盡(官方console/budgets: 新請求失敗直到預算重置或管理者調高,
+//                    回應不指名是哪個預算; 免費模型與Go額度內用量不計預算), 屬預算管理而非限流, 等待須待重置; 換成屬於另一預算之金鑰可能可通(未實測)。
+//     HTTP 400 MissingSessionID → 打/inference/go/…(Go方案基底)未帶x-opencode-session標頭(2026-11-03以假金鑰實測: 先於金鑰檢查即回400;
+//                 官方harnesses頁: Go必帶穩定之session ID)。本目錄無Go條目, 自行加條目打Go基底時須經opt.headers帶此標頭。
 //     HTTP 403 FreeTierError(free tier can only be used from within OpenCode)
 //               → 該免費模型只開放opencode客戶端, REST直呼被刻意擋下(2026-09-17 union-alpha實測), 屬政策非故障,
 //                 只能收oc:版。另401 Model is disabled＝該金鑰所屬工作區未開此模型, 換工作區或於後台開啟
@@ -102,6 +132,8 @@
 //
 //   ★ Zen免費層閘門(2026-09-17起, 維護者rekram1-node於issue #49580明示: 免費層只准在opencode本體內使用,
 //     屬刻意之反濫用政策; 付費模型不受限) ★
+//     (2026-11-03註: 官方文件已改稱Console並載明同一政策〔api/inference與harnesses頁: 免費對話模型離開OpenCode一律403, 即使帶金鑰〕;
+//      但當日REST實測免費對話模型先回429 FreeUsageLimitError〔免費額度用盡, 見診斷流程〕, 本段以下403之矩陣為2026-09-18~10-13之實測紀錄。)
 //     症狀: 403 FreeTierError「OpenCode's free tier can only be used from within OpenCode」。
 //     判定依據(2026-09-18本機矩陣實測, opencode 1.18.31):
 //       - REST直呼(任何金鑰): /chat/completions與/responses之免費模型(當日逐一實測者)一律403 → 該類zen:條目自此為政策性失效。
@@ -210,6 +242,16 @@
 //     日後免費變體重新上架且實測可通時, 依收錄檢核重收即可。
 //     新增匯出函式filterOpencodeFree(src/filterOpencodeFree.mjs): 以`opencode models`過濾本目錄之opencode免費條目, 令「能不能用一律以`opencode models`加實測為準」之判準有工具可用
 //     (下游組遞補鏈或評比名單前對一次; 查詢失敗回明確錯誤狀態, 不得被當成「全部下架」); 連網守門test/api-providersOpencodeFree.test.mjs於`npm test`時對當日清單比對。
+//   2026-11-03之漂移(opencode 1.19.5; 提出端: Gitea issue #63, tai-kns-trade, 使用者另提供當日可用免費清單; 主控任務20261103173524之da63):
+//     目錄零增刪, 路徑與文件對齊: zen:jev-1.13-free之baseURL自/inference/v1改為官方端點欄之/inference/systemone/v1(新路徑匿名與第1把金鑰實測200, 見該條);
+//     檔頭權威來源、改名與分流、端點表、收錄檢核、診斷段依Console現況改寫(Zen已改名OpenCode Console; 429分FreeUsageLimitError與Policy budget exceeded; 補MissingSessionID)。
+//     未收oc:opencode/pulse-alpha-free(使用者清單與CLI清單皆有、官方〈Models〉〈Pricing〉列Free、CLI目錄release_date 2026-11-02): 依R-OCFREE-2②須各項實測全數完成才收,
+//       當日免費額度用盡致第1項「匿名CLI簡答」亦未完成(opencode 1.19.5、variant high、OC_READONLY: 120s逾時, --print-logs見Free usage limit reached);
+//       推理題、read工具、寫檔金絲雀、脈絡長度皆未測(型錄1048576), 故不收, 列待辦(見sgud/state/state.md)。已做者: CLI目錄欄位(`opencode models opencode --verbose`: status active、cost全0、
+//       release_date 2026-11-02、context 1048576、輸出131072、可輸入圖片、檔位low/high/max)、匿名REST 1次與對照組big-pickle皆429 FreeUsageLimitError(額度用盡下兩者無鑑別力, 不據以決定有無zen:版)。
+//       另官方〈Models〉載明: 免費期間所收資料可能被保留並用於改進模型, 且歐盟、冰島、列支敦斯登、挪威、古巴、伊朗、北韓、俄羅斯、烏克蘭、委內瑞拉不可用(收錄時須於條目註解記)。
+//     保留oc:opencode/nemotron-3.5-super-vl-free: `opencode models opencode --refresh`兩次(輸出相同)、匿名/inference/v1/models與官方〈Models〉頁皆仍列(R-OCFREE-2①清單消失條件不成立);
+//       匿名CLI呼叫1次45s逾時並見Free usage limit(同時段對照組big-pickle亦同), 不是約2s回UnknownError(②條件亦不成立)。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
@@ -618,9 +660,10 @@ let providers = [
         model: 'jev-1.13-free',
         kind: 'api-typesafe-systemone',
         envVar: 'OPENCODE_KEYS',
-        baseURL: 'https://opencode.ai/inference/v1',
-        //2026-10-13改用官方新基底/inference/v1(原/zen/v1; 同日新舊基底皆實測200且答案相同, 見檔頭權威來源段)。
-        //TypeSafe之jev經OpenCode Zen轉售(端點/zen/v1/systemone, 故用同一kind), 決策模型非文字生成:
+        baseURL: 'https://opencode.ai/inference/systemone/v1',
+        //2026-11-03改用官方〈Models〉頁端點欄之/inference/systemone/v1/systemone(原2026-10-13之/inference/v1、更早之/zen/v1; 同日三路徑匿名各1次皆200、noul 0.97/0.97/0.98,
+        //新路徑帶第1把金鑰亦200且usage.opencode.billing_source為free, 見檔頭權威來源段; 舊路徑不留退路)。
+        //TypeSafe之jev經OpenCode Console(原Zen)轉售(端點/inference/systemone/v1/systemone, 故用同一kind), 決策模型非文字生成:
         //用法與typesafe:jev-latest相同(pick單獨取出、questions置呼叫層, 詳dispatchApiTypesafeSystemone.mjs檔頭)。
         //2026-09-22實測: 連3次200(0.66~1.24s), 答案與TypeSafe官方端點一致(同題category相同、noul差0.01);
         //不帶金鑰亦200(0.57s), 即Zen對話型免費模型之403閘門不套用於/systemone; 壞金鑰回401 AuthError。

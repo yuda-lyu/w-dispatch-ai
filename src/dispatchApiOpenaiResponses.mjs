@@ -19,8 +19,8 @@ import describeNonJsonBody from './describeNonJsonBody.mjs'
 
 // dispatchApiOpenaiResponses.mjs — 以fetch直呼OpenAI Responses API(/responses)
 //
-// 【為何需要(2026-09-03實測後新增)】OpenCode Zen之端點「依模型家族而異」, 並非全部走
-//   chat/completions: 官方文件(https://opencode.ai/docs/zh-tw/zen/)之端點欄明載
+// 【為何需要(2026-09-03實測後新增)】OpenCode Zen(現稱OpenCode Console)之端點「依模型家族而異」, 並非全部走
+//   chat/completions: 官方文件(https://opencode.ai/v2/docs/console/models/ ; 2026-09-03當時為/docs/zh-tw/zen/, 現已302轉至該頁)之端點欄明載
 //   muse-spark系與GPT系走/responses(@ai-sdk/openai)、Claude系走/messages、Gemini系走
 //   /models/<id>, 僅deepseek/glm/kimi/minimax/nemotron/ling/mimo等走/chat/completions。
 //   以dispatchApiOpenaiCompat打/responses型模型會得到HTTP 500而非404, 極易被誤判為
@@ -352,9 +352,9 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * 以fetch直呼OpenAI Responses API(/responses)呼叫AI模型
  *
  * 特點：
- * 免安裝CLI、免預先登入，給baseURL＋key＋model即可呼叫(如OpenCode Zen之muse-spark系與GPT系)；
- * 端點型別與dispatchApiOpenaiCompat不同——Zen之端點依模型家族而異，收錄前須查官方文件端點欄
- * (https://opencode.ai/docs/zh-tw/zen/)，打錯端點會得到HTTP 500而非404，詳見providers.mjs檔頭；
+ * 免安裝CLI、免預先登入，給baseURL＋key＋model即可呼叫(如OpenCode Console之GPT系與Grok系)；
+ * 端點型別與dispatchApiOpenaiCompat不同——Console之端點依模型家族而異，收錄前須查官方文件端點欄
+ * (https://opencode.ai/v2/docs/console/models/)，打錯端點會得到HTTP 500而非404，詳見providers.mjs檔頭；
  * 僅供純文字生成，需要工具能力請改用CLI類kind(opencode/claude/codex/antigravity)；
  * status非completed(如max_output_tokens耗盡)一律以INCOMPLETE_RESPONSE回報，不回半截內容；
  * 結果結構與dispatchApiOpenaiCompat完全一致，可直接作為dispatchAi與dispatchAiFallback之kind('api-openai-responses')使用；
@@ -362,8 +362,8 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  *
  * @param {String} prompt 輸入提示詞字串，作為input置於HTTP body
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {String} opt.baseURL 輸入API基底網址字串，例如'https://opencode.ai/zen/v1'，將於尾端接上/responses
- * @param {String} opt.model 輸入模型ID字串，例如'muse-spark-1.3-contributor-free'
+ * @param {String} opt.baseURL 輸入API基底網址字串，例如'https://opencode.ai/inference/openai/v1'，將於尾端接上/responses
+ * @param {String} opt.model 輸入模型ID字串，例如'gpt-6-luna'
  * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
  * @param {String} [opt.system=''] 輸入system提示詞字串，將置於instructions欄位(Responses API之system管道)，預設''代表不帶
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如temperature、max_output_tokens、reasoning)，將併入預設body(同名鍵以此為準)，預設{}。注意輸出上限欄位名為max_output_tokens而非max_tokens；本轉接器不支援工具，帶入tools而模型回function_call時一律以TOOL_CALLS_UNSUPPORTED回報失敗
@@ -381,16 +381,16 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  *
  * let test = async () => {
  *
- *     //OpenCode Zen之muse-spark系走/responses(非chat/completions), 詳見providers.mjs檔頭
+ *     //OpenCode Console之GPT系走/responses(非chat/completions), 詳見providers.mjs檔頭; 付費模型不受免費層限制(此例之成功路徑2026-11-03未實測以免產生費用, 僅假金鑰401已實測)
  *     let r = await dispatchApiOpenaiResponses('請只回覆兩個字：完成', {
- *         baseURL: 'https://opencode.ai/zen/v1',
- *         key: 'sk-xxxxxx',
- *         model: 'muse-spark-1.3-contributor-free',
+ *         baseURL: 'https://opencode.ai/inference/openai/v1',
+ *         key: 'oc_sk_xxxxxx',
+ *         model: 'gpt-6-luna',
  *     })
  *     console.log(r.ok, r.stdout.trim())
  *     // => true 完成
  *
- *     let re = await dispatchApiOpenaiResponses('abc', { baseURL: 'https://opencode.ai/zen/v1', key: 'sk-bad', model: 'muse-spark-1.3-contributor-free' })
+ *     let re = await dispatchApiOpenaiResponses('abc', { baseURL: 'https://opencode.ai/inference/openai/v1', key: 'oc_sk_bad', model: 'gpt-6-luna' })
  *     console.log(re.ok, re.code, re.errorType)
  *     // => false 401 http
  *

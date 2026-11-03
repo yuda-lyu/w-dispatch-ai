@@ -71,3 +71,30 @@ describe('providers之opencode免費條目增刪(2026-10-30)', function() {
     })
 
 })
+
+
+// 2026-11-03 da63(Gitea #63): 兩項依帳本R-OCFREE-2之裁定(皆為「不改目錄」, 以測試固定其依據)
+describe('providers之opencode免費條目裁定(2026-11-03)', function() {
+
+    it('nemotron-3.5-super-vl-free 保留(不下架): 當日重查「CLI清單(--refresh)仍列」故不滿足R-OCFREE-2①之清單消失條件; 條目欄位不變', function() {
+        let p = providers.find((x) => x.id === 'oc:opencode/nemotron-3.5-super-vl-free')
+        let r = [
+            p ? p.model : null,
+            p ? p.useStoredAuth : null,
+            p ? p.config.permission : null,
+            p ? p.extraArgs : null,
+        ]
+        let rr = ['opencode/nemotron-3.5-super-vl-free', false, { edit: 'deny', bash: 'ask' }, ['--variant', 'high']]
+        assert.strict.deepEqual(r, rr)
+    })
+
+    it('pulse-alpha-free 不在目錄: 收錄須R-OCFREE-2②各項實測皆完成, 2026-11-03免費額度用盡(Free usage limit)致簡答亦未完成, 不得收錄(列待辦); 完成實測後收錄時連同本案一併改為欄位斷言', function() {
+        let r = [
+            providers.some((p) => p.id === 'oc:opencode/pulse-alpha-free'),
+            providers.some((p) => p.model === 'opencode/pulse-alpha-free' || p.model === 'pulse-alpha-free'),
+            providers.length,
+        ]
+        assert.strict.deepEqual(r, [false, false, 29])
+    })
+
+})
