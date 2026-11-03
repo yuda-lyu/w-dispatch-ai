@@ -86,6 +86,7 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
+ * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(antigravity預設不限，守門為no-op、零成本；agy.exe之CPU占用本機未測)，false關閉，物件可明給maxCli(數agy.exe)、ramUsedMax、cpuMax等逐次開啟，等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
  * @example
  * //need agy cli in system PATH, and OAuth login completed
@@ -194,9 +195,11 @@ async function dispatchAntigravity(prompt, opt = {}) {
 
     //execCli, 不帶input(agy由--print取得prompt); 前置檢查漏網之spawn同步錯誤(如轉義膨脹之ENAMETOOLONG)
     //由execCli以結果物件回報(wsemi>=1.9.15, 不reject, 見檔頭); 經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上errorType(見runExecCli.mjs)
+    //spawnGate(使用端給之守門設定, 原樣留在optCli)與spawnGateKind交runExecCli於每次spawn前守門(見cliSpawnGate.mjs; antigravity預設不限)
     return runExecCli(exe, args, {
         ...optCli,
         timeoutMs,
+        spawnGateKind: 'antigravity',
     })
 }
 

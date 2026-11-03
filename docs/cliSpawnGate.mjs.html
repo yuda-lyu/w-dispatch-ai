@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>cliSpawnGate.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#checkGoQuota">checkGoQuota</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#cliSpawnGate">cliSpawnGate</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createCountCli">createCountCli</a></li><li><a href="global.html#createCpuSampler">createCpuSampler</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createGateState">createGateState</a></li><li><a href="global.html#createQuotaGateState">createQuotaGateState</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultImages">defaultImages</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#exeStem">exeStem</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fail">fail</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#fingerprint">fingerprint</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#gwOf">gwOf</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isGoEntry">isGoEntry</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#judgeGoUsage">judgeGoUsage</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#lock">lock</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#opencodeGoUsage">opencodeGoUsage</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#parsePsComm">parsePsComm</a></li><li><a href="global.html#parseTasklistCsv">parseTasklistCsv</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#readTickets">readTickets</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#resolveQuotaGate">resolveQuotaGate</a></li><li><a href="global.html#resolveSpawnGate">resolveSpawnGate</a></li><li><a href="global.html#run">run</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#runText">runText</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#sampleRamDefault">sampleRamDefault</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toMs">toMs</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#unlock">unlock</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li><li><a href="global.html#writeTicket">writeTicket</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">cliSpawnGate.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import os from 'node:os'
+import fs from 'node:fs'
+import path from 'node:path'
+import crypto from 'node:crypto'
+import { execFile } from 'node:child_process'
+import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isarr from 'wsemi/src/isarr.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isenum from 'wsemi/src/isenum.mjs'
+import iseint from 'wsemi/src/iseint.mjs'
+import getTrace from 'wsemi/src/getTrace.mjs'
+import { awaitUserFn, callHookSync, readCallerObj, errMsg } from './callUserFn.mjs'
+
+
+// cliSpawnGate.mjs — CLI類轉接器spawn前之機器級守門(內部模組, 由runExecCli於每次嘗試前呼叫; Gitea #67; 帳本R-SPAWNGATE-1)
+//
+// 【為何在spawn那一點守門】併發之決定者全在呼叫端(各專案之Promise.all、ai.parallel、測試工具), 彼此互不知情, 整點同時起跑只會疊加;
+//   只有在spawn那一點才能同時約束多個專案、多個行程。2026-11-03實測(4核心、10GB): 6～10個opencode.exe同時存在時CPU 100%、整機卡頓。
+//
+// 【預設只對確實佔CPU者限制(da67實測後之決定, 與issue原案不同)】issue原案四家共用同一上限(cores-1)並以四個image之合計行程數計。
+//   da67於本機(8核心)實測: ①opencode.exe單次短呼叫(beam-free, Go路徑)約3秒、期間占約1.1核心(tasklist /V 之CPU Time差, 1秒取樣),
+//   即issue所稱「opencode(bun)本身占核」; ②現役claude.exe(2個, 等待模型回應/互動session)30秒窗內為0.0%與4.9%之單核、codex.exe為0.0%——
+//   「等候模型回應」時幾乎不占CPU(CPU花在其子行程如node/git/測試, 不在claude.exe本身)。若四家合計計數, 主控同時派多個claude -p
+//   (或使用者開著多個互動claude.exe)就會讓新派工白等(8核心機上同時7個claude.exe即達上限, 最久等gateWaitMaxMs)。故:
+//     opencode  預設啟用: 只數opencode.exe、maxCli預設max(1, 核心數-1)、RAM已用>0.85或CPU>0.90時亦等(darwin之os.freemem不含可回收快取, RAM門檻預設關);
+//     claude／codex／antigravity  預設不限(守門為no-op: 不查tasklist、不取樣、零成本), 要限者逐次以spawnGate物件開啟(maxCli／ramUsedMax／cpuMax, 數該CLI之image)。
+//   claude／codex／agy「等候回應時」之實際CPU: claude.exe、codex.exe為上列現役行程之觀察, **未以真實派工測**(會耗訂閱額度); agy.exe本機無行程、未測。
+//
+// 【只守「真的該CLI」】預設(未給spawnGate)時, 僅當exe(去目錄與副檔名)等於該kind之CLI名(opencode／claude／codex／agy)才守門——
+//   守門數的是該CLI之image, 呼叫端把exe指向別的程式(假CLI、包裝腳本)時, 機器上有幾個opencode.exe與它無關。
+//   明給spawnGate(true或物件)者不受此限(包裝腳本要守門時自行給)。
+//
+// 【同一瞬間整批放行之處理】行程數檢查是「看機器上已存在者」, 併發呼叫同一瞬間通過檢查時(其子行程尚未出現在tasklist)會整批放行。處理:
+//   ①行程內序列化: 檢查＋登記為一個臨界區(FIFO互斥), 同行程之併發呼叫逐一通過; ②放行即登記預約(時間戳＋當時看到之行程數),
+//   settleMs(預設3000ms)內尚未出現在tasklist之行程以「最舊預約當時之行程數＋預約數」估入, 實際計數取兩者較大者(不重複計算已出現者;
+//   預約過期自動剔除, 不會因持續有新放行而無限累加)。③CPU取樣於短時間內重用(見createCpuSampler), 序列化不致把整批拖成每次1秒。
+//   ④跨行程(整點多個專案同時起跑, issue §0): 放行時另在os.tmpdir()/w-dispatch-ai-spawngate/下寫一張「預約票」(空檔案, 檔名帶pid、時刻、放行時所見行程數),
+//   他行程之檢查把settleMs內之他行程票併入上述估計(票只是提示, 不是鎖、不存狀態內容; 檔案系統錯誤一律靜默忽略, 不影響守門)。
+//   ⑤取新CPU樣約耗1秒, 其間他行程可能已放行並spawn: 取了新樣者於放行前再查一次行程數(trace事件recount), 使「最後一次讀取」緊接登記預約。
+//   **已知限制(跨行程)**: 票為提示而非鎖, 兩行程「讀票→寫票」落在同一毫秒內時仍可能各放行(實機窗約數毫秒, 見經驗); 預約為保守估計(假設放行後無行程結束),
+//   放行後settleMs內若他個行程恰好結束, 空出之名額至多晚settleMs才被取用(對照pollMs預設10秒, 影響次要)。需要嚴格上限者請由單一行程(單一呼叫端佇列)派工。
+//
+// 【成本(da67實測, 本機8核心Windows 11)】tasklist /FO CSV /NH 不加篩選約1000ms(p50 1012、max 1488; 全行程列舉), 加 /FI "IMAGENAME eq &lt;image>" 約118ms(p50, max 187)——
+//   故每個image各以篩選查詢; 1秒CPU取樣固定約1006ms牆鐘時間, 為降低高頻短呼叫之負擔: 先查RAM(免費)與行程數(約118ms), 已被擋即不取CPU樣;
+//   CPU取樣於上次取樣之0.3～10秒內以「自上次起之差」計(不再等1秒), 0.3秒內重用上次值, 只有閒置超過10秒後之首次檢查付1秒。
+//
+// 【fail-open(守門不可成為新的失敗來源)】①等待超過gateWaitMaxMs(預設600000)仍被擋 → 放行; ②計數／取樣函數拋錯、reject、逾時(probeTimeoutMs)、
+//   回傳非法值 → 該項視為通過(另記probe-fail事件; 同一探針失敗後probeFailCooldownMs內不再呼叫以免反覆卡住); ③守門本身之未預期例外 → 放行。
+//   本函數永不reject。放行者結果帶failOpen: true。
+//
+// 【逾時歸屬】守門等待在spawn之前, 不計入該次嘗試之timeoutMs(逾時自spawn起算)。遞補層(dispatchAiFallback)有budgetMs時另把deadlineAt與minAttemptMs傳入:
+//   等待不超過「deadlineAt − minAttemptMs」(到點即fail-open放行), 且放行後該次spawn之timeoutMs以剩餘預算封頂——即守門等待計入遞補鏈之budgetMs。
+//
+// 【觀察回調(opt.spawnGate.onTrace, 規格見dspec〈計時器相關函數之觀察回調與測試〉)】同步呼叫、凍結事件{ type, ... }、拋錯忽略、未給零成本。type:
+//   'start'     開始守門 { kind, maxCli, ramUsedMax, cpuMax, pollMs, gateWaitMaxMs }
+//   'probe-fail' 探針失敗(視為通過) { probe: 'count'|'ram'|'cpu', reason: 'threw'|'timeout'|'invalid' }
+//   'probe-skip' 探針在失敗冷卻期內被略過(視為通過) { probe }
+//   'recount'   取了新CPU樣(耗時達200ms以上)後, 放行前重查行程數 { afterMs }
+//   'check'     一次檢查 { n, pass, blockedBy('count'、'ram'、'cpu'以逗號相接, 通過為''), visible(tasklist所見行程數或null), cli(決策用之行程數＝max(所見, 預約估計)或null), cpu, ram }
+//   'wait'      即將等待下一輪 { n, ms }
+//   'pass'      放行 { waitedMs, gated(是否曾被擋), pending(含本次之未過期預約數) }
+//   'fail-open' 等待逾時而放行 { reason: 'timeout', waitedMs }
+//   'aborted'   shouldStop為真而放棄 { waitedMs }
+//
+// 【日誌】opt.spawnGate.log(level, msg)(第二參數log同): 被擋時'info'一行(行程數／CPU／RAM、門檻)、放行時'info'一行(共等多久)、fail-open與探針失敗'warn'一行(同一原因每個狀態物件只一次);
+//   不給log則無輸出(函式庫不預設印console), 以onTrace與結果之gateWaitedMs／gateFailOpen觀察。opt.spawnGate.debug為true時,
+//   非預期之設定值(改用預設者)另以'warn'一行指出鍵名與預設(不含傳入之值)。
+//
+// 【輸入檢測(dspec〈輸入參數之檢測機制〉)】spawnGate本身與各鍵為opt性質: undefined／null取預設, 給了而不屬該鍵種類者視為未給、改用預設(K3), 不拋錯;
+//   maxCli為有效正整數(iseint count, min 1; 數字字串收下並以轉換後之值使用, K4), ramUsedMax／cpuMax為(0,1]之有效數字, 此三者另可給false關閉該項檢查;
+//   ticketDir為非空路徑字串(預約票資料夾)或false(關閉跨行程票), pid為正整數(測試用);
+//   pollMs／gateWaitMaxMs／settleMs／probeTimeoutMs／probeFailCooldownMs為正數毫秒(isenum timer, 上限2147483647); images為內容限[A-Za-z0-9._-]之非空字串陣列(不經shell, 無注入面);
+//   countCli／sampleCpu／sampleRam／sleep／now／shouldStop／log／onTrace須為函數。
+//
+// 【預設狀態物件】排隊(互斥)、預約、探針失敗冷卻、CPU取樣重用皆存於狀態物件; 預設為模組層單一物件(整個行程共用, 同行程各條呼叫鏈互相看得到);
+//   opt.spawnGate.state(createGateState()之回傳)可另給獨立狀態(測試或需隔離者)。
+
+
+//預設值
+let DEFAULT_POLL_MS = 10000
+let DEFAULT_GATE_WAIT_MAX_MS = 600000
+let DEFAULT_SETTLE_MS = 3000
+let DEFAULT_PROBE_TIMEOUT_MS = 8000
+let DEFAULT_PROBE_FAIL_COOLDOWN_MS = 30000
+let DEFAULT_MIN_ATTEMPT_MS = 20000
+let DEFAULT_RAM_USED_MAX = 0.85
+let DEFAULT_CPU_MAX = 0.90
+
+//kind對照其CLI名(守門數之image去掉.exe之名稱, 亦為「真的該CLI」之exe比對基準)
+let KIND_CLI = {
+    opencode: 'opencode',
+    claude: 'claude',
+    codex: 'codex',
+    antigravity: 'agy',
+}
+
+//預設啟用限制之kind(其餘kind預設不限, 見檔頭)
+let KIND_DEFAULT_LIMITED = ['opencode']
+
+//image名稱之允許字元(不經shell, 仍限縮以免tasklist篩選語法與ps比對被混淆)
+let IMAGE_PATTERN = /^[A-Za-z0-9._-]+$/
+
+//跨行程預約票之資料夾名(位於os.tmpdir()下)與清理門檻(超過此齡之票於讀取時順手刪除; 計入決策者只有settleMs內)
+let TICKET_DIR_NAME = 'w-dispatch-ai-spawngate'
+let TICKET_STALE_MS = 60000
+
+//取CPU樣耗時達此毫秒(即取了新樣)時, 放行前重查一次行程數
+let RECOUNT_AFTER_MS = 200
+
+/**
+ * 判斷是否為有效之毫秒值(正數, 上限2147483647)並回傳轉換後之數值
+ *
+ * @param {*} v 輸入待判斷之值
+ * @returns {Number|null} 回傳轉換後之毫秒數，無效回傳null
+ */
+function toMs(v) {
+    if (v === undefined || v === null || !isenum(v, { use: 'timer', gt: 0 })) {
+        return null
+    }
+    return typeof v === 'string' ? Number(v.trim()) : v
+}
+
+
+/**
+ * 取以exe路徑之檔名(去目錄與副檔名, 小寫)
+ *
+ * @param {*} exe 輸入執行檔名稱或路徑
+ * @returns {String} 回傳檔名主體(不含副檔名)，非有效字串回傳空字串
+ */
+function exeStem(exe) {
+    if (!isestr(exe)) {
+        return ''
+    }
+    let b = exe.split(/[\\/]/).pop()
+    return b.replace(/\.(exe|cmd|bat|com|ps1)$/i, '').toLowerCase()
+}
+
+
+/**
+ * 取某kind於某平台預設要數之image名稱陣列(Windows帶.exe)
+ *
+ * @param {String} kind 輸入轉接器種類(opencode、claude、codex、antigravity)
+ * @param {String} [platform=process.platform] 輸入平台字串
+ * @returns {Array} 回傳image名稱字串陣列，未知kind回傳空陣列
+ */
+function defaultImages(kind, platform = process.platform) {
+    let n = KIND_CLI[kind]
+    if (!isestr(n)) {
+        return []
+    }
+    return [platform === 'win32' ? `${n}.exe` : n]
+}
+
+
+/**
+ * 解析Windows tasklist /FO CSV /NH之輸出，數第一欄(映像名稱)等於image之行數(不分大小寫)；語系無關(無符合時之提示訊息不是CSV列，不計)
+ *
+ * @param {String} text 輸入tasklist輸出文字
+ * @param {String} image 輸入映像名稱，例如'opencode.exe'
+ * @returns {Number} 回傳行程數
+ */
+function parseTasklistCsv(text, image) {
+    let want = String(image).toLowerCase()
+    let n = 0
+    for (let line of String(text).split(/\r?\n/)) {
+        let m = /^"([^"]*)","\d+"/.exec(line)
+        if (m &amp;&amp; m[1].toLowerCase() === want) {
+            n++
+        }
+    }
+    return n
+}
+
+
+/**
+ * 解析非Windows之ps -eo comm=輸出，數行(去目錄、去.exe後)等於names之任一者之行數
+ *
+ * @param {String} text 輸入ps輸出文字
+ * @param {Array} names 輸入名稱字串陣列(可帶.exe，比對時去除)
+ * @returns {Number} 回傳行程數
+ */
+function parsePsComm(text, names) {
+    let want = new Set(names.map((s) => String(s).toLowerCase().replace(/\.exe$/, '')))
+    let n = 0
+    for (let line of String(text).split(/\r?\n/)) {
+        let s = path.posix.basename(line.trim()).toLowerCase().replace(/\.exe$/, '')
+        if (s !== '' &amp;&amp; want.has(s)) {
+            n++
+        }
+    }
+    return n
+}
+
+
+/**
+ * 以execFile執行外部指令並回傳其標準輸出(latin1字串；逾時強制結束；不經shell)
+ *
+ * @param {String} file 輸入執行檔
+ * @param {Array} args 輸入參數字串陣列
+ * @returns {Promise} 回傳Promise，resolve標準輸出字串，指令不存在或非零離開時reject
+ */
+function runText(file, args) {
+    return new Promise((resolve, reject) => {
+        execFile(file, args, { windowsHide: true, timeout: DEFAULT_PROBE_TIMEOUT_MS, killSignal: 'SIGKILL', maxBuffer: 16 * 1024 * 1024, encoding: 'buffer' }, (err, stdout) => {
+            if (err) {
+                reject(err)
+                return
+            }
+            resolve(stdout.toString('latin1'))
+        })
+    })
+}
+
+
+/**
+ * 建立「數機器上某些image之行程數」函數(機器級: 跨行程、跨專案、含使用者自開之TUI)
+ *
+ * Windows以tasklist /FO CSV /NH /FI "IMAGENAME eq &lt;image>"逐image查詢(不加篩選之全列舉實測約1000ms，加篩選約118ms)，非Windows以ps -eo comm=一次列舉
+ *
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {String} [opt.platform=process.platform] 輸入平台字串(測試用)
+ * @param {Function} [opt.run=runText] 輸入(file, args)=>Promise&lt;String>之指令執行函數(測試用)
+ * @returns {Function} 回傳async函數(images)=>行程數，指令失敗時reject(由守門視為探針失敗、fail-open)
+ */
+function createCountCli(opt = {}) {
+    let platform = isestr(get(opt, 'platform', null)) ? opt.platform : process.platform
+    let run = isfun(get(opt, 'run', null)) ? opt.run : runText
+    return async (images) => {
+        if (platform === 'win32') {
+            let ns = await Promise.all(images.map(async (img) => {
+                let name = /\.exe$/i.test(img) ? img : `${img}.exe`
+                let out = await run('tasklist', ['/FO', 'CSV', '/NH', '/FI', `IMAGENAME eq ${name}`])
+                return parseTasklistCsv(out, name)
+            }))
+            return ns.reduce((a, b) => a + b, 0)
+        }
+        let out = await run('ps', ['-eo', 'comm='])
+        return parsePsComm(out, images)
+    }
+}
+
+
+/**
+ * 建立CPU使用率取樣器(0~1, 全部核心合計)：短時間內重用上次取樣，免每次付1秒
+ *
+ * 取樣規則(以now為時鐘): 上次取樣距今不足reuseMinGapMs → 重用上次值；介於reuseMinGapMs與reuseMaxAgeMs → 以「自上次取樣起」之差計並更新；
+ * 無上次取樣或已超過reuseMaxAgeMs → 取新樣並等windowMs後再取樣(固定付windowMs)。os.cpus()之times於Windows為累計值，不同於loadavg(Windows恆為0)
+ *
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {Function} [opt.cpus=os.cpus] 輸入取各核心累計時間之函數(測試用)，格式同os.cpus()
+ * @param {Function} [opt.sleep] 輸入(ms)=>Promise之等待函數(測試用)，預設setTimeout
+ * @param {Function} [opt.now=Date.now] 輸入時鐘函數(測試用)
+ * @param {Number} [opt.windowMs=1000] 輸入新取樣之窗長毫秒
+ * @param {Number} [opt.reuseMinGapMs=300] 輸入重用上次值之最短間隔毫秒
+ * @param {Number} [opt.reuseMaxAgeMs=10000] 輸入以差值計之最長間隔毫秒
+ * @returns {Object} 回傳物件，內含sample(async函數，回傳使用率0~1)
+ */
+function createCpuSampler(opt = {}) {
+    let cpus = isfun(get(opt, 'cpus', null)) ? opt.cpus : os.cpus
+    let sleep = isfun(get(opt, 'sleep', null)) ? opt.sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    let now = isfun(get(opt, 'now', null)) ? opt.now : Date.now
+    let windowMs = toMs(get(opt, 'windowMs', null)) ?? 1000
+    let reuseMinGapMs = toMs(get(opt, 'reuseMinGapMs', null)) ?? 300
+    let reuseMaxAgeMs = toMs(get(opt, 'reuseMaxAgeMs', null)) ?? 10000
+    let last = null //{ t, total, idle, value }
+
+    let snap = () => {
+        let total = 0
+        let idle = 0
+        for (let c of cpus()) {
+            let t = c.times
+            total += t.user + t.nice + t.sys + t.idle + t.irq
+            idle += t.idle
+        }
+        return { total, idle }
+    }
+    let ratio = (a, b) => {
+        let dt = b.total - a.total
+        if (!(dt > 0)) {
+            return null
+        }
+        let v = 1 - (b.idle - a.idle) / dt
+        return Math.min(1, Math.max(0, v))
+    }
+
+    let sample = async () => {
+        let t = now()
+        if (last !== null &amp;&amp; t - last.t &lt; reuseMinGapMs &amp;&amp; last.value !== null) {
+            return last.value
+        }
+        let cur = snap()
+        if (last !== null &amp;&amp; t - last.t &lt;= reuseMaxAgeMs) {
+            let v = ratio(last, cur)
+            if (v !== null) {
+                last = { t, ...cur, value: v }
+                return v
+            }
+        }
+        await sleep(windowMs)
+        let b = snap()
+        let v = ratio(cur, b)
+        last = { t: now(), ...b, value: v }
+        return v
+    }
+    return { sample }
+}
+
+
+/**
+ * 取RAM已用比例(0~1)：1 − os.freemem()/os.totalmem()
+ *
+ * @returns {Number} 回傳已用比例
+ */
+function sampleRamDefault() {
+    return 1 - os.freemem() / os.totalmem()
+}
+
+
+/**
+ * 讀取他行程之預約票(跨行程提示: 他行程已放行但其子行程可能尚未出現在計數)
+ *
+ * 票為空檔案，檔名即內容：`&lt;imagesHash>.&lt;pid>.&lt;放行時刻ms>.&lt;放行時所見行程數或n>.&lt;隨機>`；只收同一imagesHash、非本行程(pid不同)、未過期(settleMs內)者；
+ * 順手刪除超過TICKET_STALE_MS者；任何檔案系統錯誤一律視為無票(best-effort，不影響守門)
+ *
+ * @param {String} dir 輸入票資料夾
+ * @param {String} keyHash 輸入images雜湊
+ * @param {Number} t 輸入現在時刻ms(與寫票同一時鐘)
+ * @param {Number} settleMs 輸入預約有效毫秒
+ * @param {Number} selfPid 輸入本行程pid(其票由本行程記憶體之預約涵蓋，不重複計入)
+ * @returns {Array} 回傳預約陣列[{ t, v }]，v為放行時所見行程數或null
+ */
+function readTickets(dir, keyHash, t, settleMs, selfPid) {
+    let out = []
+    try {
+        for (let name of fs.readdirSync(dir)) {
+            let m = /^([0-9a-f]+)\.(\d+)\.(\d+)\.(n|\d+)\.[0-9a-z]+$/.exec(name)
+            if (!m || m[1] !== keyHash) {
+                continue
+            }
+            let tt = Number(m[3])
+            if (t - tt > TICKET_STALE_MS) {
+                try {
+                    fs.unlinkSync(path.join(dir, name))
+                }
+                catch {}
+                continue
+            }
+            if (Number(m[2]) === selfPid) {
+                continue
+            }
+            if (t - tt &lt;= settleMs) {
+                out.push({ t: tt, v: m[4] === 'n' ? null : Number(m[4]) })
+            }
+        }
+    }
+    catch {}
+    return out
+}
+
+
+/**
+ * 寫一張預約票(空檔案，同步；任何檔案系統錯誤靜默)
+ *
+ * @param {String} dir 輸入票資料夾(不存在則建立)
+ * @param {String} keyHash 輸入images雜湊
+ * @param {Number} pid 輸入本行程pid
+ * @param {Number} t 輸入放行時刻ms
+ * @param {Number|null} visible 輸入放行時所見行程數，未知為null
+ */
+function writeTicket(dir, keyHash, pid, t, visible) {
+    try {
+        fs.mkdirSync(dir, { recursive: true })
+        fs.writeFileSync(path.join(dir, `${keyHash}.${pid}.${t}.${visible === null ? 'n' : visible}.${Math.random().toString(36).slice(2, 8)}`), '')
+    }
+    catch {}
+}
+
+
+/**
+ * 建立守門之狀態物件(互斥佇列、預約、探針失敗冷卻、警告去重、預設CPU取樣器)
+ *
+ * 預設使用模組層單一狀態物件(整個行程共用)；測試或需隔離者可另建一個並以opt.spawnGate.state傳入
+ *
+ * @returns {Object} 回傳狀態物件(內部結構不對外承諾)
+ */
+function createGateState() {
+    return {
+        busy: false,
+        queue: [],
+        reservations: new Map(), //key(images) → [{ t, v }]
+        probeDownUntil: {}, //探針名 → 失敗冷卻截止時間
+        warned: new Set(),
+        cpu: null,
+    }
+}
+let moduleState = createGateState()
+
+
+/**
+ * 解析守門設定(不拋錯)：回傳正規化設定物件，或null(不守門：關閉、或無任何限制項、或預設情形下exe非該CLI)
+ *
+ * @param {Object} opt 輸入設定物件
+ * @param {String} [opt.kind] 輸入轉接器種類(opencode、claude、codex、antigravity)，決定預設值
+ * @param {String} [opt.exe] 輸入實際執行檔，僅用於預設情形下判斷是否為「真的該CLI」
+ * @param {Boolean|Object} [opt.spawnGate] 輸入使用端之守門設定：false關閉；undefined／null取預設；true取預設且不受exe比對限制；物件逐鍵覆寫(鍵見檔頭【輸入檢測】)
+ * @param {Function} [opt.shouldStop] 輸入呼叫層提示之中止判定函數，spawnGate物件未給同名鍵時採用(由遞補層傳入)
+ * @param {Number} [opt.deadlineAt] 輸入呼叫層提示之整體時限(epoch ms)，spawnGate物件未給同名鍵時採用(由遞補層之budgetMs換算)
+ * @param {Number} [opt.minAttemptMs] 輸入呼叫層提示之單次嘗試最低預算毫秒，spawnGate物件未給同名鍵時採用
+ * @param {Number} [opt.cores=os.cpus().length] 輸入核心數(測試用)
+ * @param {String} [opt.platform=process.platform] 輸入平台字串(測試用)
+ * @returns {Object|null} 回傳正規化設定物件，不守門時回傳null
+ */
+function resolveSpawnGate(opt = {}) {
+    let kind = get(opt, 'kind', null)
+    kind = isestr(kind) ? kind : null
+    let sg = get(opt, 'spawnGate', undefined)
+    if (sg === false) {
+        return null
+    }
+
+    //物件讀取(只讀一次的淺層副本; 不可讀視為未給)
+    let o = {}
+    let given = false //使用端明給(true或物件)
+    if (sg === true) {
+        given = true
+    }
+    else if (sg !== undefined &amp;&amp; sg !== null) {
+        let r = readCallerObj(sg, 'spawnGate')
+        if (r.ok &amp;&amp; isobj(r.value)) {
+            o = r.value
+            given = true
+        }
+    }
+
+    //預設情形(未明給)只守「真的該CLI」
+    let exe = get(opt, 'exe', null)
+    if (!given) {
+        if (kind === null || !isestr(KIND_CLI[kind])) {
+            return null
+        }
+        if (isestr(exe) &amp;&amp; exeStem(exe) !== KIND_CLI[kind]) {
+            return null
+        }
+    }
+
+    let debug = o.debug === true
+    let log = isfun(o.log) ? o.log : null
+    let warnKey = (key, desc, dflt) => {
+        if (debug) {
+            callHookSync(() => (log || ((lv, msg) => console.warn(msg)))('warn', `[w-dispatch-ai spawnGate] invalid opt.${key}: must be ${desc}, using default ${dflt}`))
+        }
+    }
+
+    let platform = isestr(get(opt, 'platform', null)) ? opt.platform : process.platform
+    let cores = get(opt, 'cores', null)
+    cores = iseint(cores, { use: 'count', min: 1 }) ? Number(cores) : os.cpus().length
+
+    //limited: 預設啟用限制之kind
+    let limited = KIND_DEFAULT_LIMITED.includes(kind)
+    let dMaxCli = limited ? Math.max(1, cores - 1) : null
+    let dRam = limited &amp;&amp; platform !== 'darwin' ? DEFAULT_RAM_USED_MAX : null
+    let dCpu = limited ? DEFAULT_CPU_MAX : null
+
+    //maxCli／ramUsedMax／cpuMax: false關閉該項檢查; undefined／null取預設; 其餘非預期取預設
+    let pickLimit = (key, desc, dflt, valid, conv) => {
+        let v = o[key]
+        if (v === undefined || v === null) {
+            return dflt
+        }
+        if (v === false) {
+            return null
+        }
+        if (valid(v)) {
+            return conv(v)
+        }
+        warnKey(key, desc, dflt === null ? 'off' : dflt)
+        return dflt
+    }
+    let num = (v) => (typeof v === 'string' ? Number(v.trim()) : v)
+    let maxCli = pickLimit('maxCli', 'a positive integer or false', dMaxCli, (v) => iseint(v, { use: 'count', min: 1 }), num)
+    let ramUsedMax = pickLimit('ramUsedMax', 'a number in (0, 1] or false', dRam, (v) => isenum(v, { gt: 0, max: 1 }), num)
+    let cpuMax = pickLimit('cpuMax', 'a number in (0, 1] or false', dCpu, (v) => isenum(v, { gt: 0, max: 1 }), num)
+
+    //毫秒類
+    let pickMs = (key, dflt) => {
+        let v = o[key]
+        if (v === undefined || v === null) {
+            return dflt
+        }
+        let m = toMs(v)
+        if (m !== null) {
+            return m
+        }
+        warnKey(key, 'a positive number of milliseconds (max 2147483647)', dflt)
+        return dflt
+    }
+    let pollMs = pickMs('pollMs', DEFAULT_POLL_MS)
+    let gateWaitMaxMs = pickMs('gateWaitMaxMs', DEFAULT_GATE_WAIT_MAX_MS)
+    let settleMs = pickMs('settleMs', DEFAULT_SETTLE_MS)
+    let probeTimeoutMs = pickMs('probeTimeoutMs', DEFAULT_PROBE_TIMEOUT_MS)
+    let probeFailCooldownMs = pickMs('probeFailCooldownMs', DEFAULT_PROBE_FAIL_COOLDOWN_MS)
+
+    //minAttemptMs、deadlineAt、shouldStop: 取spawnGate物件之鍵, 未給者取呼叫層提示(opt同名鍵, 由遞補層經runExecCli傳入, 令預設情形下亦能帶budgetMs與shouldStop)
+    let hint = (key) => (o[key] !== undefined &amp;&amp; o[key] !== null ? o[key] : get(opt, key, undefined))
+    let minAttemptMs = toMs(hint('minAttemptMs')) ?? DEFAULT_MIN_ATTEMPT_MS
+
+    //deadlineAt: 絕對時刻(epoch ms, 與now同一時鐘), 未給或非法視為無
+    let da = hint('deadlineAt')
+    let deadlineAt = da !== undefined &amp;&amp; da !== null &amp;&amp; isenum(da, { gt: 0 }) ? num(da) : null
+    let shouldStop = isfun(hint('shouldStop')) ? hint('shouldStop') : null
+
+    //images: 非空字串陣列(元素限允許字元), 無效元素濾除, 結果為空取預設
+    let images = defaultImages(kind, platform)
+    if (o.images !== undefined &amp;&amp; o.images !== null) {
+        let arr = isarr(o.images) ? o.images.filter((s) => isestr(s) &amp;&amp; IMAGE_PATTERN.test(s)) : []
+        if (arr.length > 0) {
+            images = arr
+        }
+        else {
+            warnKey('images', 'a non-empty array of image names ([A-Za-z0-9._-])', images.join(','))
+        }
+    }
+
+    //沒有任何限制項、或沒有可數之image卻要限行程數 → 不守門
+    if (maxCli !== null &amp;&amp; images.length === 0) {
+        maxCli = null
+    }
+    if (maxCli === null &amp;&amp; ramUsedMax === null &amp;&amp; cpuMax === null) {
+        return null
+    }
+
+    //ticketDir: 跨行程預約票之資料夾(字串路徑), false關閉; 非預期取預設(os.tmpdir()下)
+    let ticketDir = path.join(os.tmpdir(), TICKET_DIR_NAME)
+    if (o.ticketDir === false) {
+        ticketDir = null
+    }
+    else if (o.ticketDir !== undefined &amp;&amp; o.ticketDir !== null) {
+        if (isestr(o.ticketDir) &amp;&amp; !o.ticketDir.includes('\u0000')) {
+            ticketDir = o.ticketDir
+        }
+        else {
+            warnKey('ticketDir', 'a non-empty path string or false', 'the system temp folder')
+        }
+    }
+
+    //pid: 本行程識別(測試可注入以模擬另一行程), 預約票以之區分自己與他行程
+    let pid = iseint(o.pid, { use: 'count', min: 1 }) ? num(o.pid) : process.pid
+
+    let fn = (key) => (isfun(o[key]) ? o[key] : null)
+    return {
+        kind,
+        images,
+        maxCli,
+        ramUsedMax,
+        cpuMax,
+        pollMs,
+        gateWaitMaxMs,
+        settleMs,
+        probeTimeoutMs,
+        probeFailCooldownMs,
+        minAttemptMs,
+        deadlineAt,
+        ticketDir,
+        pid,
+        countCli: fn('countCli'),
+        sampleCpu: fn('sampleCpu'),
+        sampleRam: fn('sampleRam'),
+        sleep: fn('sleep'),
+        now: fn('now'),
+        shouldStop,
+        onTrace: fn('onTrace'),
+        log,
+        platform,
+        state: isobj(o.state) &amp;&amp; isarr(get(o.state, 'queue', null)) ? o.state : null,
+    }
+}
+
+
+/**
+ * 取互斥鎖(FIFO)
+ *
+ * @param {Object} st 輸入狀態物件
+ * @returns {Promise} 回傳Promise，取得鎖時resolve
+ */
+function lock(st) {
+    return new Promise((resolve) => {
+        if (!st.busy) {
+            st.busy = true
+            resolve()
+        }
+        else {
+            st.queue.push(resolve)
+        }
+    })
+}
+
+
+/**
+ * 釋放互斥鎖(交給佇列中下一位)
+ *
+ * @param {Object} st 輸入狀態物件
+ */
+function unlock(st) {
+    let next = st.queue.shift()
+    if (next) {
+        next()
+    }
+    else {
+        st.busy = false
+    }
+}
+
+
+/**
+ * 守門之主體(可能拋錯，由外層攔截)
+ *
+ * @param {Object} opt 輸入同cliSpawnGate
+ * @param {Function|null} logArg 輸入日誌函數
+ * @returns {Promise} 回傳結果物件
+ */
+async function run(opt, logArg) {
+    let cfg = resolveSpawnGate(opt)
+    if (cfg === null) {
+        return { outcome: 'off', gated: false, waitedMs: 0, snapshot: { cli: null, cpu: null, ram: null }, failOpen: false, aborted: false }
+    }
+
+    let st = cfg.state || moduleState
+    let now = cfg.now || Date.now
+    let sleep = cfg.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+    let trace = getTrace({ onTrace: cfg.onTrace })
+    let logFn = isfun(logArg) ? logArg : cfg.log
+    let say = (level, msg) => {
+        if (logFn) {
+            callHookSync(() => logFn(level, msg))
+        }
+    }
+    let sayOnce = (level, key, msg) => {
+        if (!st.warned.has(key)) {
+            st.warned.add(key)
+            say(level, msg)
+        }
+    }
+
+    //探針(預設實作; 預設之CPU取樣器存於狀態物件以便重用)
+    let countCli = cfg.countCli || createCountCli({ platform: cfg.platform })
+    let sampleRam = cfg.sampleRam || sampleRamDefault
+    let sampleCpu = cfg.sampleCpu || (() => {
+        if (st.cpu === null) {
+            st.cpu = createCpuSampler({ now, sleep: cfg.sleep || undefined })
+        }
+        return st.cpu.sample()
+    })
+
+    let t0 = now()
+    let deadline = t0 + cfg.gateWaitMaxMs
+    if (cfg.deadlineAt !== null) {
+        deadline = Math.min(deadline, cfg.deadlineAt - cfg.minAttemptMs)
+    }
+    let key = cfg.images.map((s) => s.toLowerCase()).sort().join('|')
+
+    if (trace) {
+        trace('start', { kind: cfg.kind, maxCli: cfg.maxCli, ramUsedMax: cfg.ramUsedMax, cpuMax: cfg.cpuMax, pollMs: cfg.pollMs, gateWaitMaxMs: cfg.gateWaitMaxMs })
+    }
+
+    //probe: 失敗(拋錯／reject／逾時／非法值)一律回{ ok: false }, 視為通過; 失敗後冷卻期內不再呼叫
+    let probe = async (name, fn, valid) => {
+        let t = now()
+        if (st.probeDownUntil[name] !== undefined &amp;&amp; t &lt; st.probeDownUntil[name]) {
+            if (trace) {
+                trace('probe-skip', { probe: name })
+            }
+            return { ok: false }
+        }
+        let r = await awaitUserFn(fn, cfg.probeTimeoutMs)
+        let reason = null
+        if (r.state === 'threw') {
+            reason = 'threw'
+        }
+        else if (r.state === 'timeout') {
+            reason = 'timeout'
+        }
+        else if (!valid(r.value)) {
+            reason = 'invalid'
+        }
+        if (reason !== null) {
+            st.probeDownUntil[name] = now() + cfg.probeFailCooldownMs
+            if (trace) {
+                trace('probe-fail', { probe: name, reason })
+            }
+            sayOnce('warn', `probe-fail:${name}`, `[w-dispatch-ai spawnGate] ${name} probe failed (${reason}); skipping this check (fail-open)`)
+            return { ok: false }
+        }
+        delete st.probeDownUntil[name]
+        return { ok: true, v: r.value }
+    }
+    let validCount = (v) => typeof v === 'number' &amp;&amp; Number.isInteger(v) &amp;&amp; v >= 0
+    let validRatio = (v) => typeof v === 'number' &amp;&amp; Number.isFinite(v) &amp;&amp; v >= 0 &amp;&amp; v &lt;= 1
+
+    //pending: 未過期之預約(本行程之放行, 尚未必出現在計數)
+    let pendingOf = (t) => {
+        let list = (st.reservations.get(key) || []).filter((x) => t - x.t &lt;= cfg.settleMs)
+        st.reservations.set(key, list)
+        return list
+    }
+    //reserve: 登記預約(本行程記憶體＋跨行程預約票; 兩者同步執行, 與其前之「讀預約票」之間無await)
+    let keyHash = crypto.createHash('sha1').update(key).digest('hex').slice(0, 10)
+    let reserve = (visible) => {
+        let t = now()
+        let list = pendingOf(t)
+        list.push({ t, v: visible })
+        if (cfg.ticketDir !== null &amp;&amp; cfg.maxCli !== null) {
+            writeTicket(cfg.ticketDir, keyHash, cfg.pid, t, visible) //只在限行程數時才有意義
+        }
+        return list.length
+    }
+    //effectiveCount: 決策用之行程數＝max(所見, 估計); 估計＝最舊預約(本行程與他行程之預約票合併)當時所見之行程數＋預約數,
+    //預約過期(settleMs)即剔除, 故不因持續有新放行而無限累加; 預約為保守估計(假設其後無行程結束), 至多使空出之名額晚settleMs才被取用
+    let effectiveCount = (visible) => {
+        let t = now()
+        let local = pendingOf(t)
+        let others = cfg.ticketDir !== null ? readTickets(cfg.ticketDir, keyHash, t, cfg.settleMs, cfg.pid) : []
+        let all = local.concat(others).sort((a, b) => a.t - b.t)
+        let est = (all.length > 0 &amp;&amp; all[0].v !== null) ? all[0].v + all.length : null
+        return est === null ? visible : Math.max(visible, est)
+    }
+
+    //evaluate: 一次檢查(須於互斥臨界區內呼叫), 通過即登記預約
+    let n = 0
+    let evaluate = async () => {
+        n++
+        let snapshot = { cli: null, cpu: null, ram: null }
+        let blocked = []
+        let visible = null
+
+        //countStep: 查行程數並判定是否達上限; 探針失敗回false(視為通過)
+        let countStep = async () => {
+            let p = await probe('count', () => countCli([...cfg.images]), validCount)
+            if (!p.ok) {
+                return false
+            }
+            visible = p.v
+            snapshot.cli = effectiveCount(p.v)
+            return snapshot.cli >= cfg.maxCli
+        }
+
+        if (cfg.ramUsedMax !== null) {
+            let p = await probe('ram', sampleRam, validRatio)
+            if (p.ok) {
+                snapshot.ram = p.v
+                if (p.v > cfg.ramUsedMax) {
+                    blocked.push('ram')
+                }
+            }
+        }
+        if (cfg.maxCli !== null &amp;&amp; await countStep()) {
+            blocked.push('count')
+        }
+        if (cfg.cpuMax !== null &amp;&amp; blocked.length === 0) {
+            let tCpu = now()
+            let p = await probe('cpu', sampleCpu, validRatio)
+            if (p.ok) {
+                snapshot.cpu = p.v
+                if (p.v > cfg.cpuMax) {
+                    blocked.push('cpu')
+                }
+            }
+
+            //取新樣約需1秒, 其間他行程可能已放行並spawn: 放行前再查一次行程數, 使「最後一次讀取」緊接登記預約(重用上次樣者幾乎不耗時, 不重查)
+            let el = now() - tCpu
+            if (blocked.length === 0 &amp;&amp; cfg.maxCli !== null &amp;&amp; el >= RECOUNT_AFTER_MS) {
+                if (trace) {
+                    trace('recount', { afterMs: el })
+                }
+                if (await countStep()) {
+                    blocked.push('count')
+                }
+            }
+        }
+        let pass = blocked.length === 0
+        if (trace) {
+            trace('check', { n, pass, blockedBy: blocked.join(','), visible, cli: snapshot.cli, cpu: snapshot.cpu, ram: snapshot.ram })
+        }
+        return { pass, blocked, snapshot, visible }
+    }
+
+    let fmt = (x) => (x === null ? '-' : (Math.round(x * 100) / 100))
+    let limitText = () => `maxCli=${cfg.maxCli === null ? '-' : cfg.maxCli} ramUsedMax=${cfg.ramUsedMax === null ? '-' : cfg.ramUsedMax} cpuMax=${cfg.cpuMax === null ? '-' : cfg.cpuMax}`
+    let gated = false
+    let lastSnapshot = { cli: null, cpu: null, ram: null }
+
+    for (;;) {
+
+        //中止(呼叫端成果已無人接收): 不再等待
+        if (cfg.shouldStop !== null) {
+            let h = callHookSync(() => cfg.shouldStop())
+            if (h.state === 'value' &amp;&amp; h.value === true) {
+                let waitedMs = now() - t0
+                if (trace) {
+                    trace('aborted', { waitedMs })
+                }
+                return { outcome: 'aborted', gated, waitedMs, snapshot: lastSnapshot, failOpen: false, aborted: true }
+            }
+        }
+
+        //臨界區: 檢查＋登記預約, 同行程之併發呼叫逐一通過
+        let ev = null
+        await lock(st)
+        try {
+            ev = await evaluate()
+            if (ev.pass) {
+                ev.pending = reserve(ev.visible)
+            }
+        }
+        finally {
+            unlock(st)
+        }
+        lastSnapshot = ev.snapshot
+
+        if (ev.pass) {
+            let waitedMs = now() - t0
+            if (gated) {
+                say('info', `[w-dispatch-ai spawnGate] released after ${Math.round(waitedMs / 1000)}s`)
+            }
+            if (trace) {
+                trace('pass', { waitedMs, gated, pending: ev.pending })
+            }
+            return { outcome: gated ? 'waited' : 'pass', gated, waitedMs, snapshot: ev.snapshot, failOpen: false, aborted: false }
+        }
+
+        //被擋
+        if (!gated) {
+            gated = true
+            say('info', `[w-dispatch-ai spawnGate] waiting (blockedBy=${ev.blocked.join(',')} cli=${fmt(ev.snapshot.cli)} cpu=${fmt(ev.snapshot.cpu)} ram=${fmt(ev.snapshot.ram)}; ${limitText()})`)
+        }
+        let remaining = deadline - now()
+        if (remaining &lt;= 0) {
+            let waitedMs = now() - t0
+            reserve(ev.visible)
+            say('warn', `[w-dispatch-ai spawnGate] still blocked after ${Math.round(waitedMs / 1000)}s; proceeding (fail-open)`)
+            if (trace) {
+                trace('fail-open', { reason: 'timeout', waitedMs })
+            }
+            return { outcome: 'fail-open', gated, waitedMs, snapshot: ev.snapshot, failOpen: true, aborted: false }
+        }
+        let ms = Math.min(cfg.pollMs, remaining)
+        if (trace) {
+            trace('wait', { n, ms })
+        }
+        await sleep(ms)
+    }
+}
+
+
+/**
+ * CLI類轉接器spawn前之機器級守門：機器上同種CLI行程數達上限、或RAM／CPU過高時等待，等待逾時、探針失敗與內部例外皆放行(fail-open)
+ *
+ * 特點：
+ * 數「機器上實際存在之該CLI行程」(跨行程、跨專案、含使用者自開之TUI)，不靠套件內計數器、不需共享狀態檔；
+ * 同行程之併發呼叫經互斥臨界區與預約逐一通過，不致整批同時放行(跨行程之同一瞬間見檔頭限制)；
+ * 預設只對opencode啟用(claude、codex、antigravity預設不限，理由與實測見檔頭)；
+ * 本函數永不reject、不因守門本身失敗而擋下派工
+ *
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {String} [opt.kind] 輸入轉接器種類字串(opencode、claude、codex、antigravity)，決定預設值與預設image
+ * @param {String} [opt.exe] 輸入實際執行檔，預設情形下僅當其去目錄與副檔名後等於該kind之CLI名才守門
+ * @param {Boolean|Object} [opt.spawnGate] 輸入守門設定：false關閉；undefined／null取預設；true取預設且不受exe比對限制；物件可含maxCli(正整數或false)、ramUsedMax／cpuMax(0~1或false)、images、pollMs、gateWaitMaxMs、settleMs、probeTimeoutMs、probeFailCooldownMs、deadlineAt、minAttemptMs、shouldStop、ticketDir(路徑字串或false)、onTrace、log、debug、state，及可注入之countCli、sampleCpu、sampleRam、sleep、now、pid
+ * @param {Function} [opt.shouldStop] 輸入呼叫層提示之中止判定函數(遞補層傳入)，spawnGate物件未給同名鍵時採用，回傳值恰為true才中止
+ * @param {Number} [opt.deadlineAt] 輸入呼叫層提示之整體時限(epoch ms，遞補層由budgetMs換算)，等待不超過deadlineAt減minAttemptMs
+ * @param {Number} [opt.minAttemptMs] 輸入呼叫層提示之單次嘗試最低預算毫秒，預設20000
+ * @param {Function} [log=null] 輸入日誌函數(level, msg)=>{}，優先於spawnGate.log
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含outcome('off'未守門、'pass'直接放行、'waited'等待後放行、'fail-open'等待逾時而放行、'aborted'被shouldStop中止)、gated(是否曾被擋)、waitedMs(等待毫秒)、snapshot({ cli, cpu, ram }最後一次檢查所見，未取者為null)、failOpen(是否fail-open放行)、aborted(是否中止)；本函數不會reject
+ * @example
+ * //need test in nodejs
+ *
+ * import cliSpawnGate from './src/cliSpawnGate.mjs'
+ *
+ * let r = await cliSpawnGate({
+ *     kind: 'opencode',
+ *     spawnGate: { maxCli: 3, countCli: async () => 1, sampleCpu: async () => 0.2, sampleRam: () => 0.5 },
+ * })
+ * console.log(r.outcome, r.gated, r.snapshot)
+ * // => 'pass' false { cli: 1, cpu: 0.2, ram: 0.5 }
+ *
+ * let r2 = await cliSpawnGate({ kind: 'claude' })
+ * console.log(r2.outcome)
+ * // => 'off' (claude預設不限)
+ *
+ */
+async function cliSpawnGate(opt = {}, log = null) {
+    try {
+        return await run(opt, log)
+    }
+    catch (err) {
+        //守門本身之未預期例外: 放行(不得成為新的失敗來源)
+        return { outcome: 'fail-open', gated: false, waitedMs: 0, snapshot: { cli: null, cpu: null, ram: null }, failOpen: true, aborted: false, error: errMsg(err) }
+    }
+}
+
+
+export default cliSpawnGate
+export { resolveSpawnGate, createGateState, createCountCli, createCpuSampler, parseTasklistCsv, parsePsComm, defaultImages, exeStem, readTickets, writeTicket, KIND_CLI }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Nov 04 2026 01:28:59 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

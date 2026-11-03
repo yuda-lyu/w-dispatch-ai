@@ -1,0 +1,204 @@
+import crypto from 'node:crypto'
+import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import isenum from 'wsemi/src/isenum.mjs'
+import opencodeGoUsage from './opencodeGoUsage.mjs'
+import { awaitUserFn, readCallerObj } from './callUserFn.mjs'
+
+
+// goQuotaGate.mjs — OpenCode Go用量冷卻之判定(內部模組, 由dispatchAiFallback於選到Go條目之某把金鑰前呼叫; Gitea #67第2節; 帳本R-SPAWNGATE-2)
+//
+// 【做什麼】遞補層選到 provider 'opencode-go' 之條目(kind 'opencode', 即providers.mjs之`ocgo:`條目)之某把金鑰前, 查一次opencodeGoUsage(該金鑰所屬工作區之三視窗用量):
+//   任一視窗percent ≥ 該視窗門檻(rollingMax／weeklyMax／monthlyMax, 預設各95), 或端點明說該視窗被限(status 'rate-limited'), 本輪略過該把金鑰、不派;
+//   為何不等到頂: Go額度到頂時 `opencode run` 之行為與字樣未查明(免費池到頂時 run 不結束只到逾時, 見dispatchOpencode.mjs檔頭), 整批派下去恐全部耗滿逾時照耗時間與token,
+//   「到頂才知道」之代價高於「提前一點停」。
+//
+// 【不得誤判到頂(用量端點官方文件未載, 為實測所得, 見opencodeGoUsage.mjs檔頭)】只有「端點成功回應且該視窗之percent為有效數字且 ≥ 門檻」或「該視窗status明確為'rate-limited'」才擋:
+//   端點失敗(逾時、網路、401／403／429／其他非2xx、非JSON、形狀不符)、視窗缺漏、percent缺漏或非數字 → 一律不擋(fail-open), 另以結果之reason:'error'讓呼叫端記WARN;
+//   未知之status字樣不當作被限。門檻本身無效(非0~100之數字)改用預設95, 給false關閉該視窗之判定。
+//
+// 【冷卻語意】被擋之判定以「查詢時刻」為準, 快取cacheMs(預設60000)內不重打(同一把金鑰並行之多個呼叫共用同一次查詢; 失敗亦快取同長度, 免對壞掉之端點每個呼叫都打);
+//   快取到期後重查, 用量降回門檻以下即恢復派工(滾動視窗會逐步下降, 且使用者可能升級方案), 故不盲信resetsAt而直接冷卻到該時刻——
+//   until(被擋視窗之resetsAt之最晚者, 任一缺漏或無法解析為null)僅供日誌與事件顯示「預計何時全部解除」。判定以金鑰指紋(sha256前16碼, 不存金鑰本體)為鍵。
+
+
+//預設值
+let DEFAULT_MAX_PERCENT = 95
+let DEFAULT_CACHE_MS = 60000
+let DEFAULT_TIMEOUT_MS = 5000
+
+//視窗名(對應opencodeGoUsage結果usage之鍵)與其門檻設定鍵
+let WINDOWS = [
+    { name: 'rolling', key: 'rollingMax' },
+    { name: 'weekly', key: 'weeklyMax' },
+    { name: 'monthly', key: 'monthlyMax' },
+]
+
+
+/**
+ * 建立Go用量判定之狀態物件(快取與進行中之查詢)
+ *
+ * 預設使用模組層單一狀態物件(整個行程共用)；測試或需隔離者可另建並以opt.quotaGate.state傳入
+ *
+ * @returns {Object} 回傳狀態物件(內部結構不對外承諾)
+ */
+function createQuotaGateState() {
+    return { cache: new Map() }
+}
+let moduleState = createQuotaGateState()
+
+
+/**
+ * 解析quotaGate設定(不拋錯)：回傳正規化設定物件，或null(關閉)
+ *
+ * @param {*} raw 輸入使用端之quotaGate設定：false關閉；undefined／null／true取預設；物件逐鍵覆寫(rollingMax／weeklyMax／monthlyMax為0~100之數字或false、cacheMs／timeoutMs為正數毫秒、usage／now為函數、state為createQuotaGateState()之回傳)；非預期之型別視為未給(取預設)
+ * @returns {Object|null} 回傳正規化設定物件，關閉時回傳null
+ */
+function resolveQuotaGate(raw) {
+    if (raw === false) {
+        return null
+    }
+    let o = {}
+    if (raw !== undefined && raw !== null && raw !== true) {
+        let r = readCallerObj(raw, 'quotaGate')
+        if (r.ok && isobj(r.value)) {
+            o = r.value
+        }
+    }
+    let num = (v) => (typeof v === 'string' ? Number(v.trim()) : v)
+
+    //門檻: false關閉該視窗; 0~100之有效數字(不含0); 其餘取預設
+    let max = {}
+    for (let w of WINDOWS) {
+        let v = o[w.key]
+        if (v === false) {
+            max[w.name] = null
+        }
+        else if (v !== undefined && v !== null && isenum(v, { gt: 0, max: 100 })) {
+            max[w.name] = num(v)
+        }
+        else {
+            max[w.name] = DEFAULT_MAX_PERCENT
+        }
+    }
+    let ms = (v, d) => (v !== undefined && v !== null && isenum(v, { use: 'timer', gt: 0 }) ? num(v) : d)
+    return {
+        max,
+        cacheMs: ms(o.cacheMs, DEFAULT_CACHE_MS),
+        timeoutMs: ms(o.timeoutMs, DEFAULT_TIMEOUT_MS),
+        usage: isfun(o.usage) ? o.usage : null,
+        now: isfun(o.now) ? o.now : Date.now,
+        state: isobj(o.state) && get(o.state, 'cache', null) instanceof Map ? o.state : null,
+    }
+}
+
+
+/**
+ * 判斷某條目是否為OpenCode Go條目(kind 'opencode'且provider為'opencode-go')
+ *
+ * @param {Object} attemptOpt 輸入該次嘗試之opt(條目與共用設定合併後)
+ * @returns {Boolean} 回傳是否為Go條目
+ */
+function isGoEntry(attemptOpt) {
+    return get(attemptOpt, 'kind', null) === 'opencode' && get(attemptOpt, 'provider', null) === 'opencode-go'
+}
+
+
+/**
+ * 依opencodeGoUsage之結果判定是否該擋(純函數)
+ *
+ * 只有成功回應且視窗percent為有效數字並≥門檻、或視窗status明確為'rate-limited'才擋；其餘(失敗、缺漏、非數字、未知狀態)一律不擋
+ *
+ * @param {Object} usage 輸入opencodeGoUsage之結果物件
+ * @param {Object} max 輸入各視窗門檻物件{ rolling, weekly, monthly }，null代表不判該視窗
+ * @returns {Object} 回傳判定物件，內含blocked(是否該擋)、reason('limit'超過門檻或被限、'ok'未超過、'error'查詢失敗或回應不可用)、windows(被擋視窗陣列[{ name, percent, resetsAt, limited }])、until(被擋視窗resetsAt之最晚者ISO字串，任一缺漏或無法解析為null)、errorType、code(失敗時)
+ */
+function judgeGoUsage(usage, max) {
+    if (!isobj(usage) || usage.ok !== true || !isobj(usage.usage)) {
+        return { blocked: false, reason: 'error', windows: [], until: null, errorType: isestr(get(usage, 'errorType', null)) ? usage.errorType : 'other', code: get(usage, 'code', null) }
+    }
+    let windows = []
+    for (let w of WINDOWS) {
+        let win = get(usage.usage, w.name, null)
+        if (!isobj(win)) {
+            continue
+        }
+        let m = max[w.name]
+        let pct = get(win, 'percent', null)
+        let hasPct = pct !== null && pct !== undefined && isenum(pct)
+        let overLimit = m !== null && hasPct && Number(typeof pct === 'string' ? pct.trim() : pct) >= m
+        let stated = get(win, 'status', null) === 'rate-limited'
+        if (overLimit || stated) {
+            windows.push({
+                name: w.name,
+                percent: hasPct ? Number(typeof pct === 'string' ? pct.trim() : pct) : null,
+                resetsAt: isestr(win.resetsAt) ? win.resetsAt : null,
+                limited: stated,
+            })
+        }
+    }
+    let until = null
+    if (windows.length > 0) {
+        let ts = windows.map((x) => (isestr(x.resetsAt) ? Date.parse(x.resetsAt) : NaN))
+        if (ts.every((t) => Number.isFinite(t))) {
+            until = windows[ts.indexOf(Math.max(...ts))].resetsAt
+        }
+    }
+    return { blocked: windows.length > 0, reason: windows.length > 0 ? 'limit' : 'ok', windows, until }
+}
+
+
+/**
+ * 金鑰指紋(sha256前16碼十六進位，不存金鑰本體)
+ *
+ * @param {String} key 輸入金鑰
+ * @returns {String} 回傳指紋字串
+ */
+function fingerprint(key) {
+    return crypto.createHash('sha256').update(String(key)).digest('hex').slice(0, 16)
+}
+
+
+/**
+ * 查詢並判定某把Go金鑰是否因用量過高而該略過(含快取；永不reject；查詢失敗不擋)
+ *
+ * @param {Object} cfg 輸入resolveQuotaGate之結果(非null)
+ * @param {String} key 輸入Go工作區金鑰
+ * @returns {Promise} 回傳Promise，resolve回傳判定物件(同judgeGoUsage，另帶cached：是否取自快取)
+ */
+async function checkGoQuota(cfg, key) {
+    let st = cfg.state || moduleState
+    let fp = fingerprint(key)
+    let t = cfg.now()
+    let hit = st.cache.get(fp)
+    if (hit !== undefined) {
+        if (hit.pending) {
+            return { ...(await hit.pending), cached: true }
+        }
+        if (t - hit.t >= 0 && t - hit.t < cfg.cacheMs) {
+            return { ...hit.decision, cached: true }
+        }
+    }
+    let usageFn = cfg.usage || ((o) => opencodeGoUsage(o))
+    let pending = (async () => {
+        let r = await awaitUserFn(() => usageFn({ key, timeoutMs: cfg.timeoutMs }), cfg.timeoutMs + 2000)
+        if (r.state !== 'value') {
+            return { blocked: false, reason: 'error', windows: [], until: null, errorType: r.state === 'timeout' ? 'timeout' : 'other', code: null }
+        }
+        try {
+            return judgeGoUsage(r.value, cfg.max)
+        }
+        catch {
+            return { blocked: false, reason: 'error', windows: [], until: null, errorType: 'other', code: null } //回應物件不可讀(拋錯之getter等): 不擋
+        }
+    })()
+    st.cache.set(fp, { t, pending })
+    let decision = await pending
+    st.cache.set(fp, { t: cfg.now(), decision })
+    return { ...decision, cached: false }
+}
+
+
+export { resolveQuotaGate, createQuotaGateState, isGoEntry, judgeGoUsage, checkGoQuota }

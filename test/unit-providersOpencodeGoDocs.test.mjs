@@ -98,12 +98,14 @@ describe('providers.mjs檔頭【OpenCode Go】段', function() {
         assert.strict.deepEqual(r, [true, true, true])
     })
 
-    it('用量端點標明為實測所得、非官方承諾; 遞補層不接用量之理由(Go到頂時run之行為未查明)', function() {
+    it('用量端點標明為實測所得、非官方承諾; 遞補層以quotaGate於用量≥95%時略過(到頂前即停, 不倚賴Go到頂時run之行為, 該行為仍未查明; 2026-11-04 Gitea #67)', function() {
         let r = [
             goHead.includes('三視窗之查詢端點「官方文件未載」, 為實測所得、非官方承諾: GET https://opencode.ai/inference/go/v1/usage'),
-            goHead.includes('遞補層(dispatchAiFallback)不查用量、不依用量冷卻——Go額度到頂時 `opencode run` 之行為未查明'),
+            goHead.includes('遞補層(dispatchAiFallback)另於選到Go條目之某把金鑰前以quotaGate(src/goQuotaGate.mjs, 2026-11-04 Gitea #67)查該金鑰之三視窗用量'),
+            goHead.includes('不倚賴Go到頂時 `opencode run` 之行為(該行為仍未查明'),
+            !goHead.includes('遞補層(dispatchAiFallback)不查用量、不依用量冷卻'),
         ]
-        assert.strict.deepEqual(r, [true, true])
+        assert.strict.deepEqual(r, [true, true, true, true])
     })
 
     it('隱私前提: 預設擋train-on-data與地區、DeepSeek須Global、Muse／Iceman須開關; iceman／muse訓練Yes; 附兩句原文字樣', function() {
@@ -265,9 +267,10 @@ describe('opencodeGoUsage.mjs檔頭與README', function() {
             readme.includes('**OpenCode Go（月費訂閱）：8 條 `ocgo:` 條目與用量查詢 `opencodeGoUsage`（2026-11-03 起，Gitea #65）**'),
             readme.includes('//.env: OPENCODE_GO_KEYS=oc_sk_xxxx（只放「已訂閱 Go」之工作區金鑰'),
             readme.includes('**沒有 REST 類 Go 條目**'),
-            readme.includes('**遞補層不接用量**'),
+            readme.includes('**遞補層預設於用量 ≥95% 時略過該把金鑰（`quotaGate`，2026-11-04 起，Gitea #67；取代原「遞補層不接用量」）**'),
+            !readme.includes('- **遞補層不接用量**：'),
         ]
-        assert.strict.deepEqual(r, [true, true, true, true, true, true, true])
+        assert.strict.deepEqual(r, [true, true, true, true, true, true, true, true])
     })
 
 })

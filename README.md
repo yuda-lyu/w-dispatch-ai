@@ -318,6 +318,9 @@ await test()
 **未發布（Gitea #65，專案方 tai-kns-trade 建議；OpenCode Go 支援；皆為新增，既有 29 條 provider 條目與既有函數之行為不變）**：
 62. 內建 providers 新增 **8 條 OpenCode Go 之 CLI 類條目**（`ocgo:opencode-go/` 之 `beam-free`、`deepseek-v4.1-flash`、`minimax-m3.1-flash`、`qwen3.8-flash`、`glm-5.3-flash`、`mimo-v2.6-flash`、`iceman-contributor-free`、`muse-spark-1.3-contributor`；`provider: 'opencode-go'`；金鑰變數 **`OPENCODE_GO_KEYS`**，不沿用 `OPENCODE_KEYS`），置於 `oc:opencode/*` 之後、`agy:` 之前，會以請求資料訓練之 iceman、muse 殿後。**未設 `OPENCODE_GO_KEYS` 者只在 `skipped` 多 8 筆，遞補順序與其餘條目不變；有設者全取遞補鏈多 8 條**（建議仍以 `pick` 自選）。內建條目 29 → 37（「量級感受」更新）。`qwen3.8-flash` 之型錄檔位為 low／medium／xhigh（無 high），條目取 `--variant xhigh`，是目錄內唯一不為 `high` 者。新增匯出 **`opencodeGoUsage({ key, baseURL, timeoutMs })`**（`WDispatchAi` 鍵 33 → 34；`src/opencodeGoUsage.mjs`），查三視窗用量（端點官方文件未載，為實測所得）。**不收 REST 類 Go 條目**（Go 基底必帶 `x-opencode-session`，一般 REST 呼叫是否被允許官方未載）；**遞補層不接用量**（Go 額度到頂時 `opencode run` 之行為未查明）。其餘為 `providers.mjs`／`dispatchOpencode.mjs` 檔頭之【OpenCode Go】段（provider 分流、錯誤字樣對照、隱私前提）與本檔「OpenCode Go（月費訂閱）」段。
 
+**未發布（Gitea #67，專案方 tai-kns-trade 建議；CLI 類 spawn 前之機器級守門與 OpenCode Go 用量冷卻。**含行為變更**：`opencode` 條目預設會在機器上已有 `max(1, 核心數−1)` 個 `opencode.exe`、或 RAM 已用 >85%、CPU >90% 時等待，見下）**：
+63. ①**新增 `spawnGate`（四個 CLI 轉接器 `dispatchOpencode`／`dispatchClaude`／`dispatchCodex`／`dispatchAntigravity` 之選項，經 `dispatchAiFallback`／`createAiCaller`／工作流之 `opt`、`defaults`、條目照既有覆寫順序傳到轉接器）**：每次 spawn 前查「機器上實際存在之該 CLI 行程數」（Windows 以 `tasklist /FI "IMAGENAME eq <image>"`、其他以 `ps -eo comm=`；跨行程、跨專案、含使用者自開之 TUI）與 RAM、CPU，達上限即每 `pollMs`（10 秒）再查，等待逾 `gateWaitMaxMs`（10 分鐘）**放行（fail-open）**，計數或取樣本身失敗亦放行，不使派工失敗。**預設只對 `opencode` 啟用，且只守「真的 opencode」（未給 `exe`，或 `exe` 去目錄與副檔名後為 `opencode`；假 CLI 與包裝腳本不守，明給 `spawnGate: true` 或物件才不受此限）**；`claude`／`codex`／`antigravity` **預設不限**（守門為 no-op，不查 `tasklist`、不取樣、零成本）——與 issue 原案「四家共用同一上限」不同，理由與實測見「CLI spawn 守門」。`spawnGate: false` 整個關閉，結果與修前逐位元相同（`diff` 比對 56 組情境 0 差異）。②**守門等待在 spawn 之前，不計入該次嘗試之 `timeoutMs`（逾時自 spawn 起算）；經 `dispatchAiFallback` 且有 `budgetMs` 時，等待計入 `budgetMs`**（等待不超過「剩餘預算 − `minAttemptMs`」，放行後 `timeoutMs` 以剩餘預算封頂）；`shouldStop` 於等待中亦生效（回 `ABORTED`，`errorType: 'aborted'`，不當作一般失敗換金鑰）。③實際等過或 fail-open 時，失敗與成功結果另帶 `gateWaitedMs`（毫秒），fail-open 者另帶 `gateFailOpen: true`，`tried` 各項同；**未等待者結果不加欄位**。④**新增 `quotaGate`（`dispatchAiFallback`／`createAiCaller` 之選項，條目可覆寫）**：選到 `provider: 'opencode-go'` 之條目（即 `ocgo:` 條目）某把金鑰前先查 `opencodeGoUsage`（該金鑰所屬工作區之三視窗用量），任一視窗 `percent ≥ 95`（`rollingMax`／`weeklyMax`／`monthlyMax` 各一鍵，預設各 95，可給 `false` 關閉該視窗）或端點明說該視窗被限（`rate-limited`）即**略過該把金鑰、不派**；查詢結果快取 60 秒；**端點失敗、視窗或 `percent` 欄位缺少、`percent` 非數字、未知狀態字一律不擋**（該端點官方文件未載，不得誤判到頂），失敗另發 `quota-gate-error` 事件。**預設開啟**（`quotaGate: false` 關閉）：有設 `OPENCODE_GO_KEYS` 者，每把金鑰每 60 秒多打一次 `GET …/inference/go/v1/usage`（逾時 5 秒）。被略過之金鑰記為「沒額度」（`tried[].outcome: 'quota-skip'`、事件 `quota-skip`、組內每把皆略過即 `quotaExhausted`、`cooldownMs>0` 時條目降至鏈尾，最終 `error` 為 `QUOTA_EXHAUSTED: … (QUOTA_COOLDOWN: …)`、`errorType: 'quota'`）。⑤跨行程「整點同時起跑」：放行時另在 `os.tmpdir()/w-dispatch-ai-spawngate/` 寫一張空檔案「預約票」，他行程之檢查把 `settleMs`（3 秒）內之票併入估計（`spawnGate.ticketDir: false` 關閉；檔案系統錯誤靜默忽略）。⑥`cliSpawnGate`、`goQuotaGate` 為內部模組，**不新增 `WDispatchAi` 匯出**。**已知限制**：`execCli` 自理之非驗證失敗重試（`maxRetries>0` 且未給 `validate`）不重新守門（整輪只守一次；驗證不過而重試者每次重守）；預約票為提示而非鎖，兩行程於同一毫秒內讀寫仍可能各放行；預約為保守估計，放行後 3 秒內若他個行程恰好結束，空出之名額至多晚 3 秒才被取用。**對使用端之影響**：既有使用 `oc:`／`ocgo:` 條目之呼叫在機器忙碌時會多等（最久 10 分鐘後照常放行）；測試若以真實 `opencode` 為對象且不想被守門影響，傳 `spawnGate: false`；claude／codex／antigravity 與 REST 類不受影響。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -328,6 +331,7 @@ await test()
 | `cwd` | String | `process.cwd()` | 子進程工作目錄。**`dispatchOpencode` 另會把其絕對路徑同步注入環境變數 `PWD`**（覆寫呼叫端 `env` 內之同名變數）：opencode 以**繼承之 `PWD`** 優先於子進程真實 cwd 決定 session 目錄（原始碼 `run.ts`：`process.env.PWD ?? process.cwd()`），而 Git Bash 與 Linux/macOS 的 shell 都會設 `PWD`；2026-09-23 實測未同步時 opencode 會在父程序目錄讀寫（讀相對路徑回 NOTFOUND 且 `ok: true`，允許寫檔時檔案落在父程序目錄）。claude／codex 同組探針遵循 cwd，不受影響 |
 | `validate` | String\|Function | `undefined` | `stdout`驗證規則，可用`'nonempty'`、`'json'`、`'min:100'`，多規則以逗號串接，亦可給予`(stdout)=>Boolean`或回傳 Promise 之函數（以 resolve 值之真假判定；1.0.49 起，此前 Promise 恆視為通過）。驗證與子進程／HTTP **共用該次嘗試之`timeoutMs`**（等待上限為`timeoutMs`減去該次已耗時間；子進程耗時接近`timeoutMs`時驗證可用時間很少）；同步拋錯或 reject → `stderr`前綴`validate threw: <訊息>`，逾時 → `validate timed out: did not settle within <N>s`，皆為`OUTPUT_VALIDATION_FAILED`（`errorType: 'validation'`，不觸發冷卻、照常遞補），訊息截斷至 500 字元；逾時不會取消驗證函數本身之工作（無取消訊號），且逾時以事件迴圈可前進為前提（同步死迴圈或無止盡之微任務不在保證內）；結果之`durationMs`含驗證時間 |
 | `maxRetries` | Integer | `0` | 失敗後最大重試次數，遇`ENOENT`、exit code 2或無法啟動子進程之同步錯誤（如命令列過長、權限不足、非有效執行檔、參數含空字元；wsemi ≥1.9.15）視為不可重試而立即中止 |
+| `spawnGate` | Boolean\|Object | `undefined` | **僅CLI類四個轉接器**（`dispatchOpencode`／`dispatchClaude`／`dispatchCodex`／`dispatchAntigravity`）：spawn前之機器級守門。`false`關閉；未給＝預設（**只對`opencode`且`exe`為真的`opencode`時啟用**，其餘三家預設不限）；`true`＝預設且不受`exe`比對限制；物件逐鍵覆寫`maxCli`／`ramUsedMax`／`cpuMax`（`false`關閉該項）、`pollMs`、`gateWaitMaxMs`、`images`等。非預期之值改用預設而不報錯。完整說明見「CLI spawn 守門」。守門等待不計入該次`timeoutMs` |
 
 其餘設定會原樣轉傳給`wsemi`之`execCli`，例如`retryDelayMs`、`maxBuffer`、`onStdout`、`onStderr`、`env`（`env`以淺層副本轉傳；含拋錯之 getter 或為已撤銷之 Proxy 者回`errorType: 'params'`，1.0.49 起，此前 reject）。注意：`onStdout`／`onStderr`回調內拋出之錯誤**不會被攔截，將使行程崩潰**（wsemi 文件載明），回調為 async 者其 rejection 亦同，請於回調內自行處理；`validate`之自訂函數拋錯、reject 或逾時則視同驗證失敗（見上表`validate`列）。
 
@@ -653,14 +657,16 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | `providers[].id` | String | 條目索引 | 群組識別，游標以此為鍵、亦為日誌標籤；本套件不解讀其內容，命名規則見下方 |
 | `providers[].keys` | Array | `[]` | 同一服務之多把API key，逐次注入輪替（`kind`為`opencode`時須同時給`provider`）；省略代表沿用CLI登入狀態 |
 | `providers[].meta` | any | 無 | **保留鍵，保證永不轉傳**轉接器。條目其餘鍵一律原樣轉傳——呼叫端要在條目上掛自有資訊（分類、標籤、註記）一律放`meta`，與轉傳機制永久絕緣（頂層opt與工作流各層規格物件同此約定） |
-| `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs`（非同步之`validate`與該次嘗試共用此時限，故亦受預算約束）。**已知限制**：條目或共用設定帶`maxRetries`>0 時，剩餘預算只壓進「呼叫轉接器」之那一次，轉接器內之各次重試各自以該值為上限，整輪至多約（maxRetries+1）×剩餘預算＋重試間隔，可超出`budgetMs`（既有行為，非同步驗證之重試亦同；以期限傳入轉接器之改善另議） |
+| `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs`（非同步之`validate`與該次嘗試共用此時限，故亦受預算約束；CLI類之`spawnGate`守門等待與Go用量查詢耗時**亦計入**此預算）。**已知限制**：條目或共用設定帶`maxRetries`>0 時，剩餘預算只壓進「呼叫轉接器」之那一次，轉接器內之各次重試各自以該值為上限，整輪至多約（maxRetries+1）×剩餘預算＋重試間隔，可超出`budgetMs`（既有行為，非同步驗證之重試亦同；以期限傳入轉接器之改善另議） |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |
 | `store` | Object | 行程內記憶體 | 狀態持久化`{get:()=>state, set:(state)=>{}}`，state含`cursors`（逐群組游標）與`cooling`（供應商冷卻時間戳，僅啟用cooldownMs時使用），以及僅在啟用冷卻且有金鑰沒額度時才出現的`keyCooling`（金鑰指紋→時間戳，指紋為sha256前16碼，不含金鑰本體）；假定單行程序列調用。跨行程持久化可直接用`createFileStore`；自行實作時**務必整包原封存還**，白名單式挑欄位會在套件擴充state時靜默丟棄新欄位。`get`／`set`須為**同步函數**：`get`拋錯、回傳 Promise 或回傳不可讀之物件時本次以全新狀態執行且**不回寫**（不覆寫既有之游標與冷卻；1.0.49 起，此前以全新狀態寫回），`get`回傳非物件（如尚未初始化之`null`）則照舊以全新狀態起始並寫回；`set`拋錯或回傳 Promise 皆靜默（其 rejection 被承接）。**state 之契約**：`get`回傳之 state 須為可寫之一般資料物件（`cursors`／`cooling`不得為凍結物件或帶拋錯之 getter），本層於整輪中持續讀寫同一物件並把它交給`set`——`set`不得凍結或改寫收到之 state（如 immer 式深凍結），需要不可變存放時請存其副本；違反者屬契約外，可能 reject。巢狀呼叫（`validate`內再呼叫本套件）共用同一檔案 store 時可能互相覆寫 |
 | `cooldownMs` | Integer | `0`不啟用 | 供應商冷卻視窗：條目（限有明給id者）遭遇**限流(HTTP 429，僅api類可偵測；`api-anthropic`與`claude`帶key者另可依`failureKind === 'rate-limit'`)或逾時(TIMEOUT)**後，於視窗內之後續呼叫中被**移至鏈尾（只降序不移除）**——前面全敗時仍會被嘗試、任一次成功立即解除，故不存在把已恢復服務冰住的問題。多階段工作流可大幅省去逐階段重踩已失效供應商的成本（使用端實測107s→15s）。注意啟用時providers順序會被暫時重排，此即機制目的。**沒額度（`failureKind === 'no-credit'`）另有金鑰層級冷卻**：該把金鑰（以指紋記於`store.keyCooling`）於視窗內降序至組內最後，整組皆沒額度者條目降至鏈尾，見「Claude以API金鑰計費」 |
 | `coolDetect` | Function | 無 | 冷卻觸發之**注入判定**`(r)=>Boolean`，收完整失敗結果（含`stdout`、`stderr`、`code`、`error`、`failureKind`），回傳`true`即視同冷卻觸發（內建429／TIMEOUT／`failureKind`為`rate-limit`之觸發不受影響：**內建先判、未命中才呼叫`coolDetect`，兩者為「或」疊加，`coolDetect`只能增加觸發、不能否決內建觸發**）。CLI類限流字樣各家不同、隨版本漂移，且不一定在stderr（Claude Code之執行期失敗以result印在stdout，官方headless文件），**簽章表由觀察到字樣的呼叫端維護**，如`(r) => /FreeUsageLimitError/i.test(r.stderr \|\| '')`（注意：opencode 1.18.32 遇 Zen 免費層 429 時 `run` **不會結束**、stderr 只有 session 標頭，直到逾時才以 `TIMEOUT` 回報——內建 TIMEOUT 觸發已涵蓋；要讓字樣出現在 stderr 須於 `extraArgs` 加 `--print-logs --log-level ERROR`，2026-09-23 實測 DEBUG log 內為 `AI_APICallError: Rate limit exceeded`；不經本套件的原始 CLI 亦同）；漏判僅退回現狀（每階段重探一次）、誤判也只是降尾非移除，兩邊代價都有上限。僅`cooldownMs>0`時有效；回調須為**同步函數**，拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false`；以字樣判定者宜先排除`r.errorType === 'validation'`（驗證失敗之`stderr`含驗證函數自身之訊息，可能誤中字樣） |
-| `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調須為**同步函數**（回傳值恰為`true`才中止），拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false` |
+| `shouldStop` | Function | 無 | 中止判定`()=>Boolean`，於**每次嘗試之間**與CLI類**`spawnGate`守門等待中**檢查，`true`即停止遞補回報`ABORTED`——供成果已無人接收時（如server端客戶端斷線）止損，把「斷線後仍空耗整條鏈」縮成「至多再耗當前這一家」。**不中止進行中之嘗試**（不殺子進程/不斷開請求，見Known design notes）。經工作流層原樣轉傳：中止後每個後續呼叫進門即回`ABORTED`，整條工作流自然快速收束，無須逐層處理；回調須為**同步函數**（回傳值恰為`true`才中止），拋出例外或回傳 Promise（其 rejection 被承接）皆視同`false` |
+| `spawnGate` | Boolean\|Object | `undefined` | CLI類條目spawn前之機器級守門（見「CLI spawn 守門」），放頂層為各條目之共用預設、條目自帶者**整個取代**（非逐鍵合併；條目給`false`即該條目不守門）。遞補層另把`shouldStop`與`budgetMs`傳給守門：等待中`shouldStop`為真即回`ABORTED`，有`budgetMs`時守門等待計入預算（不超過剩餘預算減`minAttemptMs`）。REST類條目不經此門 |
+| `quotaGate` | Boolean\|Object | `undefined` | OpenCode Go條目（`provider: 'opencode-go'`，即`ocgo:`條目）之**用量冷卻**（見「OpenCode Go 用量冷卻」）：頂層為共用設定、條目同名鍵優先；`false`關閉；物件可給`rollingMax`／`weeklyMax`／`monthlyMax`（0~100，預設各95，`false`關閉該視窗）、`cacheMs`（60000）、`timeoutMs`（5000）。本層自用鍵，**不轉傳**轉接器；只作用於Go條目 |
 | `meta` | any | 無 | 保留鍵，同`providers[].meta`，永不轉傳 |
-| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現；沒額度之金鑰冷卻與整組沒額度之條目冷卻另帶`scope`(`'key'`或`'entry'`)與`failureKind`)、`'skip-key'`(本次呼叫內已知沒額度之金鑰被略過而未送請求，僅`api-anthropic`／`claude`官方端點條目，帶`failureKind`與`error`)、`'context-too-long'`(脈絡過長，整個呼叫隨即結束，帶`failureKind`與`error`)、`'group-exhausted'`(一組試完仍無成交，每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前；帶`keys`(有效金鑰數，`0`代表登入態之單一虛擬金鑰)、`attempted`(本組實際嘗試數，不含`skip-key`)、`by`(`'all-keys'`每把皆換鑰失敗，或`'skip-group'`以與金鑰無關之失敗收尾)、`errorTypes`(本組各次嘗試之`errorType`依序)與`error`(本組最後一次錯誤)；有`failureKind`時另帶`failureKinds`(本組各次紀錄之`failureKind`)，組內每一把皆沒額度時另帶`quotaExhausted: true`；成交、預算用盡、中止之組不發，亦不寫入`tried`)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外或回傳被 reject 之 Promise 皆不影響主流程（不等待其結果） |
+| `onEvent` | Function | 無 | 事件回調`(ev)=>{}`，`ev.type`為`'try'`、`'ok'`、`'next-key'`、`'skip-group'`、`'budget-out'`、`'aborted'`、`'quota-skip'`(Go用量達門檻而略過某把金鑰，未送請求；帶`windows`(`[{ name, percent, resetsAt, limited }]`)、`until`(被擋視窗`resetsAt`之最晚者或`null`)、`cached`與`error`)、`'quota-gate-error'`(Go用量查詢失敗而不擋，帶`errorType`與`code`，同一把金鑰於快取期間內只發一次)、`'cooled'`(冷卻觸發，帶`error`與`cooldownMs`，僅啟用cooldownMs時出現；沒額度之金鑰冷卻與整組沒額度之條目冷卻另帶`scope`(`'key'`或`'entry'`)與`failureKind`)、`'skip-key'`(本次呼叫內已知沒額度之金鑰被略過而未送請求，僅`api-anthropic`／`claude`官方端點條目，帶`failureKind`與`error`)、`'context-too-long'`(脈絡過長，整個呼叫隨即結束，帶`failureKind`與`error`)、`'group-exhausted'`(一組試完仍無成交，每次呼叫每組恰一次，位於該組最後一個`next-key`／`skip-group`之後、下一組首個`try`之前；帶`keys`(有效金鑰數，`0`代表登入態之單一虛擬金鑰)、`attempted`(本組實際嘗試數，不含`skip-key`)、`by`(`'all-keys'`每把皆換鑰失敗，或`'skip-group'`以與金鑰無關之失敗收尾)、`errorTypes`(本組各次嘗試之`errorType`依序)與`error`(本組最後一次錯誤)；有`failureKind`時另帶`failureKinds`(本組各次紀錄之`failureKind`)，組內每一把皆沒額度時另帶`quotaExhausted: true`；成交、預算用盡、中止之組不發，亦不寫入`tried`)；失敗事件另帶`errorType`、`stdout`(被拒回覆)與`stderr`(錯誤輸出，皆已截斷)供診斷；回調拋出例外或回傳被 reject 之 Promise 皆不影響主流程（不等待其結果） |
 
 頂層其餘設定（`timeoutMs`、`validate`、`maxRetries`等）為各attempt之共用預設，條目可覆寫；`maxRetries`建議維持預設`0`，韌性交給換家而非重試同一家。
 
@@ -726,6 +732,12 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
     attempts: 1,
 }
 
+//CLI類之spawnGate守門實際等過(或等待逾時而放行)時, 成功與失敗結果皆另帶(未等待者不加此二欄; durationMs不含守門等待):
+{
+    gateWaitedMs: 10573, //守門等待毫秒(驗證重試時為各次合計)
+    gateFailOpen: true,  //僅等待逾時(gateWaitMaxMs)而放行時才有
+}
+
 //參數檢核失敗, 未實際啟動子進程故無pid
 {
     ok: false,
@@ -759,7 +771,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
     failureDetail: 'Your credit balance is too low …',
     quotaExhausted: ['anthropic:haiku-5.5'],  //組內每一把金鑰皆沒額度之供應商id(僅有時才有此鍵), 此時error為'QUOTA_EXHAUSTED: provider "…" has no credit on all N key(s) (…)'
     // 脈絡過長時error為'CONTEXT_TOO_LONG: …'且整個呼叫已結束; 呼叫方式或環境錯誤時為'ENV_ERROR: …'
-    // tried[].outcome另有'skip-key'(本次呼叫內已知沒額度之金鑰, 未送請求)與'context-too-long'
+    // tried[].outcome另有'skip-key'(本次呼叫內已知沒額度之金鑰, 未送請求)、'context-too-long'與'quota-skip'(Go用量達門檻而略過, 見「OpenCode Go 用量冷卻」; 該項errorType為'quota')
 }
 ```
 
@@ -860,6 +872,7 @@ timeoutMs（單次嘗試，統一預設300000）
 | `printTimeout` | 僅antigravity，agy自身等待上限 | 自動＝timeoutMs＋30s | 後備：令外層先逾時（該次嘗試以`TIMEOUT`失敗、整組跳過；有明給`id`且`cooldownMs`>0才記冷卻；整輪仍可能因`budgetMs`用盡而回`budget`）。agy自身逾時是**離開碼0交回部分輸出**（可能為空）而非錯誤，若令它先到時，慢回合會變成`ok: true`之截斷輸出；一般無須手動設 |
 | `budgetMs` | `dispatchAiFallback`整輪遞補（＝工作流的一個名額／階段） | `null`不限 | 有值時剩餘預算會壓進每次嘗試的timeoutMs；用盡回`budget exhausted`；工作流之`prompt`函式（可為 async）之耗時亦自該階段／整合名額之budgetMs扣除；`maxRetries`>0 時整輪可超出（見 Options for dispatchAiFallback 之`budgetMs`列） |
 | `minAttemptMs` | 搭配budgetMs的開工門檻 | `20000` | 剩餘預算低於此值即不再開工；**無budgetMs時不作用** |
+| `spawnGate.gateWaitMaxMs` | **Spawn 守門**：CLI類每次spawn前之機器級守門等待（見下「CLI spawn 守門」） | `600000`（10分鐘），**只對opencode預設啟用** | 等待**在spawn之前，不計入該次嘗試之`timeoutMs`**（逾時自spawn起算）；逾時**放行（fail-open）**不回error；經`dispatchAiFallback`且有`budgetMs`時**計入`budgetMs`**（等待不超過剩餘預算減`minAttemptMs`，放行後`timeoutMs`以剩餘預算封頂）；`spawnGate: false`關閉 |
 | 工作流總時長 | `runFanout`／`runRolePipeline`／`runFanoutPipeline` | 無（刻意） | 由結構推導，要上限就設各名額的`budgetMs` |
 
 **工作流總時長公式**（每次嘗試≤timeoutMs；K＝遞補鏈組數、M＝階段數）：
@@ -897,6 +910,47 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
     budgetMs: 4800000,     //鏈長K×timeoutMs(K=4→80min): 逾時每組只燒一次即跳組, 故保證走得到最末; 無外部時限可null
 } })
 ```
+
+#### CLI spawn 守門（`spawnGate`）與 OpenCode Go 用量冷卻（`quotaGate`）（2026-11-04 起，Gitea #67）:
+
+**為什麼**：同一台機器上各專案、各行程、測試工具各自併發呼叫 CLI（如 `Promise.all` 同時跑多個概念，每個再同時起多份草稿），彼此互不知情，整點同時起跑只會疊加；2026-11-03 實測 4 核心機同時 6～10 個 `opencode.exe` 令整機 CPU 100%。只有在 **spawn 那一點**做機器級守門，才能同時約束多個專案、多個行程。
+
+**預設值與理由（與 issue 原案不同：不是四家共用同一上限）**：
+
+| kind | 預設 | 依據（本機 8 核心 Windows 11，2026-11-04 實測） |
+| --- | --- | --- |
+| `opencode` | **啟用**：只數 `opencode.exe`，`maxCli = max(1, 核心數−1)`、RAM 已用 >0.85 或 CPU >0.90 亦等（darwin 之 `os.freemem` 不含可回收快取，RAM 門檻預設關） | `opencode.exe`（bun）單次短呼叫約 3 秒、期間占約 **1.1 核心**（`tasklist /V` CPU Time 差）——即 issue 所稱「opencode 本身占核」 |
+| `claude`／`codex`／`antigravity` | **不限**（守門為 no-op：不查 `tasklist`、不取樣，零成本） | 現役 `claude.exe`（2 個）30 秒窗內為 0.0%／4.9% 單核、`codex.exe` 為 0.0%——「等候模型回應」時幾乎不占 CPU（CPU 花在其子行程如 node／git／測試，不在 `claude.exe` 本身）；若四家合計計數，主控同時派多個 `claude -p`（或使用者開著多個互動 `claude.exe`）就會讓新派工白等（8 核心機同時 7 個 `claude.exe` 即達 `cores−1`，最久等 10 分鐘）。真實 `claude -p`／`codex exec` 派工之 CPU 未測（會耗訂閱額度），`agy.exe` 本機無行程未測 |
+
+要對 claude／codex／antigravity 也限者逐次明給，數該 CLI 之 image：`spawnGate: { maxCli: 4 }`（RAM／CPU 門檻同樣預設關，要用另給 `ramUsedMax`／`cpuMax`）。
+
+**預設只守「真的該 CLI」**：未給 `spawnGate` 時，僅當 `exe`（去目錄與副檔名）等於該 kind 之 CLI 名（`opencode`／`claude`／`codex`／`agy`）才守門——守門數的是該 CLI 之 image，`exe` 指向假 CLI 或包裝腳本時，機器上有幾個 `opencode.exe` 與它無關。明給 `spawnGate: true` 或物件者不受此限。
+
+**`spawnGate` 設定**（`false` 關閉；`true` 取預設；物件逐鍵覆寫，非預期之值**改用預設而不報錯**，`debug: true` 時另以 `log` 警告鍵名；分類見 dspec〈輸入參數之檢測機制〉K3）：
+
+| 鍵 | 預設 | 說明 |
+| --- | --- | --- |
+| `maxCli` | opencode：`max(1, 核心數−1)`；其餘 kind 無 | 機器上該 CLI 行程數 **≥ 此值即等**；正整數（數字字串收下並轉換），`false` 關閉此項 |
+| `ramUsedMax`／`cpuMax` | opencode：`0.85`／`0.90`；其餘 kind 無 | `1 − os.freemem()/os.totalmem()` **>** 門檻、或全部核心合計 CPU 使用率（`os.cpus()` 之 times 差；Windows 無 `loadavg`）**>** 門檻即等；`(0,1]` 之數字，`false` 關閉該項 |
+| `images` | 該 kind 之 CLI image（Windows `opencode.exe`、其他 `opencode`；antigravity 為 `agy`） | 要數之 image 名稱陣列（字元限 `[A-Za-z0-9._-]`，不經 shell） |
+| `pollMs`／`gateWaitMaxMs` | `10000`／`600000` | 被擋後每隔 `pollMs` 再查；**累計等超過 `gateWaitMaxMs` 即放行並 warn（fail-open）** |
+| `settleMs` | `3000` | 放行後多久內視為「子行程可能尚未出現在 `tasklist`」（見下「同一瞬間整批放行」） |
+| `probeTimeoutMs`／`probeFailCooldownMs` | `8000`／`30000` | 單次計數／取樣之逾時；探針失敗後多久內不再呼叫（免對壞掉之 `tasklist` 每次卡住） |
+| `ticketDir` | `os.tmpdir()/w-dispatch-ai-spawngate` | 跨行程預約票資料夾；`false` 關閉 |
+| `onTrace`／`log` | 無 | 觀察回調（`start`／`recount`／`check`／`wait`／`pass`／`fail-open`／`aborted`／`probe-fail`／`probe-skip`，凍結事件、拋錯忽略）與日誌函數 `(level, msg)`；**不給 `log` 則無輸出**（函式庫不預設印 console） |
+| `countCli`／`sampleCpu`／`sampleRam`／`sleep`／`now` | 預設實作 | 可注入（單元測試用，不碰真機） |
+
+**fail-open（守門不可成為新的失敗來源）**：等待逾 `gateWaitMaxMs` → 放行；`countCli`／`sampleCpu`／`sampleRam` 拋錯、reject、逾時、回傳非法值 → 該項視為通過（記 `probe-fail` 事件）；守門本身之未預期例外 → 放行。**永不 reject。** 放行者結果帶 `gateFailOpen: true`。
+
+**同一瞬間整批放行之處理**：行程數檢查是「看機器上已存在者」，併發呼叫同一瞬間通過檢查時其子行程尚未出現在 `tasklist`。處理：①**行程內序列化**（檢查＋登記為一個臨界區，FIFO），同行程之併發呼叫逐一通過；②放行即登記**預約**（時刻＋當時所見行程數），`settleMs` 內尚未出現者以「最舊預約當時之行程數＋預約數」估入，實際計數取兩者較大者（不重複計算已出現者；預約過期即剔除，不無限累加）；③取新 CPU 樣約耗 1 秒，其間他行程可能已放行並 spawn，故取了新樣者放行前**再查一次**行程數；④**跨行程**（整點多個專案同時起跑）：放行時寫一張空檔案**預約票**到 `os.tmpdir()/w-dispatch-ai-spawngate/`（檔名帶 pid、時刻、所見行程數），他行程之檢查併入 `settleMs` 內之他行程票；票只是提示、不是鎖、不存內容，檔案系統錯誤靜默忽略。實機（2 個行程同一瞬間各發 6 個 `opencode` 呼叫、`maxCli: 2`）：無票時全機峰值 3、有票時 2。**已知限制**：兩行程於同一毫秒內讀寫票仍可能各放行；預約為保守估計，放行後 `settleMs` 內若他個行程恰好結束，空出之名額至多晚 `settleMs` 才被取用；`execCli` 自理之非驗證失敗重試（`maxRetries>0` 且未給 `validate`）不重新守門（整輪只守一次，驗證不過而重試者每次重守）。需要嚴格上限者請由單一行程（單一呼叫端佇列）派工。
+
+**成本（本機 8 核心 Windows 11 實測）**：`tasklist /FO CSV /NH` 不加篩選約 **1000 ms**（p50 1012、max 1488；全行程列舉），加 `/FI "IMAGENAME eq <image>"` 約 **70～120 ms**，故每個 image 各以篩選查詢；1 秒 CPU 取樣固定約 1006 ms，故 CPU 取樣於上次取樣之 0.3～10 秒內以「自上次起之差」計（不再等 1 秒）、0.3 秒內重用上次值，**只有閒置超過 10 秒後之首次檢查付 1 秒**；RAM 與行程數已擋者不取 CPU 樣。連續 12 次通過守門（opencode 預設，含 RAM／行程數／CPU）：首次 1099 ms、其後中位 69 ms；閒置 5 秒後 74 ms、閒置 12 秒後 1079 ms；只查行程數平均 68 ms。即：opencode 單次呼叫（秒級～數百秒）之守門額外成本為「首次 ≈1.1 秒、之後 ≈0.07 秒」；claude／codex／antigravity 預設為 0。
+
+**實機（本機，`ocgo:opencode-go/beam-free` 免費期模型、短提示詞，同一 node 行程同一瞬間 6 個呼叫）**：不守門時 `opencode.exe` 峰值 **6**、總計 8.9 秒；`spawnGate: { maxCli: 2, pollMs: 1000 }` 時峰值 **2**、總計約 23 秒（≈2.6 倍）、6/6 成功。
+
+**逾時歸屬**：守門等待在 spawn 之前，**不計入該次嘗試之 `timeoutMs`**（逾時自 spawn 起算，結果之 `durationMs` 亦不含等待）；經 `dispatchAiFallback` 且有 `budgetMs` 時**計入 `budgetMs`**：遞補層把 `deadlineAt`（預算期限）與 `minAttemptMs` 傳給守門，等待不超過「期限 − `minAttemptMs`」（到點即 fail-open 放行），放行後該次 `timeoutMs` 以剩餘預算封頂（守門未運作時 `timeoutMs` 原值不動）；`shouldStop` 於等待中亦生效（回 `ABORTED`、`errorType: 'aborted'`）。
+
+**OpenCode Go 用量冷卻（`quotaGate`；`dispatchAiFallback`／`createAiCaller` 之選項，條目同名鍵優先）**：選到 `provider: 'opencode-go'` 之條目（`ocgo:`）某把金鑰前先查 `opencodeGoUsage`（**該金鑰所屬工作區**之三視窗用量，故逐把金鑰查）：任一視窗 `percent ≥ 門檻`（`rollingMax`／`weeklyMax`／`monthlyMax`，預設各 `95`，`false` 關閉該視窗）或端點明說該視窗被限（`status: 'rate-limited'`）→ **略過該把金鑰、不派**（事件 `quota-skip`、`tried[].outcome: 'quota-skip'`；視同該把「沒額度」，組內每把皆略過即 `quotaExhausted`、`cooldownMs>0` 時條目降至鏈尾，最終 `error` 為 `QUOTA_EXHAUSTED: … (QUOTA_COOLDOWN: …)`、`errorType: 'quota'`）。查詢結果以金鑰指紋為鍵**快取 60 秒**（`cacheMs`；並行之多個呼叫共用同一次查詢；失敗亦快取同長度，免對壞掉之端點每個呼叫都打），快取到期重查——用量降回門檻以下即恢復派工（滾動視窗會逐步下降，且使用者可能升級方案），故不盲信 `resetsAt` 而直接冷卻到該時刻；事件之 `until` 為被擋視窗 `resetsAt` 之最晚者，僅供顯示「預計何時全部解除」。**該端點官方文件未載（實測所得）**，故**端點失敗（逾時、網路、401／403／429／其他非 2xx、非 JSON、形狀不符）、視窗缺漏、`percent` 缺漏或非數字、未知狀態字一律不擋（fail-open）**，失敗另發 `quota-gate-error` 事件（同一把金鑰快取期間內只發一次）。**預設開啟**：有設 `OPENCODE_GO_KEYS` 者每把金鑰每 60 秒至多多一次 `GET`（逾時 5 秒）；`quotaGate: false` 關閉。查詢耗時發生在預算計算之前，自然計入 `budgetMs`。這是「到頂前即停」，不倚賴 Go 額度到頂時 `opencode run` 之行為（該行為仍未查明）。
 
 #### providers.mjs(內建供應商定義檔):
 [src/providers.mjs](https://github.com/yuda-lyu/w-dispatch-ai/blob/master/src/providers.mjs) 收錄各供應商條目(CLI版與REST版)，金鑰以 `envVar` 間接引用(機密只放 `.env`)，經 `resolveProviders` 展開後即可直接使用或以 `pick` 自選。
@@ -1009,7 +1063,7 @@ else {
 - **為何另立 `OPENCODE_GO_KEYS`、不沿用 `OPENCODE_KEYS`**：Go 訂閱綁工作區。本機 `OPENCODE_KEYS` 內兩把，用量端點第 1 把 200（已訂閱）、第 2 把 403（`EntitlementError: OpenCode Go subscription required.`）；未訂閱的金鑰打 Go 模型（連免費期的 `beam-free` 也一樣）要 77 秒才以 `An active OpenCode Go subscription is required to use Go models.` 失敗（1 次實測）——沿用會讓全取遞補對每把未訂閱的金鑰空耗約 77 秒。查某把金鑰是否已訂閱 Go：`opencodeGoUsage({ key })`（唯讀、不耗額度）。
 - **隱私**：Go 繼承工作區 Settings › Privacy。預設擋「以請求資料訓練的付費端點」且地區限歐美：DeepSeek 須選 Global；Muse／Iceman Contributor 須開 train-on-data 開關，否則回 `This Go model requires Global regions…`／`This Go model trains on request data…`（提出端自述，本機未重現）。**iceman 與 muse 會以你的提示詞與回應訓練模型，敏感內容勿走。**
 - **沒有 REST 類 Go 條目**：Go 基底必帶穩定的 `x-opencode-session`（缺則 400 `MissingSessionID`），官方明示 Go 給 OpenCode 與同類 coding agent 用；一般 REST 呼叫是否被允許官方未載，故只收走官方 CLI 的條目。
-- **遞補層不接用量**：`dispatchAiFallback` 不查 Go 用量、不依用量冷卻。Go 額度到頂時 `opencode run` 的行為與字樣**未查明**（免費池到頂時不結束，Go 是否同樣不返回本機與提出端皆未撞到）；呼叫端自行排程時請用 `opencodeGoUsage` 前置判斷，並以 `timeoutMs` 封頂。`percent` 是各視窗的整數百分比，端點不給金額、不分模型，「某模型還剩幾次」須自行依官方各模型月額換算。
+- **遞補層預設於用量 ≥95% 時略過該把金鑰（`quotaGate`，2026-11-04 起，Gitea #67；取代原「遞補層不接用量」）**：`dispatchAiFallback` 於選到 `ocgo:` 條目之某把金鑰前先查 `opencodeGoUsage`，任一視窗 `percent ≥ 95` 即略過、不派（見下「OpenCode Go 用量冷卻」）。這是「到頂前即停」，不倚賴 Go 額度到頂時 `opencode run` 的行為——該行為與字樣仍**未查明**（免費池到頂時不結束，Go 是否同樣不返回本機與提出端皆未撞到），故呼叫端仍宜以 `timeoutMs` 封頂。`percent` 是各視窗的整數百分比，端點不給金額、不分模型，「某模型還剩幾次」須自行依官方各模型月額換算。
 - 其餘 22 個 Go 模型（kimi、grok、gpt-6-luna、claude-haiku-5-5、gemini-4-argon 等）未收：提出端未測、本機不得多次發付費請求實測；需要時以 `resolveCatalogue` 的 `extraProviders` 自帶條目，形狀比照上列（`kind: 'opencode'`、`provider: 'opencode-go'`、`model: 'opencode-go/<id>'`、`envVar: 'OPENCODE_GO_KEYS'`、`config: { permission: { edit: 'deny', bash: 'ask' } }`）。
 
 **配套工具**（皆為選用，深層引入或由聚合物件取用）：

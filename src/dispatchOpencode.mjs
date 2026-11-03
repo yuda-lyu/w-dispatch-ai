@@ -88,7 +88,11 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   〔issue #65提出端自述, 本機未重現〕隱私開關未開: 「This Go model requires Global regions. Select Global in your workspace's Privacy settings to use it.」(DeepSeek)、
 //     「This Go model trains on request data. Allow paid endpoints that train on request data in your workspace's Privacy settings to use it.」(Muse／Iceman Contributor);
 //     付費id錯用opencode/前綴 → 「Upstream request failed: Model access is disabled」; 以OPENCODE_CONFIG_CONTENT補定義Go專屬id後 → 「Model is unavailable」。
-//   Go額度到頂時run之行為與字樣未查明(免費池到頂時run不結束; Go是否同樣不返回, 本機與提出端皆未撞到), 呼叫端宜以timeoutMs封頂, 並可先以opencodeGoUsage(src/opencodeGoUsage.mjs)查三視窗(該端點官方文件未載, 為實測所得)。
+//   Go額度到頂時run之行為與字樣未查明(免費池到頂時run不結束; Go是否同樣不返回, 本機與提出端皆未撞到), 呼叫端宜以timeoutMs封頂, 並可先以opencodeGoUsage(src/opencodeGoUsage.mjs)查三視窗(該端點官方文件未載, 為實測所得); 經dispatchAiFallback時預設已由quotaGate(src/goQuotaGate.mjs)於用量≥95%時略過該把金鑰。
+//
+// 【spawnGate: 機器級守門(預設啟用, 2026-11-04 Gitea #67)】每次spawn前查機器上opencode.exe行程數(預設上限 max(1, 核心數-1))與RAM(已用>0.85)、CPU(>0.90), 達上限即等(每10秒再查, 等逾10分鐘放行), 計數或取樣失敗亦放行;
+//   等待不計入timeoutMs; spawnGate:false關閉; 預設只守exe為真的opencode(假CLI與包裝腳本不守, 明給spawnGate才守); 詳見cliSpawnGate.mjs檔頭(含opencode.exe單次占約1.1核心之實測、成本量測、跨行程預約票)。
+//   實際呼叫由runExecCli統一處理(四家共用), 本轉接器只傳spawnGateKind: 'opencode'。
 //   隱私前提: Go繼承工作區Settings›Privacy——預設擋「以請求資料訓練之付費端點」且地區限歐美; DeepSeek須選Global、Muse／Iceman Contributor須開train-on-data開關; iceman與muse會以提示詞訓練模型, 敏感內容勿走。
 //
 // 【第三方provider須另給config(2026-08-09於本機實測確認)】
@@ -136,6 +140,7 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()；其絕對路徑並同步注入環境變數PWD(opencode以繼承之PWD優先於真實cwd決定session目錄，見檔頭)，呼叫端env內之PWD會被覆寫
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
+ * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(opencode預設啟用：機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等，每10秒再查，等逾10分鐘或計數取樣失敗即放行；且只守exe為真的opencode)，false關閉，true取預設且不受exe比對限制，物件可覆寫maxCli、ramUsedMax、cpuMax、pollMs、gateWaitMaxMs等；等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
  * @example
  * //need opencode cli in system PATH
@@ -279,11 +284,13 @@ async function dispatchOpencode(prompt, opt = {}) {
     let optCli = omit(opt, OWN_KEYS)
 
     //execCli(經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上機器可讀之errorType, 見runExecCli.mjs), prompt一律走stdin
+    //spawnGate(使用端給之守門設定, 原樣留在optCli)與spawnGateKind交runExecCli於每次spawn前守門(見cliSpawnGate.mjs; opencode預設啟用)
     return runExecCli(exe, args, {
         ...optCli,
         input: prompt,
         env,
         timeoutMs,
+        spawnGateKind: 'opencode',
     })
 }
 

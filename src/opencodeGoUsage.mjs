@@ -40,7 +40,8 @@ import fetchQuotaJson from './quota/fetchQuotaJson.mjs'
 //   errorType: params｜auth(401: 金鑰無效或撤銷)｜forbidden(403)｜ratelimit(429: 端點自身限頻)｜http(其他非2xx)｜parse(非JSON或形狀不符)｜timeout｜network｜toolarge｜other(內部未預期例外)。
 //   403 且本文為 EntitlementError(實測 "OpenCode Go subscription required.")時另帶 noGoSubscription:true——金鑰有效但其工作區沒有Go訂閱
 //   (實測: 同機兩把OPENCODE_KEYS, 第1把200、第2把403), 與一般403(例如金鑰被限制權限範圍)區分。
-//   遞補層不使用本函數(本輪只匯出, 由呼叫端排程): Go到頂時 `opencode run` 之行為未查明(免費池到頂時 run 不結束, 見dispatchOpencode.mjs檔頭), 不宜貿然接入。
+//   遞補層(dispatchAiFallback)自2026-11-04(Gitea #67)起以quotaGate(src/goQuotaGate.mjs)使用本函數: 選到Go條目之某把金鑰前先查, percent≥95(或明說被限)即略過該把金鑰, 快取60秒, 失敗與欄位缺少一律不擋——
+//   「到頂前即停」, 不倚賴Go到頂時 `opencode run` 之行為(仍未查明; 免費池到頂時 run 不結束, 見dispatchOpencode.mjs檔頭)。判定用percent與status, 不用available(未知狀態字不當作到頂)。
 
 
 //預設值

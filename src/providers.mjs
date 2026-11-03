@@ -197,8 +197,10 @@
 //     以美元月額計, 每個模型各有月額(隨方案而異: Go $10/月、Go Plus $40/月、Go Teams $20/人/月; 例glm-5.3-flash為$60／$180／$65), 5小時視窗＝月額20%、週＝50%、月＝100%;
 //     到頂後可繼續用免費模型, 或於Go頁開Extra Usage改落回按量餘額(Go Teams預設開)。每次推論回應以 usage.opencode.allowance 回報本次計入額度之美元數。
 //     三視窗之查詢端點「官方文件未載」, 為實測所得、非官方承諾: GET https://opencode.ai/inference/go/v1/usage ＋ Authorization: Bearer, 見opencodeGoUsage.mjs檔頭。
-//     本套件處置: 匯出opencodeGoUsage供呼叫端排程; 遞補層(dispatchAiFallback)不查用量、不依用量冷卻——Go額度到頂時 `opencode run` 之行為未查明
-//     (免費池到頂時run不結束只到逾時, 見dispatchOpencode.mjs檔頭; Go到頂是否同樣不返回, 提出端與本機皆未撞到), 查明前不加接點; 呼叫端自行排程時須以timeoutMs封頂。
+//     本套件處置: 匯出opencodeGoUsage供呼叫端排程; 遞補層(dispatchAiFallback)另於選到Go條目之某把金鑰前以quotaGate(src/goQuotaGate.mjs, 2026-11-04 Gitea #67)查該金鑰之三視窗用量,
+//     任一視窗percent≥95(rollingMax／weeklyMax／monthlyMax可調)或端點明說被限即略過該把金鑰、不派, 快取60秒, 端點失敗與欄位缺少一律不擋(預設開, quotaGate:false關閉)——
+//     「到頂前即停」, 不倚賴Go到頂時 `opencode run` 之行為(該行為仍未查明: 免費池到頂時run不結束只到逾時, 見dispatchOpencode.mjs檔頭; Go到頂是否同樣不返回, 提出端與本機皆未撞到); 呼叫端仍宜以timeoutMs封頂。
+//     CLI條目(含ocgo:)之實際併發另受cliSpawnGate限制(預設只對opencode: 機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等, spawnGate:false關閉; 見cliSpawnGate.mjs檔頭)。
 //
 //   ★ 隱私前提〔官方Go頁〈Enable restricted models〉〈Privacy〉; 工作區Settings›Privacy, 僅owner／admin可改〕 ★
 //     預設擋「以請求資料訓練之付費端點」, 允許地區為歐洲與美國(未存隱私設定之工作區另允許來自中國之Global請求)。

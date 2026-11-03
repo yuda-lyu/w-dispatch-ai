@@ -1,4 +1,5 @@
 import get from 'lodash-es/get.js'
+import isenum from 'wsemi/src/isenum.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import delay from 'wsemi/src/delay.mjs'
@@ -7,6 +8,7 @@ import execCli from 'wsemi/src/execCli.mjs'
 import { attachErrorType } from './getErrorType.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import buildValidator from './buildValidator.mjs'
+import cliSpawnGate from './cliSpawnGate.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { awaitUserFn, readCallerObj, validateNote } from './callUserFn.mjs'
@@ -36,6 +38,12 @@ import { awaitUserFn, readCallerObj, validateNote } from './callUserFn.mjs'
 //
 // 【env不可讀】呼叫端env物件不可讀(拋錯之getter、已撤銷之Proxy)者, 於啟動前以params回報(四家同; opencode於自身組env時同判);
 //   可讀者以物化之淺層副本交execCli(只讀一次; 自有可列舉屬性, 同wsemi之buildSpawnEnv)。
+//
+// 【spawn守門(2026-11-04 Gitea #67; 見cliSpawnGate.mjs)】四家轉接器經本層統一於「每次spawn前」呼叫cliSpawnGate(轉接器只傳spawnGateKind與使用端之spawnGate, 皆為本層自用鍵, 不轉傳execCli):
+//   無validate: 守門一次後以execCli自理之重試跑(execCli內部之非驗證失敗重試不重新守門, 已知限制); 有validate: 每次(含驗證不過後之重試)spawn前各守門一次。
+//   守門等待不計入timeoutMs: 守門實際運作過(outcome非'off')且有deadlineAt(遞補層之budgetMs, 經spawnGateHints或spawnGate物件)者, spawn之timeoutMs以剩餘預算封頂, 令等待計入budgetMs;
+//   守門未運作(關閉、預設不限之kind、假exe)時timeoutMs原值不動, 與修前逐位元相同。守門中止(shouldStop)回errorType 'aborted'。
+//   實際等過或fail-open時結果加gateWaitedMs(驗證重試時為合計)與gateFailOpen; 未等待者不加欄位。cliSpawnGate永不reject, 此處另以try/catch為最後防線(守門失敗一律放行)。
 //
 // 【不reject】wsemi>=1.9.15之execCli對spawn同步錯誤回結果物件(code null、pid undefined、attempts 1),
 //   本函數不另包try/catch(四家一致, 見getErrorType.mjs之isSpawnFail)。
@@ -93,10 +101,71 @@ async function runExecCli(exe, args, opt = {}) {
     //timeoutMs, 兩路(有無validate)同一預設: 無效回退全套件統一之dfTimeoutMs(四家轉接器皆已正規化後傳入, 此為直呼本函數時之一致性)
     let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs)
 
+    //spawnGate／spawnGateKind為本層自用鍵(不轉傳execCli): 每次spawn前經cliSpawnGate守門(見cliSpawnGate.mjs); kind未給(直呼本函數)則不守門
+    //spawnGateHints為遞補層傳入之提示({ shouldStop, deadlineAt, minAttemptMs }, 見dispatchAiFallback), 令預設情形下守門等待亦可被中止、計入budgetMs
+    let sgKind = get(opt, 'spawnGateKind', null)
+    let sg = get(opt, 'spawnGate', undefined)
+    let sgHints = get(opt, 'spawnGateHints', null)
+    let gateWaitedMs = 0 //各次守門等待之合計
+    let gateFailOpen = false
+    //spawn之timeoutMs: 守門實際運作過且有deadlineAt(遞補層之budgetMs)者, 以守門後之剩餘預算封頂, 令守門等待計入budgetMs(逾時仍自spawn起算);
+    //守門未運作(off: 關閉、預設不限之kind、假exe)時一律原值, 與修前逐位元相同
+    let capByDeadline = () => {
+        try {
+            let da = get(sg, 'deadlineAt', null)
+            if (da === null || da === undefined) {
+                da = get(sgHints, 'deadlineAt', null)
+            }
+            if (da !== null && da !== undefined && isenum(da, { gt: 0 })) {
+                return Math.max(Math.min(timeoutMs, Number(da) - Date.now()), 1)
+            }
+        }
+        catch {} //spawnGate為呼叫端物件, 讀取拋錯視為無deadlineAt
+        return timeoutMs
+    }
+
+    //enterGate: 回傳{ aborted, tmo }(tmo為該次spawn之timeoutMs)
+    let enterGate = async () => {
+        let g = null
+        try {
+            g = await cliSpawnGate({
+                kind: sgKind,
+                exe,
+                spawnGate: sg,
+                shouldStop: get(sgHints, 'shouldStop', undefined),
+                deadlineAt: get(sgHints, 'deadlineAt', undefined),
+                minAttemptMs: get(sgHints, 'minAttemptMs', undefined),
+            })
+        }
+        catch {
+            g = null //cliSpawnGate不reject, 此為最後防線: 守門失敗一律放行
+        }
+        let ran = g !== null && get(g, 'outcome', 'off') !== 'off'
+        if (ran) {
+            gateWaitedMs += get(g, 'waitedMs', 0)
+            gateFailOpen = gateFailOpen || get(g, 'failOpen', false) === true
+        }
+        return { aborted: get(g, 'aborted', false) === true, tmo: ran ? capByDeadline() : timeoutMs }
+    }
+    //守門等待之註記: 只在實際等過或fail-open時才加欄位(未等待者結果形狀不變)
+    let withGate = (r) => {
+        if (gateWaitedMs > 0 || gateFailOpen) {
+            return { ...r, gateWaitedMs, ...(gateFailOpen ? { gateFailOpen: true } : {}) }
+        }
+        return r
+    }
+
     let validator = buildValidator(get(opt, 'validate', null))
     let base = { ...opt, env: er.value, validate: undefined, timeoutMs }
+    delete base.spawnGate
+    delete base.spawnGateKind
+    delete base.spawnGateHints
     if (validator === null) {
-        return attachErrorType(await execCli(exe, args, base))
+        let g0 = await enterGate()
+        if (g0.aborted) {
+            return getErrorResult('ABORTED', 'aborted')
+        }
+        return withGate(attachErrorType(await execCli(exe, args, { ...base, timeoutMs: g0.tmo })))
     }
 
     //maxRetries、retryDelayMs, 無效回退與execCli相同之預設(0、5000)
@@ -107,19 +176,26 @@ async function runExecCli(exe, args, opt = {}) {
     let used = 0
     for (;;) {
 
+        //守門(每次驗證重試前亦重新守門; execCli自理之非驗證失敗重試不在此列, 見cliSpawnGate.mjs檔頭)
+        let gi = await enterGate()
+        if (gi.aborted) {
+            return withGate({ ...getErrorResult('ABORTED', 'aborted'), attempts: used })
+        }
+        let tmo = gi.tmo
+
         //子進程(本次至多maxRetries-used次重試, 由execCli自理非驗證之失敗與其重試)
-        let r = await execCli(exe, args, { ...base, timeoutMs, maxRetries: maxRetries - used, retryDelayMs })
+        let r = await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: maxRetries - used, retryDelayMs })
         used += get(r, 'attempts', 1)
         if (!r.ok) {
-            return attachErrorType({ ...r, attempts: used })
+            return withGate(attachErrorType({ ...r, attempts: used }))
         }
 
         //驗證, 上限為該次嘗試之剩餘時間(timeoutMs − 子進程耗時)
         let t0 = Date.now()
-        let v = await awaitUserFn(() => validator(r.stdout), Math.max(timeoutMs - get(r, 'durationMs', 0), 1))
+        let v = await awaitUserFn(() => validator(r.stdout), Math.max(tmo - get(r, 'durationMs', 0), 1))
         let vMs = Date.now() - t0
         if (v.state === 'value' && !!v.value) {
-            return { ...r, durationMs: r.durationMs + vMs, attempts: used }
+            return withGate({ ...r, durationMs: r.durationMs + vMs, attempts: used })
         }
 
         //驗證失敗, 形狀同execCli
@@ -136,7 +212,7 @@ async function runExecCli(exe, args, opt = {}) {
             attempts: used,
         }
         if (used > maxRetries) {
-            return attachErrorType(fail)
+            return withGate(attachErrorType(fail))
         }
 
         //重試間隔, 同execCli: retryDelayMs×已嘗試次數, 上限15000ms
