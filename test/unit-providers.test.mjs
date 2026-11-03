@@ -140,7 +140,7 @@ describe('providers', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('思考強度一律high: claude、codex、antigravity條目必明給; opencode之--variant與REST之reasoning_effort帶則須為high, REST不得關閉思考', function() {
+    it('思考強度一律high: claude、codex、antigravity條目必明給; opencode之--variant與REST之reasoning_effort帶則須為high(唯一例外:型錄無high檔之ocgo:qwen3.8-flash取xhigh), REST不得關閉思考', function() {
         //未明給時claude回退-p預設(2026-09-30實測medium)、codex回退執行機之config.toml, 結果隨安裝機而異;
         //opencode之variant與REST之reasoning_effort僅部分模型有(見providers.mjs之EFFORT常數), 故只檢「帶則為high」
         let flagValues = (a, flag) => {
@@ -166,7 +166,10 @@ describe('providers', function() {
                 return /-high$/.test(p.model) || p.effort === 'high' //檔位以slug或effort表示
             }
             if (p.kind === 'opencode') {
-                return flagValues(p.extraArgs, '--variant').every((v) => v === 'high')
+                //唯一例外(2026-11-03 da65, Gitea #65, 待使用者裁示): Go型錄之qwen3.8-flash檔位僅low/medium/xhigh(opencode 1.19.5實查)、無high,
+                //故取不低於high之最高檔xhigh; 其餘opencode條目仍須為high(例外以model逐條列, 不放寬為「任何xhigh」)
+                let allowed = { 'opencode-go/qwen3.8-flash': 'xhigh' }[p.model] || 'high'
+                return flagValues(p.extraArgs, '--variant').every((v) => v === allowed)
             }
             if (p.kind === 'api-anthropic') {
                 //Messages API之effort以output_config.effort表示(未給時Opus 5.5/Haiku 5.5之API預設為medium), 條目必明給high; 不得以thinking關閉

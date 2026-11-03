@@ -15,6 +15,7 @@ import dispatchApiAnthropic from '../src/dispatchApiAnthropic.mjs'
 import dispatchApiTypesafeSystemone from '../src/dispatchApiTypesafeSystemone.mjs'
 import probeAnthropicKeys from '../src/probeAnthropicKeys.mjs'
 import filterOpencodeFree from '../src/filterOpencodeFree.mjs'
+import opencodeGoUsage from '../src/opencodeGoUsage.mjs'
 import providers from '../src/providers.mjs'
 import resolveProviders from '../src/resolveProviders.mjs'
 import resolveCatalogue from '../src/resolveCatalogue.mjs'
@@ -48,6 +49,7 @@ describe('WDispatchAi', function() {
             'dispatchApiTypesafeSystemone',
             'probeAnthropicKeys', //2026-10-25新增(dispatch-run01): 金鑰探測
             'filterOpencodeFree', //2026-10-30新增(run01): 以opencode models過濾目錄之免費條目
+            'opencodeGoUsage', //2026-11-03新增(da65, Gitea #65): 查OpenCode Go之5小時／週／月用量
             'providers',
             'resolveProviders',
             'resolveCatalogue', //2026-11-01新增(da40, Gitea #40): 目錄展開
@@ -81,7 +83,7 @@ describe('WDispatchAi', function() {
         let fn = (n) => Array(n).fill('function')
         let rr = [
             'object', 'string', //KINDS, NO_SIDE_EFFECT
-            ...fn(13), //dispatchAi ~ filterOpencodeFree
+            ...fn(14), //dispatchAi ~ opencodeGoUsage
             'object', //providers
             ...fn(9), //resolveProviders ~ createAiEventLogger
             'object', //OUTCOME_TEXT
@@ -110,6 +112,7 @@ describe('WDispatchAi', function() {
             wi.getQuotaAntigravity === getQuotaAntigravity,
             wi.probeAnthropicKeys === probeAnthropicKeys,
             wi.filterOpencodeFree === filterOpencodeFree,
+            wi.opencodeGoUsage === opencodeGoUsage,
             wi.resolveCatalogue === resolveCatalogue,
             wi.createAiCaller === createAiCaller,
             wi.logAiOutcome === logAiOutcome,
@@ -119,7 +122,7 @@ describe('WDispatchAi', function() {
             wi.parseIndexList === parseIndexList,
             wi.makeArrayCoverageValidator === makeArrayCoverageValidator,
         ]
-        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+        let rr = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
         assert.strict.deepEqual(r, rr)
     })
 

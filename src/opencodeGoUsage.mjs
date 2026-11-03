@@ -1,0 +1,255 @@
+import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import castPintOr from './castPintOr.mjs'
+import fetchQuotaJson from './quota/fetchQuotaJson.mjs'
+
+
+// opencodeGoUsage.mjs — 查詢 OpenCode Go 訂閱之用量(5小時／週／月三視窗)
+//
+// 【這個端點「不在官方文件內」(2026-11-03重查官方Go頁與Console API頁, 全文皆無此端點; 文件只說「可在Console追蹤用量」)】
+//   端點為實測所得, 非官方承諾, 形狀可能無預警改變, 故本函數對回應形狀逐項驗證、不符即以errorType 'parse'失敗, 不猜測、不補預設:
+//   - 路徑: GET https://opencode.ai/inference/go/v1/usage (同日實測另有 https://opencode.ai/zen/go/v1/usage 同效; 其餘路徑
+//     /inference/go/openai/v1/usage、/inference/v1/usage 皆404)。
+//   - 憑證: 只認 `Authorization: Bearer <金鑰>`(上游原始碼以 /^Bearer (\S+)$/ 取金鑰, 故金鑰不得含空白); 同日實測 `x-api-key` 一律401。
+//   - 來源佐證: 上游anomalyco/opencode之PR #16513「feat(console): add go usage endpoint」(2026-08-11合併)。該PR當時之回應形狀為
+//     { useBalance, rollingUsage, weeklyUsage, monthlyUsage }, 與2026-11-03實測之 { usage: { rolling, weekly, monthly } } 不同
+//     ——即形狀曾變過, 為本函數嚴格驗證形狀之理由。
+//   - 實測回應(2026-11-03, 已訂閱Go之金鑰): { "usage": { "rolling": { "status": "ok", "percent": 10, "resetsAt": "2026-11-03T16:48:24.000Z" },
+//     "weekly": { "status": "ok", "percent": 4, "resetsAt": "2026-11-09T00:00:00.000Z" }, "monthly": { "status": "ok", "percent": 2, "resetsAt": "2026-12-03T09:36:23.000Z" } } }
+//     status實測只見'ok'; 'rate-limited'來自第三方記載與issue #65, 本機未撞限故未見過。
+//
+// 【三視窗語意(官方Go頁「Usage limits」)】每個模型各有月額(美元, 依方案而異), 5小時視窗＝月額20%、週＝50%、月＝100%。
+//   rolling＝5小時滾動視窗; weekly＝本機實測resetsAt為週一00:00Z; monthly＝帳務月(resetsAt為訂閱時刻之次月同時)。
+//   percent為0~100之整數(實測); 端點無每模型分項、無金額——「各模型月額不同、百分比如何換算成某模型還能呼叫幾次」屬呼叫端依官方表自行決定,
+//   本函數只回原值, 不換算金額。每次回應之 opencode.allowance(本次計入額度之美元數)在推論回應內, 不在此端點。
+//
+// 【判讀: 用 available, 不要用 !limited】
+//   limited       任一視窗 status 恰為 'rate-limited'(端點明說被限)
+//   limitedWindows 被限之視窗名('rolling'|'weekly'|'monthly')
+//   unknownStatus 視窗缺漏、或 status 既非 'ok' 也非 'rate-limited' 者(端點日後新增狀態字時落在這裡)
+//   available     三視窗皆存在且 status 皆為 'ok'; 有任何未知狀態時為 false——未知值不得當正常
+//   nextResetAt   「被限視窗全部解除」之最早時刻(ISO字串): 取被限視窗之 resetsAt 的**最晚者**(同時被限的多個視窗須全部重置才恢復,
+//                 取最早者會在其餘視窗仍被限時誤判可用); 被限視窗中有任一個 resetsAt 缺漏或無法解析時為 null(無從得知何時全部解除); 未被限為 null。
+//                 此為依狀態語意之推論, 實測未撞限過, 故「撞限後實際何時恢復」未驗證。
+//
+// 【金鑰不外洩】只以 Authorization 標頭送出; 不印、不寫、不入結果(含錯誤訊息: 對端回顯之金鑰經 redact 遮蔽); 金鑰須為6字元以上之可見ASCII(無空白),
+//   否則以 params 失敗且不發請求(過短者遮蔽規則不處理, 空白會令標頭非法而使fetch之錯誤訊息夾帶金鑰)。金鑰會送往 baseURL, 勿指向不信任之主機。
+//
+// 【不reject】逾時、網路錯誤、HTTP 401/403/429/其他、非JSON、形狀不符, 一律以 ok:false 與 errorType 回報。
+//   errorType: params｜auth(401: 金鑰無效或撤銷)｜forbidden(403)｜ratelimit(429: 端點自身限頻)｜http(其他非2xx)｜parse(非JSON或形狀不符)｜timeout｜network｜toolarge｜other(內部未預期例外)。
+//   403 且本文為 EntitlementError(實測 "OpenCode Go subscription required.")時另帶 noGoSubscription:true——金鑰有效但其工作區沒有Go訂閱
+//   (實測: 同機兩把OPENCODE_KEYS, 第1把200、第2把403), 與一般403(例如金鑰被限制權限範圍)區分。
+//   遞補層不使用本函數(本輪只匯出, 由呼叫端排程): Go到頂時 `opencode run` 之行為未查明(免費池到頂時 run 不結束, 見dispatchOpencode.mjs檔頭), 不宜貿然接入。
+
+
+//預設值
+let DEFAULT_BASE_URL = 'https://opencode.ai/inference/go/v1'
+let DEFAULT_TIMEOUT_MS = 10000
+let PROVIDER = 'opencode-go'
+let SOURCE = 'opencode-go-usage-endpoint'
+
+//金鑰最短長度(同redactText之遮蔽下限: 更短者遮蔽規則不處理)與字元集(可見ASCII, 無空白與控制字元)
+let KEY_MIN_LEN = 6
+let KEY_PATTERN = /^[\x21-\x7E]+$/
+
+//視窗名(端點回應usage底下之鍵)
+let WINDOW_NAMES = ['rolling', 'weekly', 'monthly']
+
+//視窗狀態字
+let STATUS_OK = 'ok'
+let STATUS_LIMITED = 'rate-limited'
+
+
+/**
+ * 組結果物件(失敗)
+ *
+ * @param {String} errorType 輸入錯誤類別字串
+ * @param {String} error 輸入錯誤訊息字串
+ * @param {Number|null} code 輸入HTTP狀態碼，未收到回應為null
+ * @param {Number} t0 輸入起始時間毫秒
+ * @param {Object} [extra={}] 輸入額外欄位物件
+ * @returns {Object} 回傳失敗結果物件
+ */
+function fail(errorType, error, code, t0, extra = {}) {
+    return {
+        ok: false,
+        provider: PROVIDER,
+        source: SOURCE,
+        code,
+        error,
+        errorType,
+        noGoSubscription: false,
+        durationMs: Date.now() - t0,
+        ...extra,
+    }
+}
+
+
+/**
+ * 查詢 OpenCode Go 訂閱之用量(5小時／週／月三視窗)
+ *
+ * 特點：
+ * 只送GET與Authorization: Bearer，端點為實測所得而非官方文件所載，形狀不符即失敗不猜測(見檔頭)；
+ * 回傳三視窗原值(status、percent、resetsAt)，不換算金額；
+ * 判讀請用available(三視窗皆為'ok')，status之未知值不會被當成正常；
+ * 逾時、網路錯誤、各種HTTP錯誤皆以結果物件回報，本函數不會reject；
+ * 金鑰不印、不寫、不入結果
+ *
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {String} opt.key 輸入已訂閱Go之工作區金鑰字串(oc_sk_開頭)，須為6字元以上之可見ASCII且無空白，否則回params失敗且不發請求
+ * @param {String} [opt.baseURL='https://opencode.ai/inference/go/v1'] 輸入Go基底網址字串(http或https，尾端斜線會去除，實際請求<baseURL>/usage)，金鑰會送往該主機；非http(s)網址者視為未給而改用預設，預設官方網址
+ * @param {Number} [opt.timeoutMs=10000] 輸入逾時毫秒正整數，涵蓋連線至本文讀完，預設10000
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件。成功：ok(true)、provider('opencode-go')、source、code(200)、usage(物件，內含rolling、weekly、monthly三視窗之原始物件{status,percent,resetsAt}，端點缺漏者為null)、limited(任一視窗status為'rate-limited'布林值)、limitedWindows(被限視窗名字串陣列)、unknownStatus(缺漏或狀態未知之視窗名字串陣列)、available(三視窗皆為'ok'布林值)、nextResetAt(被限視窗全部解除之時刻ISO字串，無被限或無從得知為null)、durationMs。失敗：ok(false)、provider、source、code(HTTP狀態碼，未收到回應為null)、error、errorType、noGoSubscription(403且為Go訂閱不足時true)、durationMs。本函數不會reject
+ * @example
+ * //need network and a Go-subscribed workspace key
+ *
+ * import wdi from 'w-dispatch-ai'
+ *
+ * let test = async () => {
+ *
+ *     //金鑰自.env取得(readEnvFile不污染process.env), 以逗號分隔多把時逐把查
+ *     let env = wdi.readEnvFile('./.env')
+ *     let key = env.OPENCODE_GO_KEYS.split(',')[0].trim()
+ *
+ *     let r = await wdi.opencodeGoUsage({ key })
+ *     console.log(r.ok, r.available, r.limited, r.nextResetAt)
+ *     // => true true false null
+ *     console.log(r.usage.rolling)
+ *     // => { status: 'ok', percent: 10, resetsAt: '2026-11-03T16:48:24.000Z' }
+ *
+ *     //金鑰有效但工作區沒有Go訂閱
+ *     let r2 = await wdi.opencodeGoUsage({ key: 'oc_sk_without_go_subscription' })
+ *     console.log(r2.ok, r2.errorType, r2.noGoSubscription)
+ *     // => false forbidden true (或401 auth: 金鑰無效)
+ *
+ * }
+ * await test()
+ *     .catch((err) => {
+ *         console.log(err)
+ *     })
+ *
+ */
+async function opencodeGoUsage(opt = {}) {
+    let t0 = Date.now()
+
+    //最後防線: 內部未預期例外不得使本函數reject(錯誤訊息不含金鑰: 只取例外之message且先遮蔽)
+    let key = null
+    try {
+        return await run(opt, t0, (k) => {
+            key = k
+        })
+    }
+    catch (err) {
+        let msg = String(get(err, 'message', 'unknown'))
+        if (isestr(key)) {
+            msg = msg.split(key).join('[REDACTED]')
+        }
+        return fail('other', `unexpected error: ${msg}`, null, t0)
+    }
+}
+
+
+/**
+ * opencodeGoUsage之實作(可能拋錯，由外層攔截)
+ *
+ * @param {Object} opt 輸入設定物件，同opencodeGoUsage
+ * @param {Number} t0 輸入起始時間毫秒
+ * @param {Function} setKey 輸入回報已驗證金鑰之函數，供外層最後防線遮蔽用
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件
+ */
+async function run(opt, t0, setKey) {
+
+    //key, 6字元以上之可見ASCII(無空白): 過短者遮蔽規則不處理, 含空白或控制字元者令標頭非法而使fetch之訊息夾帶金鑰
+    let key = get(opt, 'key', null)
+    if (!isestr(key) || key.length < KEY_MIN_LEN || !KEY_PATTERN.test(key)) {
+        //訊息格式依dspec〈輸入參數之檢測機制〉V19(invalid <名稱>: must be <種類描述>), 固定詞彙、不回顯輸入值(K9)
+        return fail('params', `invalid opt.key: must be a string of ${KEY_MIN_LEN}+ visible ASCII characters without whitespace`, null, t0)
+    }
+    setKey(key)
+
+    //baseURL, 非http(s)網址視為未給、改用預設(dspec K3: opt鍵之非預期輸入改用預設, 只有必須參數〔此處為key〕才報錯); 尾端斜線去除
+    let baseURL = get(opt, 'baseURL', null)
+    if (!isestr(baseURL) || !/^https?:\/\/[^\s/]/i.test(baseURL)) {
+        baseURL = DEFAULT_BASE_URL
+    }
+    let url = baseURL.replace(/\/+$/, '') + '/usage'
+
+    //timeoutMs
+    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+
+    //GET＋Bearer, 端點只認Authorization: Bearer; redact令對端回顯之金鑰不入錯誤訊息
+    let r = await fetchQuotaJson(url, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${key}`,
+            'Accept': 'application/json',
+        },
+        timeoutMs,
+        redact: [key],
+    })
+    let code = r.status > 0 ? r.status : null
+
+    if (!r.ok) {
+
+        //403且本文為EntitlementError(Go訂閱不足)另標, 與一般403(如金鑰權限範圍)區分
+        let noGo = r.errorType === 'forbidden' && /EntitlementError|Go subscription required/i.test(r.error)
+        return fail(r.errorType, r.error, code, t0, { noGoSubscription: noGo })
+    }
+
+    //形狀驗證: { usage: { rolling, weekly, monthly } }, usage須為物件; 視窗缺漏者記為null並列入unknownStatus(不補預設)
+    let usageRaw = get(r.data, 'usage', null)
+    if (!isobj(usageRaw)) {
+        return fail('parse', 'unexpected response shape: "usage" object is missing', code, t0)
+    }
+
+    let usage = {}
+    let limitedWindows = []
+    let unknownStatus = []
+    for (let name of WINDOW_NAMES) {
+        let w = get(usageRaw, name, null)
+        if (!isobj(w)) {
+            usage[name] = null
+            unknownStatus.push(name)
+            continue
+        }
+        usage[name] = { ...w }
+        let st = get(w, 'status', null)
+        if (st === STATUS_LIMITED) {
+            limitedWindows.push(name)
+        }
+        else if (st !== STATUS_OK) {
+            unknownStatus.push(name)
+        }
+    }
+
+    //nextResetAt, 被限視窗全部解除之時刻: 取被限視窗resetsAt之最晚者; 任一被限視窗之resetsAt缺漏或無法解析即無從得知(null)
+    let nextResetAt = null
+    if (limitedWindows.length > 0) {
+        let ts = limitedWindows.map((name) => {
+            let s = get(usage, [name, 'resetsAt'], null)
+            let t = isestr(s) ? Date.parse(s) : NaN
+            return { s, t }
+        })
+        if (ts.every((x) => Number.isFinite(x.t))) {
+            nextResetAt = ts.reduce((a, b) => (b.t > a.t ? b : a)).s
+        }
+    }
+
+    return {
+        ok: true,
+        provider: PROVIDER,
+        source: SOURCE,
+        code,
+        usage,
+        limited: limitedWindows.length > 0,
+        limitedWindows,
+        unknownStatus,
+        available: limitedWindows.length === 0 && unknownStatus.length === 0,
+        nextResetAt,
+        durationMs: Date.now() - t0,
+    }
+}
+
+
+export default opencodeGoUsage

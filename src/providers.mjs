@@ -6,6 +6,7 @@
 //
 // 【id命名】依「路徑:模型」規則(詳dispatchAiFallback.mjs檔頭之id設計規則):
 //   oc:＝經opencode CLI(有工具、較慢) / agy:＝antigravity CLI / claude:/codex:＝訂閱登入態CLI
+//   ocgo:＝同opencode CLI但走OpenCode Go月費訂閱額度(provider opencode-go, envVar OPENCODE_GO_KEYS; 與oc:額度池不同, 見下方【OpenCode Go】段)
 //   claude-api:＝經Claude Code CLI但以Anthropic Console之API金鑰計費(有工具; 與claude:同CLI、不同計費路徑故為不同供應商, envVar ANTHROPIC_KEYS)
 //   zen:/agnes:/poolside:＝REST直呼(免CLI免登入、快, 純文字生成)
 //   anthropic:＝REST直呼Anthropic Messages API(純文字生成, 以Console之API金鑰計費, envVar ANTHROPIC_KEYS)
@@ -75,7 +76,7 @@
 //       /inference/google/v1beta/models/<model-id>:generateContent  @ai-sdk/google  Gemini系
 //       /inference/systemone/v1/systemone  (TypeSafe System One)  ← 本套件api-typesafe-systemone(baseURL給到/inference/systemone/v1)
 //         jev-1.13-free / jev-1.13 (2026-09-22查證, 2026-11-03端點欄複查; 非文字生成之決策模型, 須給questions)
-//     Go方案另有基底https://opencode.ai/inference/go(各協定路徑同上, 必帶x-opencode-session標頭); 本目錄無Go條目, 僅記於診斷流程。
+//     Go方案另有基底https://opencode.ai/inference/go(各協定路徑同上, 必帶x-opencode-session標頭); 本目錄不收REST類Go條目、只收CLI類ocgo:條目(理由與Go之全貌見下方【OpenCode Go】段)。
 //
 //   ★ 因此: 模型出現在/models清單 ≠ 可用kind:'api-openai-compat'收錄 ★
 //     dispatchApiOpenaiCompat固定POST至<baseURL>/chat/completions(那是它的定義, 非bug),
@@ -120,7 +121,7 @@
 //                 ② Upstream request failed: Policy budget exceeded: 工作區或成員之預算用盡(官方console/budgets: 新請求失敗直到預算重置或管理者調高,
 //                    回應不指名是哪個預算; 免費模型與Go額度內用量不計預算), 屬預算管理而非限流, 等待須待重置; 換成屬於另一預算之金鑰可能可通(未實測)。
 //     HTTP 400 MissingSessionID → 打/inference/go/…(Go方案基底)未帶x-opencode-session標頭(2026-11-03以假金鑰實測: 先於金鑰檢查即回400;
-//                 官方harnesses頁: Go必帶穩定之session ID)。本目錄無Go條目, 自行加條目打Go基底時須經opt.headers帶此標頭。
+//                 官方harnesses頁: Go必帶穩定之session ID)。本目錄不收REST類Go條目(見【OpenCode Go】段), 自行加條目打Go基底時須經opt.headers帶此標頭。
 //     HTTP 403 FreeTierError(free tier can only be used from within OpenCode)
 //               → 該免費模型只開放opencode客戶端, REST直呼被刻意擋下(2026-09-17 union-alpha實測), 屬政策非故障,
 //                 只能收oc:版。另401 Model is disabled＝該金鑰所屬工作區未開此模型, 換工作區或於後台開啟
@@ -149,11 +150,81 @@
 //       - 帶金鑰時另受該金鑰所屬工作區之模型開關影響(第1把金鑰對免費模型回Model access is disabled且耗76s)。
 //     處置: oc:opencode/*免費條目改匿名(useStoredAuth:false, 不帶envVar), 防寫改為OC_READONLY(見該常數註解)。
 //     使用者側若另注入config, 切勿deny bash; 需要更緊之鎖請改用付費模型或其他CLI。
+//     Go訂閱不改變此閘門與免費上限(2026-11-03): 訂了Go之金鑰打`opencode/*`免費模型仍受同一免費池限制——本機同日21:54以匿名`opencode/beam-free`見
+//     「Free usage limit reached…subscribe to OpenCode Go to keep going」(run不結束),約1分鐘內同模型走Go路徑`opencode-go/beam-free`卻6.1s成功;
+//     Go額度只作用於`opencode-go/`前綴(見【OpenCode Go】段)。
 //
 //   ★ 走不通REST時的替代路徑: 同模型改用oc:(opencode CLI) ★
 //     opencode CLI內建各模型正確的端點與AI SDK, 故REST不通的模型走CLI往往正常
 //     (實測: muse-spark 1.2/1.3之REST 500而CLI皆秒級成功)。CLI版模型id為
 //     `opencode/<model-id>`, 可用 `opencode models` 列出; 兩者屬不同供應商條目(見id命名)。
+//
+// ══════════════════════════════════════════════════════════════════════════════
+// 【OpenCode Go(月費訂閱) 接入方式——動 ocgo:條目前必讀】(2026-11-03 da65, Gitea #65; 帳本 sgud/rule/rulebook_opencodego.md R-OCGO-1)
+// ══════════════════════════════════════════════════════════════════════════════
+//
+//   註記: 〔官方〕＝官方文件所載; 〔本機實測〕＝da65於本機(opencode 1.19.5、一把已訂閱Go之金鑰)2026-11-03當日實跑; 〔提出端〕＝issue #65提出端(tai-kns-trade)
+//   自述之實測, 本機未重現——不得當成已驗證。
+//
+//   權威來源(2026-11-03逐頁重查; 官方文件無「Go」專頁於 /docs/go/, 一律在 /docs/console/go/):
+//     https://opencode.ai/v2/docs/console/go/        ← 【主】方案、模型表、各模型月額、額度比例、隱私前提、端點、Extra Usage
+//     https://opencode.ai/v2/docs/console/api/inference/ ← usage.opencode.allowance(Go專屬: 本次請求計入額度之美元數)、billing_source(go／go-plus)
+//     https://opencode.ai/v2/docs/console/harnesses/ ← Go基底 /inference/go、x-opencode-session
+//     https://opencode.ai/inference/go/v1/models     ← Go公開型錄(匿名可查; 當日28個; 帶金鑰注入之CLI型錄 `opencode models opencode-go` 為30個)
+//     https://models.dev/api.json 之 opencode-go     ← 第三方彙整: env OPENCODE_API_KEY、npm @ai-sdk/openai-compatible、api https://opencode.ai/inference/go/openai/v1(當日37個,其中7個標deprecated)
+//
+//   ★ provider分流: 同一把工作區金鑰(前綴oc_sk_), 兩個provider id, 額度池與計費完全不同 ★
+//     opencode/<id>     provider opencode     免費池或按量(餘額): 本檔oc:與zen:條目走此。
+//     opencode-go/<id>  provider opencode-go  Go月費額度: 本檔ocgo:條目走此。dispatchOpencode以opt.provider為鍵注入 OPENCODE_AUTH_CONTENT={"opencode-go":{type:api,key}}, 不必改程式;
+//                                             model前綴與provider須同名(見dispatchOpencode.mjs檔頭【provider與model必須配對】)。
+//     Go訂閱不改變 opencode/* 之免費上限(見【Zen免費層閘門】段之註): 免費池用盡時, 同一模型改走Go路徑仍可用(beam-free〔本機實測〕)。
+//     以 opencode/<付費或Go專屬id> 呼叫會失敗〔提出端〕: 「Upstream request failed: Model access is disabled」——此字樣現有兩種成因:
+//     ①按量工作區未開該模型(【Zen免費層閘門】段所載); ②付費id錯用 opencode/ 前綴(應為 opencode-go/)。
+//
+//   ★ 金鑰變數: OPENCODE_GO_KEYS, 不沿用 OPENCODE_KEYS ★
+//     Go訂閱綁工作區, 一個工作區一把; 本機 OPENCODE_KEYS 內2把〔本機實測〕: 第1把Go用量端點200(已訂閱)、第2把403 EntitlementError「OpenCode Go subscription required.」(未訂閱)。
+//     未訂閱之金鑰打Go模型(含免費期之beam-free)→ stderr「Upstream request failed: An active OpenCode Go subscription is required to use Go models.」,
+//     opencode內部重試後77秒才exit 1〔本機實測, 1次〕——沿用 OPENCODE_KEYS 會令全取遞補對每把未訂閱金鑰空耗約77秒。另立變數令呼叫端只放已訂閱之金鑰;
+//     多工作區多把仍可逗號分隔輪替。缺變數時8條自動列入skipped(不影響既有使用端)。要確認某把金鑰是否已訂閱Go: opencodeGoUsage({ key })(唯讀、不耗額度; 403且noGoSubscription:true即未訂閱)。
+//
+//   ★ 為何只收CLI類、不收REST類Go條目 ★
+//     Go基底 https://opencode.ai/inference/go/openai/v1 必帶穩定之 x-opencode-session 標頭: 缺則400 MissingSessionID(先於金鑰檢查, 以假金鑰實測);
+//     官方〈Where can I use it?〉: Go給OpenCode與同類coding agent使用, client須以自己的user agent識別並送穩定session id, 流量受濫用監控。
+//     本套件REST轉接器為一般HTTP呼叫, 不維持session、不是coding agent; 一般REST呼叫是否被官方允許文件未載, 保守不收。opencode CLI本身即官方支援之客戶端(自帶session標頭), 走CLI才是明確認可之路。
+//     自行要打REST者須經opt.headers帶x-opencode-session並自負其責(見診斷流程之MissingSessionID)。
+//
+//   ★ 用量與額度〔官方Go頁〈Usage limits〉〕 ★
+//     以美元月額計, 每個模型各有月額(隨方案而異: Go $10/月、Go Plus $40/月、Go Teams $20/人/月; 例glm-5.3-flash為$60／$180／$65), 5小時視窗＝月額20%、週＝50%、月＝100%;
+//     到頂後可繼續用免費模型, 或於Go頁開Extra Usage改落回按量餘額(Go Teams預設開)。每次推論回應以 usage.opencode.allowance 回報本次計入額度之美元數。
+//     三視窗之查詢端點「官方文件未載」, 為實測所得、非官方承諾: GET https://opencode.ai/inference/go/v1/usage ＋ Authorization: Bearer, 見opencodeGoUsage.mjs檔頭。
+//     本套件處置: 匯出opencodeGoUsage供呼叫端排程; 遞補層(dispatchAiFallback)不查用量、不依用量冷卻——Go額度到頂時 `opencode run` 之行為未查明
+//     (免費池到頂時run不結束只到逾時, 見dispatchOpencode.mjs檔頭; Go到頂是否同樣不返回, 提出端與本機皆未撞到), 查明前不加接點; 呼叫端自行排程時須以timeoutMs封頂。
+//
+//   ★ 隱私前提〔官方Go頁〈Enable restricted models〉〈Privacy〉; 工作區Settings›Privacy, 僅owner／admin可改〕 ★
+//     預設擋「以請求資料訓練之付費端點」, 允許地區為歐洲與美國(未存隱私設定之工作區另允許來自中國之Global請求)。
+//       DeepSeek V4.1 Flash／V4 Pro: Regions須選Global, 否則「This Go model requires Global regions. Select Global in your workspace's Privacy settings to use it.」〔提出端〕
+//       Muse Spark 1.3／1.2 Contributor、Iceman Contributor Free: 須開「Allow paid endpoints that train on request data」, 否則
+//         「This Go model trains on request data. Allow paid endpoints that train on request data in your workspace's Privacy settings to use it.」〔提出端〕
+//     訓練與保留〔官方Privacy表〕: iceman、muse＝訓練Yes且非零保留(敏感內容勿走, 故排在Go群組最後); beam-free＝不訓練、保留30天, 且不可用於安哥拉、白俄羅斯、柬埔寨、中國(含港澳)、古巴、剛果民主共和國、
+//     赤道幾內亞、伊朗、伊拉克、寮國、利比亞、奈及利亞、北韓、俄羅斯、敘利亞、土庫曼、烏茲別克、委內瑞拉及烏克蘭之克里米亞／頓內茨克／盧甘斯克; 其餘收錄之flash模型＝不訓練、保留0天
+//     (DeepSeek為「0 days*」: 零保留協議逐月續約, 官方載現行效期至2026-11-30)。本機實測iceman可用(代表該工作區已開訓練開關)。
+//
+//   ★ 錯誤字樣對照(Go) ★
+//     「An active OpenCode Go subscription is required to use Go models.」〔本機實測〕金鑰所屬工作區無Go訂閱(用量端點對同一把回403 EntitlementError); 77秒後exit 1。
+//     「ProviderModelNotFoundError: Model not found: opencode-go/<id>」〔本機實測, 1.7秒〕id不在Go型錄(寫錯或已下架)。
+//     「Model access is disabled」〔提出端〕見上「provider分流」之兩種成因。 「Model is unavailable」〔提出端〕以OPENCODE_CONFIG_CONTENT補定義Go專屬id後之回應。
+//     上列隱私兩句〔提出端〕: 工作區未開對應隱私開關。
+//     「Free usage limit reached…subscribe to OpenCode Go to keep going」〔本機實測〕＝ opencode/* 免費池用盡, 不是Go額度, Go路徑之模型不受影響。
+//     400 MissingSessionID: 直打REST Go基底未帶x-opencode-session。
+//     Go額度到頂之字樣與CLI行為: 未撞到, 未知。
+//
+//   ★ 條目與收錄(帳本R-OCGO-1) ★
+//     ocgo:共8條, 置於oc:opencode/*之後、agy:之前: beam-free、deepseek-v4.1-flash、minimax-m3.1-flash、qwen3.8-flash、glm-5.3-flash、mimo-v2.6-flash,
+//     最後為會訓練之iceman-contributor-free、muse-spark-1.3-contributor。各條註解逐項標〔本機實測〕／〔提出端〕／〔CLI型錄〕。
+//     本機金絲雀之限制: 付費模型最多1次簡答(用於glm-5.3-flash), 免費期模型(beam-free、iceman)做滿簡答／推理／read／寫檔金絲雀／脈絡長度; 其餘付費條目僅有提出端自述與CLI型錄欄位。
+//     未收之其餘22個Go模型(kimi-k3／k3.1-pro、glm-5.3／5.2、gpt-6-luna／5.6-luna、claude-haiku-5-5、gemini-4-argon、grok-4.7、deepseek-v4-pro、qwen3.8-max／3.7-plus、minimax-m3、
+//     longcat-2.0、hy3／hy4-preview、step-5-preview、mimo-v2.5／v2.5-pro／v2.6-pro、kimi-k2.7-code、muse-spark-1.2-contributor): 提出端未測、本機不得多次發付費請求實測,
+//     依R-OCFREE-2「實測不到者不收」之精神不收(其中12個之Go方案月額僅$15, 單價亦高); 呼叫端要用時可經resolveCatalogue之extraProviders自帶條目(形狀比照ocgo:)。
 //
 // 【zen免費模型清單為「更新日快照」, 不保證即為當前狀態】zen:系收錄起於2026-08-21
 //   經GET https://opencode.ai/zen/v1/models 查得之免費模型(*-free), 其後之增刪見本段漂移紀錄(最近一次2026-09-24), 不做好用篩選——
@@ -252,12 +323,15 @@
 //       另官方〈Models〉載明: 免費期間所收資料可能被保留並用於改進模型, 且歐盟、冰島、列支敦斯登、挪威、古巴、伊朗、北韓、俄羅斯、烏克蘭、委內瑞拉不可用(收錄時須於條目註解記)。
 //     保留oc:opencode/nemotron-3.5-super-vl-free: `opencode models opencode --refresh`兩次(輸出相同)、匿名/inference/v1/models與官方〈Models〉頁皆仍列(R-OCFREE-2①清單消失條件不成立);
 //       匿名CLI呼叫1次45s逾時並見Free usage limit(同時段對照組big-pickle亦同), 不是約2s回UnknownError(②條件亦不成立)。
+//   2026-11-03稍晚之新增(opencode 1.19.5; 提出端: Gitea issue #65, tai-kns-trade; 主控任務20261103201852之da65): 新增OpenCode Go支援——
+//     8條CLI類ocgo:條目(provider opencode-go、envVar OPENCODE_GO_KEYS; 詳【OpenCode Go】段與各條註解之〔本機實測〕／〔提出端〕標註)、新匯出opencodeGoUsage
+//     (Go用量端點三視窗, 實測所得、官方文件未載); 不收REST類Go條目; 既有29條零增刪、零改動(逐欄比對差異0), 條目總數29 → 37。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
 //   import resolveProviders from 'w-dispatch-ai/src/resolveProviders.mjs'
 //   import readEnvFile from 'w-dispatch-ai/src/readEnvFile.mjs'
-//   let env = readEnvFile('./.env') //OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS, 逗號分隔多把; 不污染process.env
+//   let env = readEnvFile('./.env') //OPENCODE_KEYS/OPENCODE_GO_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS, 逗號分隔多把; 不污染process.env
 //   let { providers: ps, table, skipped } = resolveProviders(providers, { env }) //全取
 //   let r2 = resolveProviders(providers, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] }) //自選, pick順序即遞補優先序
 //   let r3 = resolveProviders(providers, { env, pick: ['typesafe:jev-latest'] }) //決策模型單獨取出
@@ -530,6 +604,129 @@ let providers = [
         //兩者皆低於伺服器上限)於某步用量超過後、下一步前壓縮; 單一則即超過約100萬之提示詞仍會送出而被拒(10-19 deepseek實測壓縮為事後觸發),
         //呼叫端須自控單則長度。覆寫之效果只實證「設定可被接受」(見證據), 大脈絡下之壓縮行為未實測。
         //opencode每次自帶約3.8萬token之系統提示。證據: opensrcOper dhist/20261023185913
+    },
+    //══ 以下8條為OpenCode Go(月費訂閱)之CLI類條目(2026-11-03 da65新增, Gitea #65; 詳檔頭【OpenCode Go】段, 帳本R-OCGO-1) ══
+    //共通: provider為opencode-go(與model前綴同名)、金鑰變數OPENCODE_GO_KEYS(不沿用OPENCODE_KEYS)、須金鑰(不匿名)、唯讀鎖同其餘oc:條目、
+    //檔位依CLI型錄(opencode 1.19.5 `opencode models opencode-go --verbose`)逐條核對。不收REST類Go條目(必帶x-opencode-session, 見檔頭)。
+    //註記: 〔本機實測〕＝da65當日實呼(經resolveProviders＋dispatchAiFallback, 已訂閱Go之金鑰, variant依本條、OC_READONLY); 〔提出端〕＝issue #65自述, 本機未重驗; 〔CLI型錄〕＝型錄欄位。
+    //「月額」為官方Go頁〈Usage limits〉之Go方案(Go Plus／Go Teams另計)每模型月額, 5小時視窗為其20%、週50%; 單價為每百萬token美元(入／出)。
+    //不訓練者在前、會訓練者(iceman、muse)殿後。
+    {
+        id: 'ocgo:opencode-go/beam-free',
+        model: 'opencode-go/beam-free',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //與oc:opencode/beam-free同一模型、不同額度池: 走Go路徑不受opencode/*免費池限制——同日21:54匿名oc:opencode/beam-free見「Free usage limit reached」(run不結束),
+        //約1分鐘內本條6.1s成功〔本機實測〕, 即免費池用盡時可續用(前提: 持有已訂閱Go之金鑰)。官方: Free(limited time)、Unlimited、不訓練、保留30天、限地區(不可用國家見檔頭)。
+        //〔CLI型錄〕release 2026-10-05, 推理, context 1048576、輸出131072、僅文字, 檔位low/medium/high/xhigh/max。
+        //〔本機實測〕(opencode 1.19.5、variant high): 簡答5.5s與6.1s、推理題4.9s答對(54)、read工具讀相對路徑6.0s正確、寫檔金絲雀6.6s被OC_READONLY擋下未落地
+        //(write工具不在清單、bash自動拒絕; 此時回空字串而ok:true, 呼叫端宜帶validate); 用量端點三視窗前後皆不變(Unlimited不計額度)。
+        //脈絡: 以針在乾草堆(針在開頭、問題在結尾)送約250萬字元(依iceman同文校準2.96字元/token估算約84.5萬token)答對29.7s; 未逼近型錄上限1,048,576, 故不寫「完整1M」(匿名免費路徑於2026-10-23曾實測到1,039,300, 見oc:opencode/beam-free)。
+    },
+    {
+        id: 'ocgo:opencode-go/deepseek-v4.1-flash',
+        model: 'opencode-go/deepseek-v4.1-flash',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //須先於工作區Settings›Privacy›Regions選Global, 否則「This Go model requires Global regions…」〔提出端〕; 官方: 不訓練、保留0天*(零保留協議逐月續約至2026-11-30)。
+        //〔CLI型錄〕release 2026-09-10, 推理, context 1000000、輸出384000、可輸入圖片, 檔位low/high/max。月額$100; 單價$0.15/$0.60(Off-Peak)、$0.30/$1.20(Peak: UTC週一至週五01-04與06-10)。
+        //〔提出端〕簡答7.2s成功。本機未實測(付費模型); 同名免費版oc:opencode/deepseek-v4.1-flash-free脈絡非1M(實測約239K), 本條付費版之實際脈絡上限未測, 不假設為型錄之1M。
+    },
+    {
+        id: 'ocgo:opencode-go/minimax-m3.1-flash',
+        model: 'opencode-go/minimax-m3.1-flash',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //官方: 不訓練、保留0天。〔CLI型錄〕release 2026-10-19, 推理, context 1000000、輸出512000、可輸入圖片, 檔位low/medium/high/xhigh/max。月額$20(最低); 單價$0.15/$0.60。
+        //〔提出端〕簡答8.7s成功。本機未實測(付費模型)。注意月額最低: 5小時視窗僅$4, 密集使用最先到頂。
+    },
+    {
+        id: 'ocgo:opencode-go/qwen3.8-flash',
+        model: 'opencode-go/qwen3.8-flash',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: ['--variant', 'xhigh'],
+        //檔位: 〔CLI型錄〕僅low/medium/xhigh、無high, 故取不低於high之最高檔xhigh——偏離「思考強度一律high」(EFFORT常數註解), 為目錄內唯一例外(test/unit-providers.test.mjs逐model列出; 待使用者裁示)。
+        //官方: 不訓練、保留0天; Go端點走anthropic協定家族(/inference/go/anthropic/v1/messages), 對CLI無影響。〔CLI型錄〕release 2026-08-26, 推理, context 1000000、輸出131072、可輸入圖片。月額$30; 單價$0.15/$0.47。
+        //〔提出端〕簡答9.1s成功(xhigh)。本機未實測(付費模型)。
+    },
+    {
+        id: 'ocgo:opencode-go/glm-5.3-flash',
+        model: 'opencode-go/glm-5.3-flash',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //官方: 不訓練、保留0天。〔CLI型錄〕release 2026-08-26, 推理, context 1000000、輸出131072、可輸入圖片, 檔位low/high/max。月額$60; 單價$0.15/$0.50。
+        //〔本機實測〕本條為本輪唯一一次付費簡答(variant high、OC_READONLY): 36.7s成功、回「完成」; 前後各查一次用量端點, rolling 10%→11%、weekly 4%、monthly 2%不變——
+        //單次簡答不足以令整數百分比變動, 此+1%來自同時段該工作區其他使用(他人亦在用), 無法歸因於這1次, 故「用量計入」未能由此證明。推理題／read／寫檔金絲雀／脈絡長度皆未測。
+        //〔提出端〕簡答9.5s成功; 提出端另報首臂以本條跑提煉流程時起草棒逾時600s與輸出驗證失敗(模型速度與格式問題, 非額度)——本機單次簡答36.7s亦明顯慢於提出端之9.5s, 呼叫端宜給足timeoutMs。
+        //同名免費版oc:opencode/glm-5.3-flash-free有上游不穩之紀錄(見該條), 本條為付費Go路徑, 是否同樣不穩未測。
+    },
+    {
+        id: 'ocgo:opencode-go/mimo-v2.6-flash',
+        model: 'opencode-go/mimo-v2.6-flash',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        //官方: 不訓練、保留0天。〔CLI型錄〕release 2026-09-22, 推理, context 1048576、輸出131072、可輸入圖片, 無檔位故不帶--variant。月額$60; 單價$0.14/$0.28。
+        //〔提出端〕簡答14.8s成功(提出端各條中最慢)。本機未實測(付費模型)。
+    },
+    {
+        id: 'ocgo:opencode-go/iceman-contributor-free',
+        model: 'opencode-go/iceman-contributor-free',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        //【訓練資料】官方Privacy: 「Free for a limited time in exchange for permission to use your prompts and completions to improve the model」、模型訓練Yes、非零保留——敏感內容勿走此條;
+        //工作區須開「Allow paid endpoints that train on request data」, 否則「This Go model trains on request data…」〔提出端〕(本機實測可用, 代表該工作區已開)。官方: Free(limited time)、Unlimited。
+        //〔CLI型錄〕release 2026-10-24, 推理, context 262144、輸出131072、僅文字, 無檔位故不帶--variant。
+        //〔本機實測〕(opencode 1.19.5、OC_READONLY): 簡答6.5s、推理題8.0s答對(54)、read工具讀相對路徑12.0s正確、寫檔金絲雀7.5s被擋下未落地(此時回空字串而ok:true, 呼叫端宜帶validate); 用量端點三視窗不變。
+        //【脈絡長度(2026-11-03)】伺服器上限262139(略低於型錄262144), 且opencode預設預留32000給completion, 故輸入實際上限約23萬token(同flint-40b-free): 以針在乾草堆經CLI,
+        //56萬字元(約18.9萬token)答對16.2s; 70萬字元(伺服器回報236233 input＋32000 completion＝268233 > 262139)被拒「Requested token count exceeds the model's maximum context length of 262139 tokens」,
+        //CLI隨即自動壓縮脈絡(stdout為摘要文字而非答案)並以離開碼1結束。未二分逼近確切上限; 長提示詞宜控制在約18萬token(約53萬字元)以下。
+    },
+    {
+        id: 'ocgo:opencode-go/muse-spark-1.3-contributor',
+        model: 'opencode-go/muse-spark-1.3-contributor',
+        kind: 'opencode',
+        provider: 'opencode-go',
+        envVar: 'OPENCODE_GO_KEYS',
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
+        //【訓練資料】官方Privacy: 以大幅折價換取使用你的提示詞與回應訓練Meta未來模型, 模型訓練Yes、非零保留, 且限Meta地理使用政策允許之地區; 工作區須開「Allow paid endpoints that train on request data」〔提出端〕——敏感內容勿走此條。
+        //〔CLI型錄〕release 2026-09-02, 推理, context 1048576、輸出131072、可輸入圖片, 檔位minimal/low/medium/high/xhigh; Go端點走responses協定家族, 對CLI無影響。月額$60; 單價$0.10/$0.20。
+        //〔提出端〕簡答12.6s成功(須先開訓練開關)。本機未實測(付費模型)。
     },
     {
         id: 'agy:gemini-3.8-flash-high',

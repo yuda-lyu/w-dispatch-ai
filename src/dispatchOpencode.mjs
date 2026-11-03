@@ -76,6 +76,21 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   實測把agnes-ai的金鑰用於opencode/...模型 → `Invalid API key`。
 //   故呼叫端傳入的key／provider／model須為同一組。
 //
+// 【OpenCode Go(月費訂閱)——provider opencode-go(2026-11-03 da65, Gitea #65; 全貌見providers.mjs檔頭【OpenCode Go】段)】
+//   同一把Console工作區金鑰(前綴oc_sk_)有兩個provider id: model `opencode/<id>`(provider opencode)走免費池或按量餘額; model `opencode-go/<id>`(provider opencode-go)走Go月費額度。
+//   本轉接器不必改動即支援Go: opt.provider給 'opencode-go' 時依上段注入 OPENCODE_AUTH_CONTENT={"opencode-go":{type:'api',key}}(以opt.provider為鍵), model給 'opencode-go/<id>';
+//   key／provider／model仍須為同一組(見下【provider與model必須配對】)。Go走opencode CLI本身(官方支援之客戶端, 自帶x-opencode-session標頭);
+//   直打Go之REST基底須自帶該標頭(缺則400 MissingSessionID), 故本套件只收CLI類Go條目(providers.mjs之ocgo:)。
+//   錯誤字樣對照〔本機實測 2026-11-03, opencode 1.19.5〕:
+//     未訂閱Go之金鑰 → stderr「Upstream request failed: An active OpenCode Go subscription is required to use Go models.」, opencode內部重試約77秒才exit 1(errorType 'exec');
+//     id不在Go型錄 → 「ProviderModelNotFoundError: Model not found: opencode-go/<id>.」, 約1.7秒即exit 1;
+//     「Free usage limit reached…subscribe to OpenCode Go to keep going」＝ provider opencode之免費池用盡, 不影響opencode-go/之模型(同一分鐘內opencode-go/beam-free 6.1s成功); 此時run不結束(見上【429限流時run不會結束】), 以TIMEOUT回報。
+//   〔issue #65提出端自述, 本機未重現〕隱私開關未開: 「This Go model requires Global regions. Select Global in your workspace's Privacy settings to use it.」(DeepSeek)、
+//     「This Go model trains on request data. Allow paid endpoints that train on request data in your workspace's Privacy settings to use it.」(Muse／Iceman Contributor);
+//     付費id錯用opencode/前綴 → 「Upstream request failed: Model access is disabled」; 以OPENCODE_CONFIG_CONTENT補定義Go專屬id後 → 「Model is unavailable」。
+//   Go額度到頂時run之行為與字樣未查明(免費池到頂時run不結束; Go是否同樣不返回, 本機與提出端皆未撞到), 呼叫端宜以timeoutMs封頂, 並可先以opencodeGoUsage(src/opencodeGoUsage.mjs)查三視窗(該端點官方文件未載, 為實測所得)。
+//   隱私前提: Go繼承工作區Settings›Privacy——預設擋「以請求資料訓練之付費端點」且地區限歐美; DeepSeek須選Global、Muse／Iceman Contributor須開train-on-data開關; iceman與muse會以提示詞訓練模型, 敏感內容勿走。
+//
 // 【第三方provider須另給config(2026-08-09於本機實測確認)】
 //   opencode僅內建自家provider，第三方(例如agnes-ai)未定義於設定檔時，
 //   只注入金鑰仍無法使用：實測`opencode models`不列出該provider之模型，

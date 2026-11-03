@@ -49,6 +49,7 @@ Note:
 | `resolveCatalogue(opt)` | catalogue expansion in one call: merge your own `extraProviders` into the built-in catalogue (new id appended, same id overridden field by field), resolve the three-layer timeout (`providerTimeouts[id]` → entry's own `timeoutMs` → global `timeoutMs`) into `patch`, then `resolveProviders` (`env`／`envFile`, `pick`, `exes`, `patch`); returns `{ merged, env, resolved }`; see "目錄展開：`resolveCatalogue`" |
 | `probeAnthropicKeys(keys, opt)` | probe each Anthropic API key with a tiny request (`max_tokens: 1`, default `claude-haiku-5-5`): returns per key `ok`／`no-credit`／`key-invalid`／`no-permission`／`rate-limit`／`overloaded`／`network`／`other` and the per-minute rate-limit headers; only index and length are returned, never the key. Anthropic has **no balance endpoint** for ordinary keys — this only tells whether a call works *right now* |
 | `filterOpencodeFree(providers, opt)` | filter the catalog's opencode free entries (id or model contains `free`, plus `big-pickle`) by the output of `opencode models`: returns `available` (still served), `removed` (not in the list = delisted, 1 of the 2 conditions in the `providers.mjs` header's precedent), `unchecked` (free-looking but not an `opencode/<id>` CLI entry, e.g. `zen:` REST entries) and `uncatalogued` (free ids the list has but the catalog lacks). Call it once before building a fallback chain or a benchmark roster. **A failed query (`opencode` missing, non-zero exit, timeout, empty output) returns `ok: false` with `errorType` and `null` lists — never an empty list that could be mistaken for "all delisted"**; `query` is injectable for tests; `refresh: true` appends `--refresh` (`opencode models` has a local cache). Only reads the list, calls no model, spends no free quota |
+| `opencodeGoUsage({ key, baseURL, timeoutMs })` | read an **OpenCode Go** subscription's usage by `GET https://opencode.ai/inference/go/v1/usage` + `Authorization: Bearer`: returns the three windows (`rolling` = 5 h, `weekly`, `monthly`) as received (`status`, `percent`, `resetsAt`; no money conversion), `limited` / `limitedWindows`, `unknownStatus`, **`available`** (all three windows are `'ok'`; an unknown status is never treated as normal) and `nextResetAt` (when every rate-limited window has cleared = the latest of their `resetsAt`). **The endpoint is not in the official docs — it is observed behaviour (2026-11-03), not a promise.** Never rejects (timeouts, network errors, 401 `auth`, 403 `forbidden` with `noGoSubscription: true` for a key whose workspace has no Go subscription, non-JSON and unexpected shapes are all `ok: false` with `errorType`); the key is never printed, written or returned. Read-only, spends no quota. See "OpenCode Go（月費訂閱）" |
 | `readEnvFile(file)` | read a `.env` file into a plain object for `resolveProviders`'s `opt.env`, without polluting `process.env` |
 | `budgetFor(providers)` | derive the time budget to walk a whole fallback chain (sum of per-entry `timeoutMs`, defaults applied; async `validate` time is counted within each attempt, not added) |
 | `createFileStore(opt)` | file-persisted `store` for `dispatchAiFallback` (cursors and cooling survive across processes), exclusion-style passthrough |
@@ -313,6 +314,9 @@ await test()
 
 **未發布（Gitea #63，專案方 tai-kns-trade 建議；OpenCode Zen 已改名 Console，對齊官方路徑與文件；僅一個條目之網址改變，id、kind、回應格式不變）**：
 61. `zen:jev-1.13-free` 之 `baseURL` 改為官方〈Models〉頁端點欄之 `https://opencode.ai/inference/systemone/v1`（實際送往 `/inference/systemone/v1/systemone`；原 `https://opencode.ai/inference/v1`，不留舊路徑退路；2026-11-03 新舊路徑匿名各 1 次皆實測 200、答案一致，新路徑帶金鑰亦 200）。連帶：`dispatchApiOpenaiCompat`／`dispatchApiOpenaiResponses` 之 JSDoc 範例與本檔端點表改為官方分流路徑（`/inference/openai/v1`）與金鑰前綴 `oc_sk_`；`providers.mjs` 檔頭之權威來源、診斷段（`429` 分 `FreeUsageLimitError`〔免費額度用盡，CLI 與 REST 共用，改走 `oc:` 無濟於事〕與 `Policy budget exceeded`〔預算用盡，非限流〕；補 `400 MissingSessionID`）依 Console 現況改寫。內建 providers 條目數不變（29 條）；`oc:opencode/pulse-alpha-free` **未收**（當日免費額度用盡，R-OCFREE-2 之收錄實測做不完，列待辦）。自行以舊網址組 `zen:jev-1.13-free` 同類條目者請改用新 `baseURL`。
+
+**未發布（Gitea #65，專案方 tai-kns-trade 建議；OpenCode Go 支援；皆為新增，既有 29 條 provider 條目與既有函數之行為不變）**：
+62. 內建 providers 新增 **8 條 OpenCode Go 之 CLI 類條目**（`ocgo:opencode-go/` 之 `beam-free`、`deepseek-v4.1-flash`、`minimax-m3.1-flash`、`qwen3.8-flash`、`glm-5.3-flash`、`mimo-v2.6-flash`、`iceman-contributor-free`、`muse-spark-1.3-contributor`；`provider: 'opencode-go'`；金鑰變數 **`OPENCODE_GO_KEYS`**，不沿用 `OPENCODE_KEYS`），置於 `oc:opencode/*` 之後、`agy:` 之前，會以請求資料訓練之 iceman、muse 殿後。**未設 `OPENCODE_GO_KEYS` 者只在 `skipped` 多 8 筆，遞補順序與其餘條目不變；有設者全取遞補鏈多 8 條**（建議仍以 `pick` 自選）。內建條目 29 → 37（「量級感受」更新）。`qwen3.8-flash` 之型錄檔位為 low／medium／xhigh（無 high），條目取 `--variant xhigh`，是目錄內唯一不為 `high` 者。新增匯出 **`opencodeGoUsage({ key, baseURL, timeoutMs })`**（`WDispatchAi` 鍵 33 → 34；`src/opencodeGoUsage.mjs`），查三視窗用量（端點官方文件未載，為實測所得）。**不收 REST 類 Go 條目**（Go 基底必帶 `x-opencode-session`，一般 REST 呼叫是否被允許官方未載）；**遞補層不接用量**（Go 額度到頂時 `opencode run` 之行為未查明）。其餘為 `providers.mjs`／`dispatchOpencode.mjs` 檔頭之【OpenCode Go】段（provider 分流、錯誤字樣對照、隱私前提）與本檔「OpenCode Go（月費訂閱）」段。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -867,7 +871,7 @@ timeoutMs（單次嘗試，統一預設300000）
 | `runRolePipeline` | Σ各階段（**序列**） | ≈M×K×timeoutMs |
 | `runFanoutPipeline` | 上兩者相加 | ≈(2+M)×K×timeoutMs |
 
-量級感受：內建providers 29條全上陣時，一個名額最壞29×300s＝145min；3階段RolePipeline最壞約7.3小時（正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
+量級感受：內建providers 37條全上陣時（含需設 `OPENCODE_GO_KEYS` 才會上陣之 8 條 Go 條目；未設者為 29 條），一個名額最壞37×300s＝185min（29 條時145min）；3階段RolePipeline最壞約9.3小時（29 條時約7.3小時；正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
 
 **外部調整四層**（細者覆蓋粗者，全部免改套件程式）：
 1. **全域**：`dispatchAiWkf({ defaults: { timeoutMs, budgetMs, minAttemptMs } })`
@@ -902,7 +906,7 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
 ```alias
 import wdi from 'w-dispatch-ai'
 
-//金鑰放.env(OPENCODE_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS/ANTHROPIC_KEYS, 逗號分隔多把), 以readEnvFile讀成物件——
+//金鑰放.env(OPENCODE_KEYS/OPENCODE_GO_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS/ANTHROPIC_KEYS, 逗號分隔多把), 以readEnvFile讀成物件——
 //不用process.loadEnvFile: 那會把金鑰塞進process.env, 多專案並行時互相覆蓋
 let env = wdi.readEnvFile('./.env')
 
@@ -965,6 +969,48 @@ else {
 ```
 
 「有列」不等於「能用」（清單與上游狀態不同步時，已下架之模型仍可能被列出，如 2026-10-30 之 `nemotron-3-ultra-free`），實際可用性仍以呼叫實測為準；「不在清單」則是下架之必要條件，可機械判定。`unchecked` 列出含 `free` 字樣但無從以 `opencode models` 判定者（`zen:` REST 條目、須注入 config 之第三方 provider 條目），不判下架。
+
+**OpenCode Go（月費訂閱）：8 條 `ocgo:` 條目與用量查詢 `opencodeGoUsage`（2026-11-03 起，Gitea #65）**：Go 是 OpenCode Console 的月費訂閱（Go $10／Go Plus $40／Go Teams $20 每人，每個模型各有月額，5 小時視窗＝月額 20%、週＝50%、月＝100%）。**同一把工作區金鑰（`oc_sk_`）、兩個 provider id、兩個額度池**：`opencode/<id>` 走免費池或按量餘額（`oc:`、`zen:` 條目），`opencode-go/<id>` 走 Go 月費額度（`ocgo:` 條目）。Go 訂閱不改變 `opencode/*` 的免費上限；但**免費池用盡**（`Free usage limit reached… subscribe to OpenCode Go to keep going`，此時 `opencode run` 不結束、只到逾時）時，Go 路徑的模型仍可用——2026-11-03 實測，同一分鐘內匿名 `oc:opencode/beam-free` 卡在該字樣，`ocgo:opencode-go/beam-free` 6 秒成功。
+
+```alias
+//.env: OPENCODE_GO_KEYS=oc_sk_xxxx（只放「已訂閱 Go」之工作區金鑰，逗號分隔多把；不要與 OPENCODE_KEYS 混放，理由見下）
+let env = wdi.readEnvFile('./.env')
+let r = wdi.resolveProviders(wdi.providers, {
+    env,
+    pick: ['ocgo:opencode-go/beam-free', 'ocgo:opencode-go/deepseek-v4.1-flash', 'ocgo:opencode-go/glm-5.3-flash'],
+})
+//缺 OPENCODE_GO_KEYS 時 r.providers 為空、被 pick 的條目列入 r.skipped（不拋、不影響其餘條目）
+let t = await wdi.dispatchAiFallback('請只回覆兩個字：完成', { providers: r.providers, timeoutMs: 120000 })
+
+//用量（5 小時／週／月三視窗）：端點官方文件未載，為 2026-11-03 實測所得，不是官方承諾
+let u = await wdi.opencodeGoUsage({ key: env.OPENCODE_GO_KEYS.split(',')[0].trim() })
+if (u.ok) {
+    console.log(u.usage.rolling)  //{ status: 'ok', percent: 10, resetsAt: '2026-11-03T16:48:24.000Z' }  原值，不換算金額
+    console.log(u.available)      //true＝三視窗皆 'ok'；有任一視窗被限或狀態未知皆為 false（判斷請用 available，不要用 !limited）
+    console.log(u.limited, u.limitedWindows, u.unknownStatus, u.nextResetAt)
+    //nextResetAt＝被限視窗「全部」解除之時刻（被限視窗 resetsAt 的最晚者；其中任一缺漏或無法解析則為 null）；沒被限為 null
+}
+else {
+    console.log(u.errorType, u.code, u.noGoSubscription) //例: 'forbidden' 403 true＝金鑰有效但其工作區沒有 Go 訂閱；'auth' 401＝金鑰無效；'timeout'／'network'＝code 為 null
+}
+```
+
+| 條目（`ocgo:opencode-go/…`） | 檔位 | Go 方案月額 | 隱私前提 | 本機實測（2026-11-03，opencode 1.19.5） |
+| --- | --- | --- | --- | --- |
+| `beam-free` | high | 免費期（Unlimited） | 不訓練、保留 30 天、限地區 | 簡答、推理、read、寫檔被擋、約 84.5 萬 token 針在乾草堆，皆通過 |
+| `deepseek-v4.1-flash` | high | $100 | 工作區 Regions 須選 Global | **未實測**（提出端自述簡答 7.2 秒） |
+| `minimax-m3.1-flash` | high | $20 | — | **未實測**（8.7 秒） |
+| `qwen3.8-flash` | **xhigh**（型錄無 high） | $30 | — | **未實測**（9.1 秒） |
+| `glm-5.3-flash` | high | $60 | — | 簡答 1 次成功（36.7 秒）；其餘未測 |
+| `mimo-v2.6-flash` | 無檔位 | $60 | — | **未實測**（14.8 秒） |
+| `iceman-contributor-free` | 無檔位 | 免費期（Unlimited） | **以請求資料訓練**；工作區須開「Allow paid endpoints that train on request data」 | 簡答、推理、read、寫檔被擋通過；脈絡實際輸入上限約 23 萬 token（約 18.9 萬可、23.6 萬被拒） |
+| `muse-spark-1.3-contributor` | high | $60 | **以請求資料訓練**（同上開關）、限地區 | **未實測**（12.6 秒） |
+
+- **為何另立 `OPENCODE_GO_KEYS`、不沿用 `OPENCODE_KEYS`**：Go 訂閱綁工作區。本機 `OPENCODE_KEYS` 內兩把，用量端點第 1 把 200（已訂閱）、第 2 把 403（`EntitlementError: OpenCode Go subscription required.`）；未訂閱的金鑰打 Go 模型（連免費期的 `beam-free` 也一樣）要 77 秒才以 `An active OpenCode Go subscription is required to use Go models.` 失敗（1 次實測）——沿用會讓全取遞補對每把未訂閱的金鑰空耗約 77 秒。查某把金鑰是否已訂閱 Go：`opencodeGoUsage({ key })`（唯讀、不耗額度）。
+- **隱私**：Go 繼承工作區 Settings › Privacy。預設擋「以請求資料訓練的付費端點」且地區限歐美：DeepSeek 須選 Global；Muse／Iceman Contributor 須開 train-on-data 開關，否則回 `This Go model requires Global regions…`／`This Go model trains on request data…`（提出端自述，本機未重現）。**iceman 與 muse 會以你的提示詞與回應訓練模型，敏感內容勿走。**
+- **沒有 REST 類 Go 條目**：Go 基底必帶穩定的 `x-opencode-session`（缺則 400 `MissingSessionID`），官方明示 Go 給 OpenCode 與同類 coding agent 用；一般 REST 呼叫是否被允許官方未載，故只收走官方 CLI 的條目。
+- **遞補層不接用量**：`dispatchAiFallback` 不查 Go 用量、不依用量冷卻。Go 額度到頂時 `opencode run` 的行為與字樣**未查明**（免費池到頂時不結束，Go 是否同樣不返回本機與提出端皆未撞到）；呼叫端自行排程時請用 `opencodeGoUsage` 前置判斷，並以 `timeoutMs` 封頂。`percent` 是各視窗的整數百分比，端點不給金額、不分模型，「某模型還剩幾次」須自行依官方各模型月額換算。
+- 其餘 22 個 Go 模型（kimi、grok、gpt-6-luna、claude-haiku-5-5、gemini-4-argon 等）未收：提出端未測、本機不得多次發付費請求實測；需要時以 `resolveCatalogue` 的 `extraProviders` 自帶條目，形狀比照上列（`kind: 'opencode'`、`provider: 'opencode-go'`、`model: 'opencode-go/<id>'`、`envVar: 'OPENCODE_GO_KEYS'`、`config: { permission: { edit: 'deny', bash: 'ask' } }`）。
 
 **配套工具**（皆為選用，深層引入或由聚合物件取用）：
 

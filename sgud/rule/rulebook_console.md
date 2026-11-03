@@ -14,7 +14,7 @@
 | 清單隨金鑰而異 | `…/console/api/`:金鑰前綴 `oc_sk_`,可限制權限範圍 | 本機第 1 把 9 個(皆免費)、第 2 把 79 個、匿名 79 個;`jev-1.13-free` 不在任一清單 |
 | 免費層 | `api/inference`、`harnesses`:免費對話模型離開 OpenCode 一律 403(即使帶金鑰) | 匿名、第 1、2 把金鑰直呼 `mimo-v2.6-flash-free` 皆 429 `FreeUsageLimitError`;CLI 匿名呼叫 `big-pickle`、`nemotron-3.5-super-vl-free`、`pulse-alpha-free` 皆逾時並見 `Free usage limit reached`(CLI 與 REST 共用額度) |
 | 預算 | `…/console/budgets/`:429 `Upstream request failed: Policy budget exceeded`(免費模型與 Go 額度內不計預算) | 未重現(本機無預算限制) |
-| Go | `…/console/harnesses/`:基底 `/inference/go`,必帶 `x-opencode-session`;付費與 Go 文字模型可經任一協定、非原生者由 Console 轉譯 | 假金鑰打 `/inference/go/openai/v1/chat/completions` 回 400 `MissingSessionID`(先於金鑰檢查);轉譯**未實測**(須付費模型) |
+| Go | `…/console/harnesses/`:基底 `/inference/go`,必帶 `x-opencode-session`;付費與 Go 文字模型可經任一協定、非原生者由 Console 轉譯 | 假金鑰打 `/inference/go/openai/v1/chat/completions` 回 400 `MissingSessionID`(先於金鑰檢查);轉譯**未實測**(須付費模型).2026-11-03 da65 起 Go 條目(CLI 類 `ocgo:`)與用量查詢另見 `rulebook_opencodego.md`(本檔 R-CONSOLE-1 的 REST 條目規則不涵蓋 Go) |
 | `/messages` 憑證 | — | 假金鑰:`x-api-key` 與 `Authorization: Bearer` 皆 401 `Upstream request failed: Invalid credential`;不帶憑證 401 `AuthError Missing API key`;成功路徑未實測 |
 | 舊網址 | — | `opencode.ai/zen`、`/docs/zen/`、`/docs/zh-tw/zen/` 皆 302 轉至 Console 頁 |
 

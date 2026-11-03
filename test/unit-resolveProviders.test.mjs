@@ -70,7 +70,8 @@ describe('resolveProviders', function() {
     })
 
     it('可展開套件內建providers.mjs(以模擬env驗證, 不依賴真實.env)', function() {
-        let fakeEnv = { OPENCODE_KEYS: 'sk-1,sk-2', AGNES_KEYS: 'sk-3', POOLSIDE_KEYS: 'sk-4', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_KEYS: 'sk-ant-6' }
+        //OPENCODE_GO_KEYS: 2026-11-03 da65(Gitea #65)新增8條OpenCode Go條目(ocgo:)所用之金鑰變數, 各envVar皆有值方得「無停用」
+        let fakeEnv = { OPENCODE_KEYS: 'sk-1,sk-2', OPENCODE_GO_KEYS: 'sk-7', AGNES_KEYS: 'sk-3', POOLSIDE_KEYS: 'sk-4', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_KEYS: 'sk-ant-6' }
         let { providers, skipped } = resolveProviders(providersAll, { env: fakeEnv })
         let r = [
             providers.length === providersAll.length, //各envVar皆有值 → 無停用
