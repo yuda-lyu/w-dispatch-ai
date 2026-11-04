@@ -1,4 +1,5 @@
 import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
 import isenum from 'wsemi/src/isenum.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import cint from 'wsemi/src/cint.mjs'
@@ -11,6 +12,7 @@ import buildValidator from './buildValidator.mjs'
 import cliSpawnGate from './cliSpawnGate.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
+import { judgeTruncated } from './checkTruncation.mjs'
 import { awaitUserFn, readCallerObj, validateNote } from './callUserFn.mjs'
 
 
@@ -44,6 +46,13 @@ import { awaitUserFn, readCallerObj, validateNote } from './callUserFn.mjs'
 //   守門等待不計入timeoutMs: 守門實際運作過(outcome非'off')且有deadlineAt(遞補層之budgetMs, 經spawnGateHints或spawnGate物件)者, spawn之timeoutMs以剩餘預算封頂, 令等待計入budgetMs;
 //   守門未運作(關閉、預設不限之kind、假exe)時timeoutMs原值不動, 與修前逐位元相同。守門中止(shouldStop)回errorType 'aborted'。
 //   實際等過或fail-open時結果加gateWaitedMs(驗證重試時為合計)與gateFailOpen; 未等待者不加欄位。cliSpawnGate永不reject, 此處另以try/catch為最後防線(守門失敗一律放行)。
+//
+// 【輸出重整與截斷(2026-11-04 da78, Gitea #78)】本層自用鍵reshapeResult(函數(execCli結果)=>結果)由轉接器傳入, 對execCli之每個結果(成功與否皆然)
+//   在驗證之前套用, 拋錯一律沿用原結果; 目前僅dispatchOpencode使用(把`--format json`之事件流還原為預設格式之文字並讀出終止原因, 見parseOpencodeEvents.mjs)。
+//   重整後之結果若帶truncated:true(終止原因為length／content_filter), 於驗證之前以checkTruncation之judgeTruncated裁定(與REST轉接器同一規則):
+//   預設失敗(errorType 'incomplete', error以INCOMPLETE_RESPONSE開頭, 結果帶truncated、finishReason), 不驗證、不重試——同提示詞同上限必然再截斷;
+//   呼叫端明示acceptTruncated:true才放行length(可見輸出為空與content_filter仍一律失敗), 放行後照常驗證, 結果標truncated:true。
+//   未給reshapeResult者此段全不作用, 與修前逐位元相同。
 //
 // 【不reject】wsemi>=1.9.15之execCli對spawn同步錯誤回結果物件(code null、pid undefined、attempts 1),
 //   本函數不另包try/catch(四家一致, 見getErrorType.mjs之isSpawnFail)。
@@ -155,17 +164,63 @@ async function runExecCli(exe, args, opt = {}) {
         return r
     }
 
+    //reshapeResult／acceptTruncated為本層自用鍵(不轉傳execCli), 見檔頭【輸出重整與截斷(2026-11-04 da78)】
+    let reshapeFn = get(opt, 'reshapeResult', null)
+    let acceptTruncated = get(opt, 'acceptTruncated', false) === true
+
+    //shape: 對execCli之每個結果(成功與否皆然)套重整函數, 再裁定截斷; 回傳{ r, fail }, fail非null代表應立即以該失敗結果收場(不驗證、不重試)
+    let shape = async (r0) => {
+        let r = r0
+        if (typeof reshapeFn === 'function') {
+            try {
+                let x = reshapeFn(r0)
+                if (isobj(x)) {
+                    r = x
+                }
+            }
+            catch {} //重整為最佳努力, 拋錯一律沿用原結果
+        }
+        if (get(r, 'truncated', false) !== true) {
+            return { r, fail: null }
+        }
+        let fr = get(r, 'finishReason', '')
+        let d = await judgeTruncated({
+            finishReason: fr,
+            content: get(r, 'stdout', ''),
+            acceptTruncated,
+            validator: null, //放行後之驗證交本層既有流程(有validate則於其後驗證)
+            reasoningTokens: get(r, 'tokens.reasoning', null),
+            label: `finish_reason=${fr}`,
+        })
+        if (d.accept) {
+            return { r, fail: null }
+        }
+        return {
+            r,
+            fail: {
+                ...r,
+                ok: false,
+                stdout: strTruncate(get(r, 'stdout', '') || '', 500, optTruncate),
+                error: d.error,
+                errorType: 'incomplete',
+            },
+        }
+    }
+
     let validator = buildValidator(get(opt, 'validate', null))
     let base = { ...opt, env: er.value, validate: undefined, timeoutMs }
     delete base.spawnGate
     delete base.spawnGateKind
     delete base.spawnGateHints
+    delete base.reshapeResult
+    delete base.acceptTruncated
     if (validator === null) {
         let g0 = await enterGate()
         if (g0.aborted) {
             return getErrorResult('ABORTED', 'aborted')
         }
-        return withGate(attachErrorType(await execCli(exe, args, { ...base, timeoutMs: g0.tmo })))
+        let s0 = await shape(await execCli(exe, args, { ...base, timeoutMs: g0.tmo }))
+        return withGate(attachErrorType(s0.fail !== null ? s0.fail : s0.r))
     }
 
     //maxRetries、retryDelayMs, 無效回退與execCli相同之預設(0、5000)
@@ -184,10 +239,17 @@ async function runExecCli(exe, args, opt = {}) {
         let tmo = gi.tmo
 
         //子進程(本次至多maxRetries-used次重試, 由execCli自理非驗證之失敗與其重試)
-        let r = await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: maxRetries - used, retryDelayMs })
-        used += get(r, 'attempts', 1)
+        let rRaw = await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: maxRetries - used, retryDelayMs })
+        used += get(rRaw, 'attempts', 1)
+        let sh = await shape(rRaw)
+        let r = sh.r
         if (!r.ok) {
             return withGate(attachErrorType({ ...r, attempts: used }))
+        }
+
+        //截斷(確定性: 同提示詞同上限必然再截斷), 不驗證、不重試, 直接以incomplete收場
+        if (sh.fail !== null) {
+            return withGate(attachErrorType({ ...sh.fail, attempts: used }))
         }
 
         //驗證, 上限為該次嘗試之剩餘時間(timeoutMs − 子進程耗時)
@@ -210,6 +272,7 @@ async function runExecCli(exe, args, opt = {}) {
             durationMs: r.durationMs + vMs,
             pid: r.pid,
             attempts: used,
+            ...(get(r, 'truncated', false) === true ? { truncated: true, finishReason: get(r, 'finishReason', ''), tokens: get(r, 'tokens', null) } : {}), //acceptTruncated放行後驗證不過者仍標明被截斷
         }
         if (used > maxRetries) {
             return withGate(attachErrorType(fail))
@@ -222,3 +285,4 @@ async function runExecCli(exe, args, opt = {}) {
 
 
 export default runExecCli
+export { optTruncate }

@@ -3,12 +3,16 @@ import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
-import runExecCli from './runExecCli.mjs'
+import runExecCli, { optTruncate } from './runExecCli.mjs'
 import { readCallerObj, errMsg, asText } from './callUserFn.mjs'
 import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
+import parseOpencodeEvents from './parseOpencodeEvents.mjs'
+import { applyOutputTokenMax } from './outputTokenMax.mjs'
 
 
 // dispatchOpencode.mjs — 以opencode CLI呼叫AI模型
@@ -95,6 +99,19 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 //   實際呼叫由runExecCli統一處理(四家共用), 本轉接器只傳spawnGateKind: 'opencode'。
 //   隱私前提: Go繼承工作區Settings›Privacy——預設擋「以請求資料訓練之付費端點」且地區限歐美; DeepSeek須選Global、Muse／Iceman Contributor須開train-on-data開關; iceman與muse會以提示詞訓練模型, 敏感內容勿走。
 //
+// 【單次回應輸出上限: 預設注入OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX(2026-11-04 da78, Gitea #78; 規則細節與證據見outputTokenMax.mjs檔頭、帳本R-OCGO-4)】
+//   opencode以min(型錄limit.output, 環境變數或預設32000)為請求之max_tokens——「32,000」是CLI端預設而非閘道限制(假OpenAI相容服務攔截請求實測)。
+//   推理模型之reasoning與output共用此額度: 長提示詞配高檔位(--variant high)時reasoning可把32000吃光, 正文為空或被截,
+//   而CLI回ok:true、stdout空、離開碼0、stderr僅標頭、opencode日誌無ERROR(Go模型glm-5.3-flash實測: 3萬字元提示詞, high, 預設上限 → finish=length、reasoning恰32000、output 0)。
+//   本轉接器預設把上限調為DEFAULT_OUTPUT_TOKEN_MAX(見outputTokenMax.mjs); opt.outputTokenMax可覆寫; 呼叫端環境(opt.env或process.env)已設有效值者原樣保留。
+//
+// 【截斷偵測(opt.detectTruncation, 預設false; 2026-11-04 da78)】預設格式下回應「為何結束」不可見; `--format json`事件流之step_finish事件帶終止原因(reason)與token。
+//   detectTruncation:true時本轉接器加`--format json`, 解析事件流後把stdout/stderr還原為預設格式(逐案比對與預設路徑之stdout逐位元相同; stderr不含`> agent · model`標頭與工具進度行,
+//   錯誤事件還原為`Error: 訊息`), 並於最後一步之reason為length時回報截斷: 失敗(errorType 'incomplete', error以INCOMPLETE_RESPONSE開頭, 結果帶truncated:true、finishReason、tokens),
+//   與REST轉接器同一規則(checkTruncation.mjs); 確定性截斷不驗證、不重試(runExecCli), dispatchAiFallback依truncated旗標整組跳過、換下一個條目。
+//   opt.acceptTruncated:true可放行length且有可見輸出之結果(標truncated:true)。未開detectTruncation者行為與修前逐位元相同(預設格式、不判截斷)。
+//   呼叫端自給`--format json`(extraArgs)者視為要原始事件: stdout不改寫, 但仍判截斷並加欄位。
+//
 // 【第三方provider須另給config(2026-08-09於本機實測確認)】
 //   opencode僅內建自家provider，第三方(例如agnes-ai)未定義於設定檔時，
 //   只注入金鑰仍無法使用：實測`opencode models`不列出該provider之模型，
@@ -109,8 +126,33 @@ let DEFAULT_EXE = 'opencode'
 let DEFAULT_AGENT = 'build'
 
 
-//本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli
-let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'config', 'extraArgs', 'input', 'env']
+//本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli(acceptTruncated由runExecCli讀取, 見其檔頭; reshapeResult為本轉接器內部傳給runExecCli之接縫, 呼叫端給的一律剔除)
+let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'config', 'extraArgs', 'input', 'env', 'outputTokenMax', 'detectTruncation', 'reshapeResult']
+
+
+//accumulate上限(字元), 偵測截斷時累積子進程stdout全文以供解析, 超出部分不再累積
+let ACC_MAX = 32 * 1024 * 1024
+
+
+/**
+ * 由命令列旗標陣列取`--format`之值(支援`--format json`與`--format=json`，取最後一個)
+ *
+ * @param {Array} args 輸入旗標字串陣列
+ * @returns {String} 回傳旗標值字串，未給為空字串
+ */
+function getFormatArg(args) {
+    let fmt = ''
+    for (let i = 0; i < args.length; i++) {
+        let a = args[i]
+        if (a === '--format' && i + 1 < args.length) {
+            fmt = args[i + 1]
+        }
+        else if (a.startsWith('--format=')) {
+            fmt = a.slice(9)
+        }
+    }
+    return fmt
+}
 
 
 /**
@@ -136,12 +178,15 @@ let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'co
  * @param {String} [opt.agent='build'] 輸入opencode代理名稱字串，預設'build'
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
  * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined
+ * @param {Number|String} [opt.outputTokenMax=128000] 輸入單次回應輸出上限(token)正整數(數字或數字字串)，注入子進程環境OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX(reasoning與output合計，實際上限取此值與模型型錄limit.output之較小者；opencode自身預設32000)；給了有效值即蓋過呼叫端環境；未給或無效(0、負數、小數、非數字、Infinity、布林)時，呼叫端環境(opt.env或process.env)已設有效值者原樣保留，否則用套件預設128000；調高會使可用輸入約減少同量，見outputTokenMax.mjs檔頭，預設128000
+ * @param {Boolean} [opt.detectTruncation=false] 輸入是否偵測輸出被上限截斷布林值，true代表改用`--format json`事件流並還原輸出，最後一步終止原因為length時回報失敗(errorType 'incomplete'、truncated:true、finishReason、tokens)且不重試，見檔頭【截斷偵測】，預設false代表不偵測(行為同修前)
+ * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(finish為length)但有可見輸出之結果布林值，true代表放行(照常交validate)並標truncated:true，僅detectTruncation為true時有作用，預設false
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()；其絕對路徑並同步注入環境變數PWD(opencode以繼承之PWD優先於真實cwd決定session目錄，見檔頭)，呼叫端env內之PWD會被覆寫
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(opencode預設啟用：機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等，每10秒再查，等逾10分鐘或計數取樣失敗即放行；且只守exe為真的opencode)，false關閉，true取預設且不受exe比對限制，物件可覆寫maxCli、ramUsedMax、cpuMax、pollMs、gateWaitMaxMs等；等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；detectTruncation為true且最後一步被輸出上限截斷時另帶truncated(true)、finishReason('length')、tokens(最後一步之token用量物件{ total, input, output, reasoning, cache })，未截斷者不加此三欄；本函數不會reject
  * @example
  * //need opencode cli in system PATH
  *
@@ -214,11 +259,19 @@ async function dispatchOpencode(prompt, opt = {}) {
     //extraArgs
     let extraArgs = get(opt, 'extraArgs', null)
 
+    //截斷偵測(detectTruncation, 預設false): 預設格式下終止原因不可見, 須改用`--format json`事件流(見parseOpencodeEvents.mjs檔頭);
+    //呼叫端未自給--format時由本轉接器加上並把輸出還原為預設格式(rewrite); 呼叫端自給json者視為要原始事件, 不改寫輸出只加判定欄位; 自給其他格式者無從偵測
+    let detectTruncation = get(opt, 'detectTruncation', null) === true
+    let fmtUser = getFormatArg(getCliArgs(extraArgs))
+    let rewrite = detectTruncation && fmtUser === ''
+    let detect = rewrite || (detectTruncation && fmtUser === 'json')
+
     //args
     let args = getCliArgs(
         'run',
         ['--agent', agent],
         isestr(model) ? ['-m', model] : [],
+        rewrite ? ['--format', 'json'] : [],
         extraArgs,
     )
 
@@ -277,11 +330,49 @@ async function dispatchOpencode(prompt, opt = {}) {
         PWD: cwdEff,
     }
 
+    //單次回應輸出上限: opencode預設以min(型錄limit.output, 32000)為max_tokens, 長提示詞配高檔位時reasoning把32000吃光、正文為空(見outputTokenMax.mjs檔頭);
+    //優先序 opt.outputTokenMax > 呼叫端環境已設之有效值(opt.env或process.env, 保留不動) > 套件預設
+    env = applyOutputTokenMax(env, get(opt, 'outputTokenMax', null)).env
+
     //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
     let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs)
 
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
+
+    //截斷偵測之接縫: onStdout累積事件流全文(失敗結果之stdout被execCli裁到500字元, 事件流會被截斷, 故須自行累積), reshapeResult於每次execCli結果出來後還原輸出並讀出終止原因
+    if (detect) {
+        let acc = ''
+        let userOnStdout = get(optCli, 'onStdout', null)
+        optCli.onStdout = (str) => {
+            if (acc.length < ACC_MAX) {
+                acc += str
+            }
+            if (isfun(userOnStdout)) {
+                userOnStdout(str) //呼叫端回調拋錯由execCli的callUser承接
+            }
+        }
+        optCli.reshapeResult = (r) => {
+            let raw = acc !== '' ? acc : String(get(r, 'stdout', '') || '')
+            acc = '' //下一次嘗試重新累積
+            let p = parseOpencodeEvents(raw, { lastSessionOnly: true }) //重試各開新session, 只取本次嘗試
+            if (!p.hasEvents) {
+                return r
+            }
+            let ok = get(r, 'ok', false) === true
+            let extra = (ok && p.truncated) ? { truncated: true, finishReason: p.finishReason, tokens: p.tokens } : {}
+            if (!rewrite) {
+                return { ...r, ...extra }
+            }
+            if (ok) {
+                return { ...r, stdout: p.stdout, ...extra }
+            }
+
+            //失敗: 還原stdout(裁500同execCli)與stderr(原stderr後接錯誤事件還原之`Error: 訊息`, 裁1000同execCli之離開碼失敗)
+            let se = `${get(r, 'stderr', '') || ''}${p.stderr}`
+            return { ...r, stdout: strTruncate(p.stdout, 500, optTruncate), stderr: strTruncate(se, 1000, optTruncate) }
+        }
+    }
 
     //execCli(經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上機器可讀之errorType, 見runExecCli.mjs), prompt一律走stdin
     //spawnGate(使用端給之守門設定, 原樣留在optCli)與spawnGateKind交runExecCli於每次spawn前守門(見cliSpawnGate.mjs; opencode預設啟用)

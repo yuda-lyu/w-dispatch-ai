@@ -46,6 +46,7 @@ describe('providers之opencode免費條目增刪(2026-10-30)', function() {
                 useStoredAuth: false,
                 config: { permission: { edit: 'deny', bash: 'ask' } },
                 extraArgs: ['--variant', 'high'],
+                outputTokenMax: 32000, //2026-11-04 da78: context 262144級維持CLI原預設輸出上限以保輸入餘裕(見outputTokenMax.mjs檔頭)
             },
         )
     })

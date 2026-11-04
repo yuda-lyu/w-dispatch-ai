@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>parseOpencodeEvents.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#applyOutputTokenMax">applyOutputTokenMax</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castOutputTokenMax">castOutputTokenMax</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#checkGoQuota">checkGoQuota</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#cliSpawnGate">cliSpawnGate</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createCountCli">createCountCli</a></li><li><a href="global.html#createCpuSampler">createCpuSampler</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createGateState">createGateState</a></li><li><a href="global.html#createQuotaGateState">createQuotaGateState</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultImages">defaultImages</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#errorMessageOf">errorMessageOf</a></li><li><a href="global.html#exeStem">exeStem</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fail">fail</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#findEnvKey">findEnvKey</a></li><li><a href="global.html#fingerprint">fingerprint</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getFormatArg">getFormatArg</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#gwOf">gwOf</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isGoEntry">isGoEntry</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#judgeGoUsage">judgeGoUsage</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#lock">lock</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#opencodeGoUsage">opencodeGoUsage</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#parseOpencodeEvents">parseOpencodeEvents</a></li><li><a href="global.html#parsePsComm">parsePsComm</a></li><li><a href="global.html#parseTasklistCsv">parseTasklistCsv</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#readTickets">readTickets</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#resolveQuotaGate">resolveQuotaGate</a></li><li><a href="global.html#resolveSpawnGate">resolveSpawnGate</a></li><li><a href="global.html#run">run</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#runText">runText</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#sampleRamDefault">sampleRamDefault</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toMs">toMs</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#unlock">unlock</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li><li><a href="global.html#writeTicket">writeTicket</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">parseOpencodeEvents.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import os from 'os'
+import get from 'lodash-es/get.js'
+import isobj from 'wsemi/src/isobj.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import { normalizeFinishReason, TRUNCATION_REASONS } from './checkTruncation.mjs'
+
+
+// parseOpencodeEvents.mjs — 解析`opencode run --format json`之事件流(2026-11-04 da78, Gitea #78)
+//
+// 【為何需要】預設格式(非json)下, opencode run之stdout只有模型的文字、stderr只有`> agent · model`標頭, 回應「為何結束」完全不可見:
+//   輸出上限(length)被截斷與正常結束(stop)無從分辨(2026-11-04實測: 推理耗盡上限時stdout為空字串、離開碼0、stderr僅標頭)。
+//   `--format json`會把每個事件印成一行JSON, 其中`step_finish`事件之part.reason即該步之終止原因(本機opencode 1.19.5, 假OpenAI相容服務實測:
+//   finish_reason=length → reason 'length'; stop → 'stop'; 工具呼叫 → 'tool-calls'), part.tokens為{ total, input, output, reasoning, cache }。
+//
+// 【stdout重建規則(源自opencode 1.19.5之run指令原始碼, 本機以假服務逐案比對預設格式輸出相同)】預設格式下stdout只寫「已結束(part.time.end)之text」:
+//   `text.trim()`為空則略過, 否則寫`text.trim() + EOL`(EOL即os.EOL); JSON格式下同一事件改印為一行JSON而不寫上列文字。
+//   故由事件流重建: 對每個text事件取part.text去頭尾空白, 非空者接上os.EOL。reasoning事件僅於帶--thinking時才有輸出(預設格式為`Thinking: &lt;trim>` + EOL), 同理重建。
+//   stderr: 預設格式之標頭、工具進度行與錯誤行(`Error: &lt;訊息>`, 訊息取自session.error)皆寫stderr; JSON格式下錯誤改為type 'error'事件(寫stdout),
+//   本函數把錯誤事件還原為`Error: &lt;訊息>` + EOL的stderr文字(去ANSI色碼; 訊息取error.data.message, 否則error.name), 標頭與工具進度行不還原(無從得知亦無用)。
+//
+// 【截斷判定以「最後一個step_finish」為準】opencode遇length即結束迴圈(不續跑下一步), 故最後一步之reason即整次回應之終止原因;
+//   中間步驟(工具呼叫)之reason為'tool-calls'。只認最後一個step_finish, 不因任一步曾為length就判截斷。截斷集合沿用checkTruncation之TRUNCATION_REASONS(length、content_filter;
+//   AI SDK之'content-filter'正規化為'content_filter')。content_filter本機未能以真實服務觸發, 僅以假服務確認事件形狀, 見帳本。
+//
+// 【解析不拋錯】非JSON行(例如其他程式寫入stdout之警告)原樣保留在重建之stdout中(視同預設格式下亦會出現); 無任何事件(hasEvents為false)代表輸入不是事件流,
+//   呼叫端應原樣使用輸入, 不得據此判定未截斷。
+// 【只認已知事件類型(KNOWN_TYPES)】JSON物件但type不是已知類型者(含opencode日後新增或改名者)略過、不計入hasEvents:
+//   若opencode改了事件名而整串皆未識別, hasEvents為false, dispatchOpencode沿用原輸出(原始事件行), 後續validate會明確失敗,
+//   而不會被重建成「空回應」而靜默成功; 僅部分改名(例如只有step_finish改名)則該部分失效(例如無法判截斷), 其餘照舊。opencode v2之事件格式未驗證。
+
+
+//文字結尾符, 與子進程(opencode)同機同平台故取本機EOL
+let EOL = os.EOL
+
+
+//ANSI色碼(刻意比對控制字元ESC以去除色碼)
+// eslint-disable-next-line no-control-regex
+let RE_ANSI = /\u001b\[[0-9;]*m/g
+
+
+//已知事件類型(opencode 1.19.5 run --format json): 其餘類型(含日後新增者)略過、不計入hasEvents——
+//整串都不是已知類型時(例如日後改名)hasEvents為false, 呼叫端沿用原輸出, 不會把一串未識別之事件當成「回應為空」
+let KNOWN_TYPES = ['step_start', 'step_finish', 'text', 'reasoning', 'error', 'tool_use']
+
+
+/**
+ * 還原一個錯誤事件之人讀訊息(取error.data.message, 否則error.name, 再否則'unknown error'; 去ANSI色碼與開頭之'Error: ')
+ *
+ * @param {Object} err 輸入錯誤事件之error欄位
+ * @returns {String} 回傳訊息字串
+ */
+function errorMessageOf(err) {
+    let msg = get(err, 'data.message', '')
+    if (!isestr(msg)) {
+        msg = get(err, 'name', '')
+    }
+    if (!isestr(msg) || msg.trim() === '') {
+        msg = 'unknown error'
+    }
+    msg = msg.replace(RE_ANSI, '').trim()
+    if (msg.startsWith('Error: ')) {
+        msg = msg.slice(7)
+    }
+    return msg
+}
+
+
+/**
+ * 解析`opencode run --format json`之stdout事件流, 重建預設格式下之stdout/stderr, 並取最後一步之終止原因與token
+ *
+ * @param {String} text 輸入stdout字串(逐行一個JSON事件)
+ * @param {Object} [opt={}] 輸入設定物件，預設{}
+ * @param {Boolean} [opt.lastSessionOnly=false] 輸入是否只取最後一個sessionID之事件布林值(同一串流含多次嘗試時用)，預設false
+ * @returns {Object} 回傳物件，內含hasEvents(是否解出至少一個事件布林值)、stdout(重建之文字字串，text事件去頭尾空白後各接os.EOL，非JSON行原樣保留)、stderr(錯誤事件還原之`Error: 訊息`文字字串)、finishReason(最後一個step_finish之終止原因，正規化為小寫並以底線取代連字號，無則空字串)、truncated(finishReason屬TRUNCATION_REASONS布林值)、tokens(最後一個step_finish之tokens物件，無則null)、sessionID(事件中的session id字串，無則空字串)、steps(step_finish事件數)
+ * @example
+ *
+ * import parseOpencodeEvents from './src/parseOpencodeEvents.mjs'
+ *
+ * let ev = [
+ *     JSON.stringify({ type: 'text', part: { type: 'text', text: ' partial ', time: { start: 1, end: 2 } } }),
+ *     JSON.stringify({ type: 'step_finish', part: { type: 'step-finish', reason: 'length', tokens: { total: 32010, input: 10, output: 0, reasoning: 32000 } } }),
+ * ].join('\n')
+ * let r = parseOpencodeEvents(ev)
+ * console.log(r.stdout.trim(), r.finishReason, r.truncated, r.tokens.reasoning)
+ * // => 'partial' 'length' true 32000
+ *
+ */
+function parseOpencodeEvents(text, opt = {}) {
+    let res = {
+        hasEvents: false,
+        stdout: '',
+        stderr: '',
+        finishReason: '',
+        truncated: false,
+        tokens: null,
+        sessionID: '',
+        steps: 0,
+    }
+    if (!isestr(text)) {
+        return res
+    }
+    let lastSessionOnly = get(opt, 'lastSessionOnly', false) === true
+
+    //逐行解析
+    let rows = []
+    for (let line of text.split('\n')) {
+        let s = line.replace(/\r$/, '')
+        if (s.trim() === '') {
+            continue
+        }
+        let ev = null
+        try {
+            ev = JSON.parse(s)
+        }
+        catch {
+            ev = null
+        }
+        rows.push({ s, ev: (isobj(ev) &amp;&amp; isestr(get(ev, 'type', ''))) ? ev : null })
+    }
+
+    //lastSessionOnly: 同一串流含多次嘗試(重試各開新session)時, 只取最後一個session之事件
+    let sidKeep = ''
+    if (lastSessionOnly) {
+        for (let row of rows) {
+            if (row.ev !== null &amp;&amp; isestr(get(row.ev, 'sessionID', ''))) {
+                sidKeep = row.ev.sessionID
+            }
+        }
+    }
+
+    let lastFinish = null
+    for (let { s, ev } of rows) {
+        if (ev === null) {
+
+            //非事件行, 原樣保留
+            res.stdout += s + EOL
+            continue
+        }
+        if (sidKeep !== '' &amp;&amp; isestr(get(ev, 'sessionID', '')) &amp;&amp; ev.sessionID !== sidKeep) {
+            continue
+        }
+        let type = ev.type
+        if (!KNOWN_TYPES.includes(type)) {
+            continue
+        }
+        res.hasEvents = true
+        if (res.sessionID === '' &amp;&amp; isestr(get(ev, 'sessionID', ''))) {
+            res.sessionID = ev.sessionID
+        }
+        if (type === 'text' || type === 'reasoning') {
+            let t = get(ev, 'part.text', '')
+            t = isestr(t) ? t.trim() : ''
+            if (t !== '') {
+                res.stdout += (type === 'reasoning' ? `Thinking: ${t}` : t) + EOL
+            }
+        }
+        else if (type === 'step_finish') {
+            lastFinish = ev
+            res.steps++
+        }
+        else if (type === 'error') {
+            res.stderr += `Error: ${errorMessageOf(get(ev, 'error', null))}` + EOL
+        }
+    }
+
+    if (lastFinish !== null) {
+        res.finishReason = normalizeFinishReason(get(lastFinish, 'part.reason', '')).replace(/-/g, '_')
+        res.truncated = TRUNCATION_REASONS.includes(res.finishReason)
+        let tk = get(lastFinish, 'part.tokens', null)
+        res.tokens = isobj(tk) ? tk : null
+    }
+    return res
+}
+
+
+export default parseOpencodeEvents
+export { errorMessageOf }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Nov 05 2026 00:03:21 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

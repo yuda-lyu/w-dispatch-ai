@@ -40,8 +40,10 @@ import isestr from 'wsemi/src/isestr.mjs'
 //                      遞補層整組跳過; 見describeNonJsonBody.mjs), 「JSON缺欄位」則仍換金鑰
 //   'incomplete'       回應未完整: 截斷(chat/completions之finish_reason為length/content_filter、
 //                      Responses API之status為incomplete、Anthropic Messages API之stop_reason為max_tokens; 結果另帶truncated:true, 規則見checkTruncation.mjs)
-//                      與Responses API之其餘非completed狀態(如failed; truncated:false)、Messages API之pause_turn(truncated:false)。僅api類;
-//                      半截內容預設不當成功回傳, 呼叫端明示acceptTruncated才可放行(2026-09-24起三轉接器同規則)
+//                      與Responses API之其餘非completed狀態(如failed; truncated:false)、Messages API之pause_turn(truncated:false)。api類;
+//                      半截內容預設不當成功回傳, 呼叫端明示acceptTruncated才可放行(2026-09-24起三轉接器同規則)。
+//                      2026-11-04起CLI類之dispatchOpencode在opt.detectTruncation為true時亦回此類(opencode run --format json之最後一個step_finish.part.reason為length;
+//                      同樣帶truncated:true、finishReason, 另帶tokens; 由runExecCli於驗證與重試之前裁定, 見runExecCli.mjs檔頭【輸出重整與截斷】, Gitea #78)
 //   'refusal'          模型拒答(僅api-anthropic: HTTP 200但stop_reason為refusal, 安全分類器所為; 2026-10-24起)。error以'REFUSED:'開頭並帶stop_details.category,
 //                      stdout為已輸出之部分文字、stderr為stop_details; 屬模型/請求性質, 同請求換金鑰必然再被拒, 不重試且遞補層整組跳過
 //   'aborted'          shouldStop中止(dispatchAiFallback; 2026-11-04起CLI類spawnGate守門等待中被shouldStop中止亦為此類, error為'ABORTED', attempts 0, 見cliSpawnGate.mjs)

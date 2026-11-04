@@ -321,6 +321,9 @@ await test()
 **未發布（Gitea #67，專案方 tai-kns-trade 建議；CLI 類 spawn 前之機器級守門與 OpenCode Go 用量冷卻。**含行為變更**：`opencode` 條目預設會在機器上已有 `max(1, 核心數−1)` 個 `opencode.exe`、或 RAM 已用 >85%、CPU >90% 時等待，見下）**：
 63. ①**新增 `spawnGate`（四個 CLI 轉接器 `dispatchOpencode`／`dispatchClaude`／`dispatchCodex`／`dispatchAntigravity` 之選項，經 `dispatchAiFallback`／`createAiCaller`／工作流之 `opt`、`defaults`、條目照既有覆寫順序傳到轉接器）**：每次 spawn 前查「機器上實際存在之該 CLI 行程數」（Windows 以 `tasklist /FI "IMAGENAME eq <image>"`、其他以 `ps -eo comm=`；跨行程、跨專案、含使用者自開之 TUI）與 RAM、CPU，達上限即每 `pollMs`（10 秒）再查，等待逾 `gateWaitMaxMs`（10 分鐘）**放行（fail-open）**，計數或取樣本身失敗亦放行，不使派工失敗。**預設只對 `opencode` 啟用，且只守「真的 opencode」（未給 `exe`，或 `exe` 去目錄與副檔名後為 `opencode`；假 CLI 與包裝腳本不守，明給 `spawnGate: true` 或物件才不受此限）**；`claude`／`codex`／`antigravity` **預設不限**（守門為 no-op，不查 `tasklist`、不取樣、零成本）——與 issue 原案「四家共用同一上限」不同，理由與實測見「CLI spawn 守門」。`spawnGate: false` 整個關閉，結果與修前逐位元相同（`diff` 比對 56 組情境 0 差異）。②**守門等待在 spawn 之前，不計入該次嘗試之 `timeoutMs`（逾時自 spawn 起算）；經 `dispatchAiFallback` 且有 `budgetMs` 時，等待計入 `budgetMs`**（等待不超過「剩餘預算 − `minAttemptMs`」，放行後 `timeoutMs` 以剩餘預算封頂）；`shouldStop` 於等待中亦生效（回 `ABORTED`，`errorType: 'aborted'`，不當作一般失敗換金鑰）。③實際等過或 fail-open 時，失敗與成功結果另帶 `gateWaitedMs`（毫秒），fail-open 者另帶 `gateFailOpen: true`，`tried` 各項同；**未等待者結果不加欄位**。④**新增 `quotaGate`（`dispatchAiFallback`／`createAiCaller` 之選項，條目可覆寫）**：選到 `provider: 'opencode-go'` 之條目（即 `ocgo:` 條目）某把金鑰前先查 `opencodeGoUsage`（該金鑰所屬工作區之三視窗用量），任一視窗 `percent ≥ 95`（`rollingMax`／`weeklyMax`／`monthlyMax` 各一鍵，預設各 95，可給 `false` 關閉該視窗）或端點明說該視窗被限（`rate-limited`）即**略過該把金鑰、不派**；查詢結果快取 60 秒；**端點失敗、視窗或 `percent` 欄位缺少、`percent` 非數字、未知狀態字一律不擋**（該端點官方文件未載，不得誤判到頂），失敗另發 `quota-gate-error` 事件。**預設開啟**（`quotaGate: false` 關閉）：有設 `OPENCODE_GO_KEYS` 者，每把金鑰每 60 秒多打一次 `GET …/inference/go/v1/usage`（逾時 5 秒）。被略過之金鑰記為「沒額度」（`tried[].outcome: 'quota-skip'`、事件 `quota-skip`、組內每把皆略過即 `quotaExhausted`、`cooldownMs>0` 時條目降至鏈尾，最終 `error` 為 `QUOTA_EXHAUSTED: … (QUOTA_COOLDOWN: …)`、`errorType: 'quota'`）。⑤跨行程「整點同時起跑」：放行時另在 `os.tmpdir()/w-dispatch-ai-spawngate/` 寫一張空檔案「預約票」，他行程之檢查把 `settleMs`（3 秒）內之票併入估計（`spawnGate.ticketDir: false` 關閉；檔案系統錯誤靜默忽略）。⑥`cliSpawnGate`、`goQuotaGate` 為內部模組，**不新增 `WDispatchAi` 匯出**。**已知限制**：`execCli` 自理之非驗證失敗重試（`maxRetries>0` 且未給 `validate`）不重新守門（整輪只守一次；驗證不過而重試者每次重守）；預約票為提示而非鎖，兩行程於同一毫秒內讀寫仍可能各放行；預約為保守估計，放行後 3 秒內若他個行程恰好結束，空出之名額至多晚 3 秒才被取用。**對使用端之影響**：既有使用 `oc:`／`ocgo:` 條目之呼叫在機器忙碌時會多等（最久 10 分鐘後照常放行）；測試若以真實 `opencode` 為對象且不想被守門影響，傳 `spawnGate: false`；claude／codex／antigravity 與 REST 類不受影響。
 
+**未發布（Gitea #78，專案方 tai-kns-trade 建議；opencode 單次輸出上限與截斷偵測。**含行為變更**：所有 `dispatchOpencode` 呼叫（`oc:`、`ocgo:` 條目與直呼）預設把單次輸出上限調為 128000，`ocgo:` 8 條 argv 多 `--format json`）**：
+64. ①**根因查明（原提案稱「Go 閘道 32,000 token 上限，未查證是閘道還是 CLI」）：32,000 是 opencode CLI 端預設**——請求之 `max_tokens` ＝ `min(模型型錄 limit.output, 環境變數 OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX 或預設 32000)`，推理模型之 reasoning 與 output 共用此額度（本機假 OpenAI 相容服務攔截請求實測，並以 Go 金鑰實呼：預設上限下 glm-5.3-flash、deepseek-v4.1-flash 於 3 萬字元提示詞＋`--variant high` 皆 `finish=length`、reasoning 恰 32000、output 0、stdout 空、離開碼 0；上限設 128000 後同一提示詞皆 `finish=stop`，reasoning 分別為 32768、70358）。**故主修法是調高上限，不是降檔位；「思考強度一律 high」維持。**②**`dispatchOpencode` 新增 `opt.outputTokenMax`，並預設注入 `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=128000`**（呼叫端環境已設有效值者保留；優先序、無效值規則見 Options 表）。**行為變更**：①opencode 呼叫可能比修前**更久、單次 token 用量更高**（以前被 32000 截掉的長推理現在完整產出；`timeoutMs` 須自行給足，預設 300000 對 3 萬字元＋high 不夠）；②context 26 萬級模型之可用輸入約少 96K（目錄內三條 `oc:flint-40b-free`、`oc:nemotron-3.5-lightning-free`、`ocgo:iceman-contributor-free` 已明給 `outputTokenMax: 32000` 維持原輸入餘裕）。要回到修前行為：呼叫端或條目給 `outputTokenMax: 32000`。③**新增 `opt.detectTruncation`（預設 `false`）與 `opt.acceptTruncated`**：開啟時自加 `--format json`、還原輸出並讀出最後一步之終止原因；`length` 回 `errorType: 'incomplete'`（與 REST 轉接器同類，非新增類別）、`truncated: true`、`finishReason`、`tokens`，不驗證不重試，`dispatchAiFallback` 依 `truncated` 旗標整組跳過（不逐把換金鑰）、換下一個條目，`tried[]` 記錄帶 `truncated`／`finishReason`。**內建 `ocgo:` 8 條已開**：其 argv 多 `--format json`、`stderr` 不再含 `> agent · model` 標頭與工具進度行（`stdout` 與修前逐位元相同；錯誤訊息仍在 `stderr`，形如 `Error: <訊息>`）；修前 `ocgo:` 長提示詞截斷回 `ok: true`＋空 `stdout`，修後回失敗並整組跳過。`oc:` 條目未開，行為不變。④`providers.mjs` 檔頭新增【輸出上限與截斷診斷】段（症狀、根因、`opencode session list`／`opencode export` 診斷法、處置、仍未查證處）。**未實測**：minimax-m3.1-flash、qwen3.8-flash、mimo-v2.6-flash、muse-spark-1.3-contributor、beam-free 於 128000 上限之接受度與耗時；`oc:` 免費池調高上限後之行為。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -343,6 +346,9 @@ await test()
 | `useStoredAuth` | Boolean | `true` | 未注入金鑰時是否沿用本機`auth.json`之登入。`false`代表以空憑證（`OPENCODE_AUTH_CONTENT='{}'`）匿名存取，用於opencode免費模型，避免結果隨本機登入帳號而異（登入帳號之工作區未開該模型時會回`Model is disabled`）；已同時給`key`與`provider`時不作用 |
 | `config` | Object\|String | `null` | opencode設定內容，將以`OPENCODE_CONFIG_CONTENT`注入，供補上第三方provider之定義 |
 | `agent` | String | `'build'` | opencode代理名稱 |
+| `outputTokenMax` | Integer\|String | `128000` | **單次回應輸出上限（token，reasoning＋output 合計）**，注入子進程環境 `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`（2026-11-04 起，Gitea #78）。opencode 自身預設 `32000`，實際上限為此值與模型型錄 `limit.output` 之**較小者**。取值優先序：①`opt.outputTokenMax`（有效正整數，數字或數字字串）→ ②呼叫端環境（`opt.env` 或本行程 `process.env`）已設之有效值（原樣保留，不覆蓋）→ ③套件預設 `128000`。無效值（`0`、負數、小數、`'abc'`、`''`、`Infinity`、布林…）一律視為未給、不報錯（含環境內之無效值——CLI 本就會靜默忽略而回 `32000`，故以預設覆蓋）。給 `32000` 即回到 CLI 原預設。**代價**：①伺服器以「輸入＋`max_tokens` ≤ context」驗請求，上限每調高 N，可用輸入約少 N（context 1M 者可忽略；context 26 萬級者從 32000 調到 128000 約少 96K，目錄內 `oc:flint-40b-free`、`oc:nemotron-3.5-lightning-free`、`ocgo:iceman-contributor-free` 三條故明給 `32000`）；②不延長 `timeoutMs`，長推理真的用到上限時耗時隨之增加（實測 3 萬字元提示詞＋`high`：glm 382 秒、deepseek 511 秒，預設 `timeoutMs` 300000 不夠）；③額度只計實際產出之 token。依據與診斷見「推理模型長提示詞回空字串／被截斷」 |
+| `detectTruncation` | Boolean | `false` | 是否偵測輸出被上限截斷。`true` 時本轉接器自加 `--format json`、解析事件流後把 `stdout` 還原為預設格式的文字（未截斷時與預設路徑**逐位元相同**；`stderr` 不含 `> agent · model` 標頭與工具進度行，錯誤事件還原為 `Error: 訊息`），並在**最後一步**終止原因為 `length` 時回報失敗：`errorType: 'incomplete'`、`error` 以 `INCOMPLETE_RESPONSE` 開頭、結果另帶 `truncated: true`、`finishReason: 'length'`、`tokens`（`{ total, input, output, reasoning, cache }`），**不驗證、不重試**（確定性），`stdout` 保留已產出之部分文字（可交 `salvageTruncatedArray`）。未開（預設）時行為與修前逐位元相同。`extraArgs` 自帶 `--format json` 者視為要原始事件：`stdout` 不改寫，仍判截斷；自帶其他格式者無從偵測。內建 `ocgo:` 8 條已開，`oc:` 條目未開（可於條目或 `patch` 自加） |
+| `acceptTruncated` | Boolean | `false` | 僅 `detectTruncation: true` 時有作用：`true` 放行「終止原因 `length` 且有可見輸出」之結果（照常交 `validate`，結果標 `truncated: true`）；可見輸出為空者仍失敗。規則與 REST 轉接器相同（`checkTruncation.mjs`） |
 
 #### Options only for dispatchClaude:
 | key | type | default | description |
@@ -732,6 +738,22 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
     attempts: 1,
 }
 
+//dispatchOpencode開detectTruncation且最後一步被輸出上限截斷(finish=length)時: 失敗, 不驗證不重試(未截斷者不加truncated／finishReason／tokens三欄)
+{
+    ok: false,
+    stdout: '', //已產出之部分文字(推理耗盡時為空)
+    stderr: '',
+    code: 0,
+    error: 'INCOMPLETE_RESPONSE: finish_reason=length; no visible output (reasoning may have used up the output token limit, reasoning_tokens=32000)',
+    errorType: 'incomplete',
+    truncated: true,
+    finishReason: 'length',
+    tokens: { total: 85251, input: 53251, output: 0, reasoning: 32000, cache: { write: 0, read: 0 } },
+    durationMs: 365329,
+    pid: 9800,
+    attempts: 1,
+}
+
 //CLI類之spawnGate守門實際等過(或等待逾時而放行)時, 成功與失敗結果皆另帶(未等待者不加此二欄; durationMs不含守門等待):
 {
     gateWaitedMs: 10573, //守門等待毫秒(驗證重試時為各次合計)
@@ -1065,6 +1087,14 @@ else {
 - **沒有 REST 類 Go 條目**：Go 基底必帶穩定的 `x-opencode-session`（缺則 400 `MissingSessionID`），官方明示 Go 給 OpenCode 與同類 coding agent 用；一般 REST 呼叫是否被允許官方未載，故只收走官方 CLI 的條目。
 - **遞補層預設於用量 ≥95% 時略過該把金鑰（`quotaGate`，2026-11-04 起，Gitea #67；取代原「遞補層不接用量」）**：`dispatchAiFallback` 於選到 `ocgo:` 條目之某把金鑰前先查 `opencodeGoUsage`，任一視窗 `percent ≥ 95` 即略過、不派（見下「OpenCode Go 用量冷卻」）。這是「到頂前即停」，不倚賴 Go 額度到頂時 `opencode run` 的行為——該行為與字樣仍**未查明**（免費池到頂時不結束，Go 是否同樣不返回本機與提出端皆未撞到），故呼叫端仍宜以 `timeoutMs` 封頂。`percent` 是各視窗的整數百分比，端點不給金額、不分模型，「某模型還剩幾次」須自行依官方各模型月額換算。
 - 其餘 22 個 Go 模型（kimi、grok、gpt-6-luna、claude-haiku-5-5、gemini-4-argon 等）未收：提出端未測、本機不得多次發付費請求實測；需要時以 `resolveCatalogue` 的 `extraProviders` 自帶條目，形狀比照上列（`kind: 'opencode'`、`provider: 'opencode-go'`、`model: 'opencode-go/<id>'`、`envVar: 'OPENCODE_GO_KEYS'`、`config: { permission: { edit: 'deny', bash: 'ask' } }`）。
+
+**推理模型長提示詞回空字串／被截斷（opencode 單次輸出上限，2026-11-04 起，Gitea #78）**：
+
+- **症狀**：Go（或免費池）推理模型配 `--variant high` 跑長提示詞（實測約 3 萬字元）時，結果 `ok: true`、離開碼 0、`stdout` 為空（或半截文字／半截 JSON）、`stderr` 只有 `> agent · model` 標頭、opencode 日誌無 ERROR；呼叫端只看到 `validate` 失敗或逾時，易誤歸為「模型能力」而降檔位或一再重試。
+- **根因**：opencode CLI 端的單次輸出上限預設 32000 token（reasoning＋output 合計，`max_tokens ＝ min(型錄 limit.output, OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX 或 32000)`）；**不是閘道限制，也不是型錄 `limit.output`**。檔位越高、提示詞越長，reasoning 越容易把額度吃光、正文一個字都出不來。
+- **診斷**（預設格式下回應為何結束不可見，只有 session 紀錄看得到）：`opencode session list --format json` 取 sessionID（依時間，含 title／directory），再 `opencode export <sessionID>` 看 assistant 訊息之 `finish` 與 `tokens`——`finish: "length"` 且 `reasoning ＋ output` 等於上限即中。或直接用 `detectTruncation: true`（`ocgo:` 條目已開），截斷會以 `errorType: 'incomplete'`、`tokens` 回報。
+- **處置**：①本套件已預設把上限調為 128000（`outputTokenMax`，見 Options 表）；②要更大／更小以 `outputTokenMax` 或環境變數 `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX` 設定（opt 優先於環境）；③`timeoutMs` 須給足（調高後長推理真的會跑完：3 萬字元＋high 實測 glm 382 秒、deepseek 511 秒）；④**不要**以加大 `timeoutMs` 解截斷（回應早已結束）、**不要**重試同一請求（確定性），遞補到下一個條目即可（`dispatchAiFallback` 對 `truncated` 結果預設如此）；⑤降檔位（`--variant low`）會犧牲思考強度，與「一律 high」原則衝突，僅在調高上限後實測仍不可用的模型才逐條考慮。
+- **未查證**：其餘 `ocgo:` 模型（minimax／qwen／mimo／muse／beam）於 128000 之接受度與耗時、`oc:` 免費池調高後之行為皆未實測；上列秒數與 token 量級只代表 2026-11-04 該合成提示詞。
 
 **配套工具**（皆為選用，深層引入或由聚合物件取用）：
 

@@ -383,12 +383,12 @@ describe('dispatchClaude failureKind与「沒額度」交叉確認', function() 
 
         it('交叉確認之耗時併入durationMs', async function() {
             let slowOk = async (url, init) => {
-                await new Promise((resolve) => setTimeout(resolve, 600))
+                await new Promise((resolve) => setTimeout(resolve, 1500))
                 return new Response(JSON.stringify(REST_NOCREDIT.body), { status: 400, headers: { 'content-type': 'application/json' } })
             }
-            let off = await run({ key: KEY, crossCheck: false }, [`--fake-out=${CREDIT}`, '--fake-exit=1'])
+            //不比兩個子行程之耗時差: 機器滿載時無交叉確認者自身也會變慢, 差值會低於門檻(2026-11-05 全套實紅); 改驗併入後之絕對下限, 未併入時只有CLI耗時(遠低於1500ms)
             let on = await run({ key: KEY, fetch: slowOk }, [`--fake-out=${CREDIT}`, '--fake-exit=1'])
-            assert.strict.deepEqual([on.r.failureKind, on.r.durationMs - off.r.durationMs > 350], ['no-credit', true])
+            assert.strict.deepEqual([on.r.failureKind, on.r.durationMs >= 1500], ['no-credit', true])
         })
 
         //外審#10: 探測不得使dispatchClaude reject

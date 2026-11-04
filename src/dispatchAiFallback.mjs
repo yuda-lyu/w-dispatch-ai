@@ -29,7 +29,7 @@ import { callHookSync, readCallerObj, errMsg, asText } from './callUserFn.mjs'
 //   致非有效執行檔UNKNOWN/EFTYPE、權限EPERM、命令列過長ENAMETOOLONG、參數含空字元、REST條目缺baseURL/model逐把空耗);
 //   本體非JSON(REST之HTTP 200但無法解析, 見describeNonJsonBody.mjs)屬傳輸或閘道狀態, 2026-09-24依安裝方實例納入
 //   (換第二把金鑰只是以剩餘預算重打至逾時); 「JSON缺欄位」不在此列, 仍換金鑰(部分閘道以200回帳號層級錯誤);
-//   截斷(結果之truncated為true, 僅REST文字類可判, 見checkTruncation.mjs)與工具不支援(TOOL_CALLS_UNSUPPORTED)
+//   截斷(結果之truncated為true, REST文字類可判, 見checkTruncation.mjs; 2026-11-04起CLI類之opencode在detectTruncation為true時亦可判, 見dispatchOpencode.mjs檔頭【截斷偵測】)與工具不支援(TOOL_CALLS_UNSUPPORTED)
 //   皆屬模型對同一請求之產出性質, 2026-09-24起納入(前者由複審指出同模型換金鑰再截斷一次;
 //   後者之既有測試標題即寫「不逐把空耗」而斷言卻為逐把換金鑰, 一併更正);
 //   REST之status=failed(服務回錯)不屬截斷, 維持換金鑰;

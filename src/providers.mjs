@@ -228,6 +228,43 @@
 //     longcat-2.0、hy3／hy4-preview、step-5-preview、mimo-v2.5／v2.5-pro／v2.6-pro、kimi-k2.7-code、muse-spark-1.2-contributor): 提出端未測、本機不得多次發付費請求實測,
 //     依R-OCFREE-2「實測不到者不收」之精神不收(其中12個之Go方案月額僅$15, 單價亦高); 呼叫端要用時可經resolveCatalogue之extraProviders自帶條目(形狀比照ocgo:)。
 //
+// ══════════════════════════════════════════════════════════════════════════════
+// 【輸出上限與截斷診斷——推理模型長提示詞「回空字串／被截斷、日誌無錯誤」時必讀】(2026-11-04 da78, Gitea #78; 帳本 sgud/rule/rulebook_opencodego.md R-OCGO-4)
+// ══════════════════════════════════════════════════════════════════════════════
+//
+//   註記: 〔假服務〕＝以本機自建127.0.0.1之OpenAI相容服務攔截opencode 1.19.5實際送出之請求(不花額度, test/api-opencodeOutputCap.test.mjs可重跑);
+//         〔Go實測〕＝2026-11-04以已訂閱Go之金鑰實呼(共6次呼叫; 提示詞約3萬字元之合成算術推理任務、--variant high; 證據夾見帳本); 其餘為未查證。
+//
+//   ★ 症狀 ★ 推理模型(Go、免費池皆可能)配高檔位(--variant high)跑長提示詞(實測約3萬字元)時: 結果ok:true、離開碼0、stdout為空字串(或只有半截文字/半截JSON)、
+//     stderr只有「> agent · model」標頭、opencode日誌(--print-logs)無ERROR。呼叫端只看到validate失敗或(提示詞更重時)逾時,
+//     容易誤歸為「模型能力／格式問題」而一再重試或降檔位。〔Go實測〕glm-5.3-flash與deepseek-v4.1-flash在預設上限下皆如此: 365～410秒後回空字串。
+//
+//   ★ 根因 ★ 單次回應輸出上限是opencode「CLI端」的預設值32,000 token, 不是Go閘道、也不是模型型錄之limit.output:
+//     opencode以min(型錄limit.output, 環境變數OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX或預設32000)作為請求之max_tokens, 推理模型之reasoning與output共用此額度。
+//     〔假服務〕未設環境變數: 型錄output 384000／131072 → max_tokens 32000, 型錄8000 → 8000; 設64000: 384000／131072 → 64000, 8000 → 8000; 設200000且型錄131072 → 131072;
+//       環境變數為'0'、'-5'、''、'abc'、'64000.5'時CLI靜默忽略而回32000('1e5'則為100000)。
+//     〔Go實測〕預設上限: glm、deepseek皆finish=length、reasoning恰32000、output 0; 設上限3000(deepseek): finish=length、reasoning恰3000(閘道照單全收CLI給的max_tokens);
+//       設上限128000: glm finish=stop(reasoning 32768＋output 1137), deepseek finish=stop(reasoning 70358＋output 964)——同一提示詞、同一檔位, 只差上限。
+//     檔位越高reasoning越長、正文越易被擠光; 提示詞越長、需推理處越多越易中。issue #78原稱「32,000是閘道限制(或CLI端, 未查證)」, 實測為CLI端預設。
+//
+//   ★ 診斷 ★ 預設格式下回應「為何結束」不可見, 只有session紀錄看得到: ①`opencode session list --format json`(依時間列出id／title／directory)取得sessionID,
+//     或直接用`opencode run --format json`(stdout每行一個事件, 皆帶sessionID); ②`opencode export <sessionID>`: 看assistant訊息之finish與tokens(reasoning／output),
+//     finish為length且reasoning＋output＝上限(預設32000)即中。`--format json`之step_finish事件(part.reason／part.tokens)是同一份資訊, dispatchOpencode的detectTruncation即據此判定(見其檔頭)。
+//
+//   ★ 處置(本套件已做) ★
+//     ①dispatchOpencode預設把上限調為128000(opt.outputTokenMax可覆寫; 呼叫端環境已設有效值者保留, 優先序與無效值規則見outputTokenMax.mjs檔頭), 實際仍受型錄limit.output約束。
+//       「思考強度一律high」原則維持, 不以降檔位(--variant low)當解法: 本案是上限不足, 不是檔位過高; 降檔位只在實測顯示調高上限後仍不可用的模型才逐條處理(目前無)。
+//     ②8條ocgo:條目帶detectTruncation: true——最後一步終止原因為length時回報errorType 'incomplete'(truncated:true、finishReason、tokens)而非靜默成功, 且不驗證、不重試(確定性),
+//       dispatchAiFallback依truncated旗標整組跳過、換下一個條目。oc:條目未開(行為不變); 呼叫端可自行在條目或patch加detectTruncation: true。
+//     ③context 262144級且型錄輸出上限逾32000之三條(oc:flint-40b-free、oc:nemotron-3.5-lightning-free、ocgo:iceman-contributor-free)明給outputTokenMax: 32000:
+//       伺服器以「輸入 + max_tokens ≤ context」驗請求, 上限每調高N token可用輸入約少N token, 這三條上方註記之「輸入實際上限約23萬token」即以32000預留計算; 要長輸出者以patch覆寫。
+//     ④調高上限後單次呼叫可能更久、更耗額度: 〔Go實測〕3萬字元提示詞+high, glm 382秒(34K token)、deepseek 511秒(71K token); 本套件預設timeoutMs 300000不夠, 呼叫端須自行給足(建議≥900000);
+//       上限本身不延長逾時; 額度只計實際產出之token(調高上限本身不扣額度, 但以前被截掉的長推理現在會完整產出)。不要以加大timeoutMs當截斷對策(回應早已結束), 也不要重試同一請求(確定性)。
+//
+//   ★ 仍未查證 ★ ①其餘ocgo:模型(minimax-m3.1-flash、qwen3.8-flash、mimo-v2.6-flash、muse-spark-1.3-contributor、beam-free)於128000上限之接受度與耗時未實測(僅glm、deepseek實測);
+//     ②oc:免費池條目調高上限後之行為未實測(型錄上限內之max_tokens理應被接受; 免費池可能另有token額度規則); ③Console／Zen REST類條目不受此限(REST轉接器自帶max_tokens);
+//     ④content_filter: opencode不以step_finish呈現而是error事件＋離開碼1(假服務), 故不會被判為截斷, 屬一般exec失敗; ⑤上述數字隨提示詞與模型版本而異, 只代表2026-11-04該合成提示詞之量級。
+//
 // 【zen免費模型清單為「更新日快照」, 不保證即為當前狀態】zen:系收錄起於2026-08-21
 //   經GET https://opencode.ai/zen/v1/models 查得之免費模型(*-free), 其後之增刪見本段漂移紀錄(最近一次2026-09-24), 不做好用篩選——
 //   新模型會上線、舊模型可能下架或限流, 且各模型能力/速度/輸出習慣差異極大
@@ -568,6 +605,7 @@ let providers = [
             permission: OC_READONLY,
         },
         extraArgs: OC_EFFORT,
+        outputTokenMax: 32000, //context 262144且型錄輸出上限65536: dispatchOpencode預設會調高單次輸出上限(見檔頭【輸出上限與截斷診斷】), 但調高會等量縮小可用輸入(上列「輸入實際上限約230K」以32000預留計), 故維持CLI原預設; 要長輸出者以patch覆寫
     },
     //以下兩條2026-10-18新增(使用者指示; 使用者告知額度少且慢, 故排在opencode免費條目之末; 同批之nemotron-3-ultra-free已於2026-10-30下架並移除, 見檔頭漂移紀錄):
     //官方文件〈Models〉〈Pricing〉皆列Free、端點/chat/completions, CLI清單(--refresh)有; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError。
@@ -582,6 +620,7 @@ let providers = [
         config: {
             permission: OC_READONLY,
         },
+        outputTokenMax: 32000, //context 262144且型錄輸出上限262144: 維持CLI原預設以保輸入餘裕, 理由同flint-40b-free; 要長輸出者以patch覆寫
         //CLI目錄release_date 2026-08-11; 推理模型, context 262144、輸出上限262144、僅文字輸入; 無檔位故不帶OC_EFFORT。
         //實測: 簡答29.1s、推理題6.7s、讀檔10.4s、寫檔金絲雀91.8s
     },
@@ -619,6 +658,7 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },
@@ -636,6 +676,7 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },
@@ -650,6 +691,7 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },
@@ -663,6 +705,7 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },
@@ -677,6 +720,7 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },
@@ -693,6 +737,7 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },
@@ -705,9 +750,11 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },
+        outputTokenMax: 32000, //context 262144且型錄輸出上限131072: 維持CLI原預設以保輸入餘裕(下列「輸入實際上限約23萬token」以32000預留計); 截斷由detectTruncation回報; 要長輸出者以patch覆寫
         //【訓練資料】官方Privacy: 「Free for a limited time in exchange for permission to use your prompts and completions to improve the model」、模型訓練Yes、非零保留——敏感內容勿走此條;
         //工作區須開「Allow paid endpoints that train on request data」, 否則「This Go model trains on request data…」〔提出端〕(本機實測可用, 代表該工作區已開)。官方: Free(limited time)、Unlimited。
         //〔CLI型錄〕release 2026-10-24, 推理, context 262144、輸出131072、僅文字, 無檔位故不帶--variant。
@@ -722,6 +769,7 @@ let providers = [
         kind: 'opencode',
         provider: 'opencode-go',
         envVar: 'OPENCODE_GO_KEYS',
+        detectTruncation: true, //輸出被上限截斷時回報incomplete(不當成功、不重試), 見檔頭【輸出上限與截斷診斷】
         config: {
             permission: OC_READONLY,
         },

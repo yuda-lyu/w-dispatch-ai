@@ -67,11 +67,23 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             assert.strict.deepEqual([goEntries.length, r], [8, GO_IDS.map(() => [{ edit: 'deny', bash: 'ask' }, undefined])])
         })
 
-        it('每條只含預期欄位(id/model/kind/provider/envVar/config/extraArgs), config只有permission', function() {
+        it('每條只含預期欄位(id/model/kind/provider/envVar/detectTruncation/config/extraArgs; iceman另有outputTokenMax), config只有permission', function() {
             let r = goEntries.map((p) => [Object.keys(p).sort(), Object.keys(p.config)])
-            let base = ['config', 'envVar', 'id', 'kind', 'model', 'provider']
-            let rr = goEntries.map((p) => [(VARIANTS[p.model.replace('opencode-go/', '')].length > 0 ? [...base, 'extraArgs'] : base).sort(), ['permission']])
+            let base = ['config', 'detectTruncation', 'envVar', 'id', 'kind', 'model', 'provider']
+            let rr = goEntries.map((p) => {
+                let ks = VARIANTS[p.model.replace('opencode-go/', '')].length > 0 ? [...base, 'extraArgs'] : [...base]
+                if (p.id === 'ocgo:opencode-go/iceman-contributor-free') {
+                    ks.push('outputTokenMax') //2026-11-04 da78: context 262144級維持CLI原預設以保輸入餘裕
+                }
+                return [ks.sort(), ['permission']]
+            })
             assert.strict.deepEqual([goEntries.length, r], [8, rr])
+            assert.strict.deepEqual(goEntries.filter((p) => 'outputTokenMax' in p).map((p) => [p.id, p.outputTokenMax]), [['ocgo:opencode-go/iceman-contributor-free', 32000]])
+        })
+
+        it('每條detectTruncation為true(2026-11-04 da78, Gitea #78: Go推理模型長提示詞被輸出上限截斷時須回報incomplete而非靜默成功; 帳本R-OCGO-4); 非Go之opencode條目不帶(行為不變)', function() {
+            let others = providers.filter((p) => p.kind === 'opencode' && !p.id.startsWith('ocgo:'))
+            assert.strict.deepEqual([goEntries.length, goEntries.map((p) => p.detectTruncation), others.length > 0, others.filter((p) => 'detectTruncation' in p).length], [8, GO_IDS.map(() => true), true, 0])
         })
 
     })
@@ -196,7 +208,7 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             fake.clean()
         })
 
-        it('金鑰以OPENCODE_AUTH_CONTENT注入 {"opencode-go":{type:api,key}}, argv為 run --agent build -m opencode-go/<id> [--variant]', async function() {
+        it('金鑰以OPENCODE_AUTH_CONTENT注入 {"opencode-go":{type:api,key}}, argv為 run --agent build -m opencode-go/<id> --format json [--variant](--format json為detectTruncation所加, 2026-11-04 da78)', async function() {
             let rr = resolveProviders(providers, {
                 env: { OPENCODE_GO_KEYS: 'oc_sk_go_test_key' },
                 pick: ['ocgo:opencode-go/glm-5.3-flash', 'ocgo:opencode-go/mimo-v2.6-flash'],
@@ -217,8 +229,8 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             }
             let perm = { permission: { edit: 'deny', bash: 'ask' } }
             assert.strict.deepEqual(rs, [
-                [true, 'ocgo:opencode-go/glm-5.3-flash', ['run', '--agent', 'build', '-m', 'opencode-go/glm-5.3-flash', '--variant', 'high'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
-                [true, 'ocgo:opencode-go/mimo-v2.6-flash', ['run', '--agent', 'build', '-m', 'opencode-go/mimo-v2.6-flash'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
+                [true, 'ocgo:opencode-go/glm-5.3-flash', ['run', '--agent', 'build', '-m', 'opencode-go/glm-5.3-flash', '--format', 'json', '--variant', 'high'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
+                [true, 'ocgo:opencode-go/mimo-v2.6-flash', ['run', '--agent', 'build', '-m', 'opencode-go/mimo-v2.6-flash', '--format', 'json'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
             ])
         })
 
