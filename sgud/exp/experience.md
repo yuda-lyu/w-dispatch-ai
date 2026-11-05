@@ -90,3 +90,15 @@
 - **預設值由實測最大量定,不由提案數字定**:glm 需 33,905 token(僅略超 32,000)、deepseek 需 71,322 token(2.2 倍)——64000 對 deepseek 不夠,故取 128000(最大實測量 1.8 倍).提案說「5 條 Go 條目改 low」並未被採:同提示詞同檔位只調上限就完成,reasoning 從 32000 增至 70358 對推理品質才是「high」的本意.
 - **真實模型實測的坑**:①提示詞沒寫「禁用工具」時,`build` 代理的模型會先叫 bash(`ls`),被 `OC_READONLY` 的 `bash:'ask'` 自動拒絕後 run 即結束(`finish=tool-calls`、stdout 空),白燒一次呼叫;長算術任務的提示詞務必明寫不得用工具;②3 萬字元提示詞＋high 要 6～9 分鐘(365～511 秒),要背景執行並輪詢輸出檔,別掛在工具呼叫上;③`opencode export <id>` 輸出含完整提示詞,只摘 `messages[].info.finish／tokens`,不要整份讀入;④用量端點整數百分比 6 次呼叫(≈US$0.14)只動 rolling 3→4.
 - **工具坑**:①`tar -xf C:\…` 在 Git Bash 被當成遠端主機(`Cannot connect to C`),改 `cwd` 後用相對檔名;②`quiet-run` 背景執行時子行程輸出要等結束才寫入 log,進度以變異腳本自寫的 `tmp/da78/*.out` 或 quiet-run log 末段讀;③`Bash` 被守門擋下的 `cd`、`sleep N && …` 不要繞道,用 `git -C`／絕對路徑與 `run_in_background` 加通知;④Windows 上 `spawnSync('opencode', …, { shell: true })` 會印 DEP0190 警告,屬測試輔助可接受,正式碼走 `execCli`.
+
+## opencode 同瞬間多實例啟動:放行最小間隔與暫時性重試(2026-11-05 da320,Gitea #85;帳本 `rulebook_spawngate.md` R-SPAWNGATE-4／5)
+
+- **提案之前提要先量,不要照抄**:提案稱「兩個 opencode 同一毫秒級先後 spawn」.實測同行程相鄰放行(臨界區內各一次 `tasklist`)已隔約 70～100 ms(冷首批首個另付約 1.1 秒 CPU 取樣).真正的問題是這個時距遠小於 opencode 啟動時搶資料庫之窗口(啟動至資料庫就緒約 0.4 秒、建立 session 約在啟動後 0.8～1.1 秒).預設 1500 ms 與提案相同,但依據不同.
+- **不花額度、不碰使用者資料庫、仍用真 opencode 的重現法**:①本機起一個 OpenAI 相容假服務(照 `test/api-opencodeOutputCap.test.mjs`:`OPENCODE_CONFIG_CONTENT` 註冊 `@ai-sdk/openai-compatible` provider、`useStoredAuth:false`、串流 40 段各 25 ms);②`XDG_DATA_HOME` 指向拋棄式資料夾,多個行程共用同一份拋棄式資料庫即可重現多實例競爭(資料庫在 `<XDG_DATA_HOME>/opencode/opencode.db`);③`run -m <不存在之模型>` 可走「建 session 但不呼叫模型」之路徑(離開碼 1、`--format json` 時錯誤為 stdout 之 `error` 事件);④免費模型當日掛住(opencode 遇免費池 429 不結束,見前述)——別指望用免費模型做併發量測.
+- **重現到的是冷資料庫建表競爭,不是回報之字樣**:新資料夾首次啟動時 3～4 個實例相隔數十毫秒同時啟動,首個實例於約 1.1～1.2 秒以離開碼 1 失敗,訊息為 `Error: Unexpected error` ＋建表 SQL 之 `Failed query`(未含 `database is locked`),**走 stderr、`--format json` 時亦然**(失敗在輸出事件流建立之前);相隔 1500 ms 者 3／3 成功(1 批).已就緒資料庫 4 併發、使用者既有資料庫 4 併發(不存在之模型)皆未重現.故預設值與重試辨識是「覆蓋啟動窗口」之推論,**回報時要寫明未經直接驗證**.
+- **「不佔 `maxRetries` 次數」在觀察上等價於「佔」**:execCli 回失敗時預算必已用盡(它自己會重試到 `maxRetries`),故重試輪之 `maxRetries − used` 恆 ≤ 0;變異 E01／E02 因此無法被抓到.記帳語意仍保留(`attempts = used + trAtt`),測試改釘「`attempts` 累計、至多一次、重試輪 `maxRetries` 0」.
+- **給既有守門加「等待」會動到所有以假時鐘驅動之既有測試**:`spawnGateWorldForTest` 之 `sleep` 只登記計時器、須由 `settleAll` 驅動,臨界區內新增之間隔等待在未驅動之案例會懸置(逾時 180 秒,1 案);另 4 案因時間軸改變而紅.處置是在那些案例之守門設定加 `minGapMs: false`(它們測行程數／預約／傳遞),預設間隔之行為由專屬測試檔釘住.下次對守門加時間行為,先 Grep 測試中的 `kind: 'opencode', spawnGate: {` 與 `gateOf(` 站點.
+- **間隔不單獨啟動守門**:行程數／RAM／CPU 皆 `false` 本來是「整個守門關閉」(既有測試釘住);若預設間隔使它復活,等於改變既有關閉語意.故只有「明給 `minGapMs`」才成為只錯開之守門.
+- **外審抓到之洞(重試輪逾時)**:守門未運作(`spawnGate:false`、假 exe 預設情形)時 `timeoutMs` 原值不動(既有規則),但重試輪是「首次耗時＋延遲」之後才開始,沿用原值會超出遞補層期限;重試輪須另以 `deadlineAt − 現在` 封頂.凡「晚於呼叫起點才發生」之新增嘗試,都要重算剩餘預算.
+- **變異腳本之寫法**:`find` 一律單行字串(避開 CRLF／LF 差異),需指定第幾個出現處者給 `occ`;於 `tmp/<輪>/mut` 之副本執行,副本在 repo 之 `tmp/` 下,node_modules 由上層解析,免連結點;`mocha --exit` ＋逾時視為 killed(去掉「只能一次」之變異會無限重試而懸置).
+- **同一套件之測試鎖是依序的**:`quiet-run --lock` 在同套件有持有者時會等(本輪 eslint 因變異驗證占鎖而等 4m42s);lint 不是測試,可不經 `--lock` 直跑,別把它排在長作業之後.

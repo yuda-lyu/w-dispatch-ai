@@ -97,6 +97,8 @@ import { applyOutputTokenMax } from './outputTokenMax.mjs'
 // 【spawnGate: 機器級守門(預設啟用, 2026-11-04 Gitea #67)】每次spawn前查機器上opencode.exe行程數(預設上限 max(1, 核心數-1))與RAM(已用>0.85)、CPU(>0.90), 達上限即等(每10秒再查, 等逾10分鐘放行), 計數或取樣失敗亦放行;
 //   等待不計入timeoutMs; spawnGate:false關閉; 預設只守exe為真的opencode(假CLI與包裝腳本不守, 明給spawnGate才守); 詳見cliSpawnGate.mjs檔頭(含opencode.exe單次占約1.1核心之實測、成本量測、跨行程預約票)。
 //   實際呼叫由runExecCli統一處理(四家共用), 本轉接器只傳spawnGateKind: 'opencode'。
+//   另有放行最小間隔minGapMs(預設1500ms, 同行程併發呼叫之放行至少相隔此時距, 避免多個實例同瞬間啟動而搶本機資料庫; false關閉)與暫時性錯誤重試(失敗訊息含`database is locked`、非逾時且耗時<15秒者多重試一次,
+//   不佔maxRetries次數、重試前再過守門、attempts照實累計, 見runExecCli.mjs檔頭【暫時性錯誤重試】; 2026-11-05 Gitea #85)。
 //   隱私前提: Go繼承工作區Settings›Privacy——預設擋「以請求資料訓練之付費端點」且地區限歐美; DeepSeek須選Global、Muse／Iceman Contributor須開train-on-data開關; iceman與muse會以提示詞訓練模型, 敏感內容勿走。
 //
 // 【單次回應輸出上限: 預設注入OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX(2026-11-04 da78, Gitea #78; 規則細節與證據見outputTokenMax.mjs檔頭、帳本R-OCGO-4)】
@@ -184,8 +186,8 @@ function getFormatArg(args) {
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()；其絕對路徑並同步注入環境變數PWD(opencode以繼承之PWD優先於真實cwd決定session目錄，見檔頭)，呼叫端env內之PWD會被覆寫
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
- * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(opencode預設啟用：機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等，每10秒再查，等逾10分鐘或計數取樣失敗即放行；且只守exe為真的opencode)，false關閉，true取預設且不受exe比對限制，物件可覆寫maxCli、ramUsedMax、cpuMax、pollMs、gateWaitMaxMs等；等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0；另有不佔此次數之暫時性錯誤重試(失敗訊息含`database is locked`、非逾時且耗時<15秒者多重試一次，每次呼叫至多一次，attempts照實累計)
+ * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(opencode預設啟用：機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等，每10秒再查，等逾10分鐘或計數取樣失敗即放行；且只守exe為真的opencode)，false關閉，true取預設且不受exe比對限制，物件可覆寫maxCli、ramUsedMax、cpuMax、minGapMs(放行最小間隔，預設1500毫秒，false關閉)、pollMs、gateWaitMaxMs等；等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；detectTruncation為true且最後一步被輸出上限截斷時另帶truncated(true)、finishReason('length')、tokens(最後一步之token用量物件{ total, input, output, reasoning, cache })，未截斷者不加此三欄；本函數不會reject
  * @example
  * //need opencode cli in system PATH

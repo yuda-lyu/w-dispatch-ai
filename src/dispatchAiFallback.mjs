@@ -91,6 +91,8 @@ import { callHookSync, readCallerObj, errMsg, asText } from './callUserFn.mjs'
 //     任一視窗percent≥門檻(預設95)或端點明說被限即略過該把金鑰(事件quota-skip, tried outcome 'quota-skip', 合成失敗結果errorType 'quota'、failureKind 'no-credit', 不送請求);
 //     視同該把「沒額度」併入noCreditIdx: 組內每把皆略過即quotaExhausted(cooldownMs>0時條目降至鏈尾, 同既有沒額度處置), 最終error為QUOTA_EXHAUSTED: …;
 //     端點失敗、欄位缺少、percent非數字、未知狀態字一律不擋(fail-open; 端點官方文件未載), 失敗發quota-gate-error事件; quotaGate為本層自用鍵(FALLBACK_KEYS與ENTRY_KEYS), 不轉傳轉接器。
+//   ③(2026-11-05 Gitea #85)守門另有放行最小間隔minGapMs(opencode預設1500ms, 計入budgetMs); opencode條目遇`database is locked`(本機資料庫鎖競爭)之快速失敗由轉接器層(runExecCli)
+//     不佔maxRetries地多重試一次、重試前再過守門, 仍失敗才由本層換家——本層看到之結果形狀不變(errorType仍為exec, 僅attempts多計一次)。
 //
 // 【組盡事件(group-exhausted)】逐次事件(try/next-key/skip-group等)不帶呼叫識別, 而同一onEvent常被並行呼叫共用
 //   (如runFanout之各席位)。呼叫端要判斷「某條目在這次呼叫裡整組試完仍無成交」(如健康層據以降序)時,
@@ -549,7 +551,7 @@ function isKeyIndependentFail(r) {
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則(同dispatch functions之validate，自訂函數可回傳Promise)，條目可覆寫，預設undefined
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受REST文字類轉接器回報之截斷內容布林值(原樣轉傳轉接器)，1.0.37起截斷於validate之前判失敗，validate內含搶救策略者須給true，預設false
- * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0
+ * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0；opencode條目遇`database is locked`(本機資料庫鎖競爭)之快速失敗另由轉接器層多重試一次，不佔此次數(見runExecCli.mjs檔頭【暫時性錯誤重試】)，仍失敗才換家
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；REST文字類轉接器另帶finishReason與truncated(是否截斷)，同樣流出於結果與tried各項；api-anthropic與claude帶key之失敗另帶failureKind／failureDetail(細分類，見檔頭【failureKind處置】，流出於結果與tried各項)，最終失敗結果在有供應商整組皆沒額度時另帶quotaExhausted(供應商id陣列)，且最後一筆為該情形時error為'QUOTA_EXHAUSTED: …'、為脈絡過長時為'CONTEXT_TOO_LONG: …'(此時整個呼叫已結束)、為呼叫方式或環境錯誤時為'ENV_ERROR: …'；本函數不會reject
  * @example
  * //need opencode, claude, codex cli in system PATH

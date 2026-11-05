@@ -53,6 +53,20 @@ import { awaitUserFn, callHookSync, readCallerObj, errMsg } from './callUserFn.m
 // 【逾時歸屬】守門等待在spawn之前, 不計入該次嘗試之timeoutMs(逾時自spawn起算)。遞補層(dispatchAiFallback)有budgetMs時另把deadlineAt與minAttemptMs傳入:
 //   等待不超過「deadlineAt − minAttemptMs」(到點即fail-open放行), 且放行後該次spawn之timeoutMs以剩餘預算封頂——即守門等待計入遞補鏈之budgetMs。
 //
+// 【放行最小間隔minGapMs(2026-11-05 Gitea #85; 帳本R-SPAWNGATE-4)】上列檢查只管「數量」不管「時距」: 行程數未達上限時, 同行程之併發呼叫雖逐一通過臨界區(相鄰各隔一次tasklist, 本機量測約70～100ms),
+//   其子行程仍幾乎同時啟動。opencode每個實例啟動時都讀寫同一份本機sqlite資料庫(預設於使用者資料夾之opencode/opencode.db), 同瞬間啟動多個實例時會因資料庫鎖競爭而立即失敗(離開碼1, 訊息含「database is locked」)。
+//   故守門物件增minGapMs: 距「上一次放行」不足minGapMs, 即補足剩餘時距再放行(只補不足的部分, 不多等)。
+//   ①預設只對opencode生效(1500ms); claude／codex／antigravity預設不錯開(null), 要錯開者明給minGapMs; false關閉; spawnGate:false者整個守門不運作故不受影響。
+//   ②等待在互斥臨界區內(檢查之前), 使同行程之併發呼叫FIFO依序錯開, 也使「檢查＋登記預約」緊接放行; 與被擋後輪詢之sleep無關。
+//   ③歸屬同既有守門等待: 不計入該次嘗試之timeoutMs; 計入deadlineAt(遞補層之budgetMs): 單次等待不超過「截止(gateWaitMaxMs與deadlineAt − minAttemptMs之較早者) − 現在」, 到點即不再等待而放行(trace之capped為true, 不標failOpen——
+//      間隔只是降低競爭機率, 不是放行條件); 等待後shouldStop為真則中止(outcome 'aborted'), 臨界區必釋放。
+//   ④「上一次放行」取自: 本行程記憶體(狀態物件之lastRelease, 不隨settleMs剔除)與他行程之預約票(提示性質, 同上【已知限制】; 票之採計窗口取max(settleMs, minGapMs));
+//      寫票條件由「限行程數」擴為「限行程數或錯開間隔」。
+//   ⑤預設值1500之依據(本機opencode 1.19.5量測, 見帳本R-SPAWNGATE-4): 冷啟動資料庫(新資料夾、首次啟動需建表)時, 3～4個實例相隔約30～100ms同時啟動, 首個實例約在啟動後1.1～1.2秒以離開碼1失敗(2批中2批; 訊息為
+//      「Unexpected error」加建表SQL之「Failed query」, 未含「database is locked」字樣); 相隔1500ms各啟動者3/3成功(1批)。opencode啟動至資料庫就緒約0.4秒、建立session約在啟動後0.8～1.1秒。
+//      已就緒之資料庫上4個併發(同樣相隔數十毫秒)未重現失敗, 回報之「database is locked」字樣亦未能重現——故預設值為「覆蓋啟動窗口並留餘裕」之推論, 非保證; 跨行程同瞬間啟動之殘餘風險靠runExecCli之暫時性重試兜底。
+//   ⑥間隔不單獨啟動守門: 行程數／RAM／CPU皆已關(false)且未「明給」minGapMs時守門仍不運作(outcome 'off', 與修前相同); 明給minGapMs則成為只錯開、不查行程數之守門。
+//
 // 【觀察回調(opt.spawnGate.onTrace, 規格見dspec〈計時器相關函數之觀察回調與測試〉)】同步呼叫、凍結事件{ type, ... }、拋錯忽略、未給零成本。type:
 //   'start'     開始守門 { kind, maxCli, ramUsedMax, cpuMax, pollMs, gateWaitMaxMs }
 //   'probe-fail' 探針失敗(視為通過) { probe: 'count'|'ram'|'cpu', reason: 'threw'|'timeout'|'invalid' }
@@ -60,6 +74,7 @@ import { awaitUserFn, callHookSync, readCallerObj, errMsg } from './callUserFn.m
 //   'recount'   取了新CPU樣(耗時達200ms以上)後, 放行前重查行程數 { afterMs }
 //   'check'     一次檢查 { n, pass, blockedBy('count'、'ram'、'cpu'以逗號相接, 通過為''), visible(tasklist所見行程數或null), cli(決策用之行程數＝max(所見, 預約估計)或null), cpu, ram }
 //   'wait'      即將等待下一輪 { n, ms }
+//   'gap-wait'  放行前補足與上次放行之時距(臨界區內、檢查之前; 距上次放行不足minGapMs時才發) { ms(本次實際等待, 受截止截斷後可為0), minGapMs, sinceLastMs(發生時距上次放行已過), capped(是否因截止而少等) }
 //   'pass'      放行 { waitedMs, gated(是否曾被擋), pending(含本次之未過期預約數) }
 //   'fail-open' 等待逾時而放行 { reason: 'timeout', waitedMs }
 //   'aborted'   shouldStop為真而放棄 { waitedMs }
@@ -71,7 +86,7 @@ import { awaitUserFn, callHookSync, readCallerObj, errMsg } from './callUserFn.m
 // 【輸入檢測(dspec〈輸入參數之檢測機制〉)】spawnGate本身與各鍵為opt性質: undefined／null取預設, 給了而不屬該鍵種類者視為未給、改用預設(K3), 不拋錯;
 //   maxCli為有效正整數(iseint count, min 1; 數字字串收下並以轉換後之值使用, K4), ramUsedMax／cpuMax為(0,1]之有效數字, 此三者另可給false關閉該項檢查;
 //   ticketDir為非空路徑字串(預約票資料夾)或false(關閉跨行程票), pid為正整數(測試用);
-//   pollMs／gateWaitMaxMs／settleMs／probeTimeoutMs／probeFailCooldownMs為正數毫秒(isenum timer, 上限2147483647); images為內容限[A-Za-z0-9._-]之非空字串陣列(不經shell, 無注入面);
+//   pollMs／gateWaitMaxMs／settleMs／probeTimeoutMs／probeFailCooldownMs為正數毫秒(isenum timer, 上限2147483647); minGapMs同為正數毫秒且另可給false關閉錯開(預設opencode 1500、其餘kind不錯開); images為內容限[A-Za-z0-9._-]之非空字串陣列(不經shell, 無注入面);
 //   countCli／sampleCpu／sampleRam／sleep／now／shouldStop／log／onTrace須為函數。
 //
 // 【預設狀態物件】排隊(互斥)、預約、探針失敗冷卻、CPU取樣重用皆存於狀態物件; 預設為模組層單一物件(整個行程共用, 同行程各條呼叫鏈互相看得到);
@@ -85,6 +100,7 @@ let DEFAULT_SETTLE_MS = 3000
 let DEFAULT_PROBE_TIMEOUT_MS = 8000
 let DEFAULT_PROBE_FAIL_COOLDOWN_MS = 30000
 let DEFAULT_MIN_ATTEMPT_MS = 20000
+let DEFAULT_MIN_GAP_MS = 1500
 let DEFAULT_RAM_USED_MAX = 0.85
 let DEFAULT_CPU_MAX = 0.90
 
@@ -393,6 +409,7 @@ function createGateState() {
         probeDownUntil: {}, //探針名 → 失敗冷卻截止時間
         warned: new Set(),
         cpu: null,
+        lastRelease: new Map(), //key(images) → 本行程最後一次放行時刻(放行最小間隔用, 不隨settleMs剔除)
     }
 }
 let moduleState = createGateState()
@@ -497,6 +514,24 @@ function resolveSpawnGate(opt = {}) {
         return dflt
     }
     let pollMs = pickMs('pollMs', DEFAULT_POLL_MS)
+
+    //minGapMs(放行最小間隔, 見檔頭): false關閉; undefined／null取預設(預設啟用限制之kind為DEFAULT_MIN_GAP_MS, 其餘null); 有效毫秒收下並記為「明給」; 其餘非預期取預設
+    let minGapMs = limited ? DEFAULT_MIN_GAP_MS : null
+    let gapExplicit = false
+    if (o.minGapMs === false) {
+        minGapMs = null
+    }
+    else if (o.minGapMs !== undefined && o.minGapMs !== null) {
+        let m = toMs(o.minGapMs)
+        if (m !== null) {
+            minGapMs = m
+            gapExplicit = true
+        }
+        else {
+            warnKey('minGapMs', 'a positive number of milliseconds (max 2147483647) or false', minGapMs === null ? 'off' : minGapMs)
+        }
+    }
+
     let gateWaitMaxMs = pickMs('gateWaitMaxMs', DEFAULT_GATE_WAIT_MAX_MS)
     let settleMs = pickMs('settleMs', DEFAULT_SETTLE_MS)
     let probeTimeoutMs = pickMs('probeTimeoutMs', DEFAULT_PROBE_TIMEOUT_MS)
@@ -523,11 +558,11 @@ function resolveSpawnGate(opt = {}) {
         }
     }
 
-    //沒有任何限制項、或沒有可數之image卻要限行程數 → 不守門
+    //沒有任何限制項、或沒有可數之image卻要限行程數 → 不守門(放行最小間隔不單獨啟動守門: 僅「明給」minGapMs時才成為只錯開之守門, 預設值不使已全關之守門復活)
     if (maxCli !== null && images.length === 0) {
         maxCli = null
     }
-    if (maxCli === null && ramUsedMax === null && cpuMax === null) {
+    if (maxCli === null && ramUsedMax === null && cpuMax === null && !gapExplicit) {
         return null
     }
 
@@ -556,6 +591,7 @@ function resolveSpawnGate(opt = {}) {
         ramUsedMax,
         cpuMax,
         pollMs,
+        minGapMs,
         gateWaitMaxMs,
         settleMs,
         probeTimeoutMs,
@@ -627,6 +663,9 @@ async function run(opt, logArg) {
     }
 
     let st = cfg.state || moduleState
+    if (!(st.lastRelease instanceof Map)) {
+        st.lastRelease = new Map() //呼叫端自建之狀態物件(非createGateState所建)補欄位
+    }
     let now = cfg.now || Date.now
     let sleep = cfg.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
     let trace = getTrace({ onTrace: cfg.onTrace })
@@ -710,10 +749,23 @@ async function run(opt, logArg) {
         let t = now()
         let list = pendingOf(t)
         list.push({ t, v: visible })
-        if (cfg.ticketDir !== null && cfg.maxCli !== null) {
-            writeTicket(cfg.ticketDir, keyHash, cfg.pid, t, visible) //只在限行程數時才有意義
+        st.lastRelease.set(key, t) //放行最小間隔之基準(放行時刻)
+        if (cfg.ticketDir !== null && (cfg.maxCli !== null || cfg.minGapMs !== null)) {
+            writeTicket(cfg.ticketDir, keyHash, cfg.pid, t, visible) //只在限行程數或錯開間隔時才有意義
         }
         return list.length
+    }
+    //lastReleaseAt: 「上一次放行」之時刻＝max(本行程記憶體, 他行程預約票(窗口取max(settleMs, minGapMs), 不含本行程之票)); 無則null; 不晚於現在(防時鐘偏差使等待超過minGapMs)
+    let lastReleaseAt = (t) => {
+        let last = st.lastRelease.has(key) ? st.lastRelease.get(key) : null
+        if (cfg.ticketDir !== null) {
+            for (let x of readTickets(cfg.ticketDir, keyHash, t, Math.max(cfg.settleMs, cfg.minGapMs), cfg.pid)) {
+                if (last === null || x.t > last) {
+                    last = x.t
+                }
+            }
+        }
+        return last === null ? null : Math.min(last, t)
     }
     //effectiveCount: 決策用之行程數＝max(所見, 估計); 估計＝最舊預約(本行程與他行程之預約票合併)當時所見之行程數＋預約數,
     //預約過期(settleMs)即剔除, 故不因持續有新放行而無限累加; 預約為保守估計(假設其後無行程結束), 至多使空出之名額晚settleMs才被取用
@@ -790,31 +842,66 @@ async function run(opt, logArg) {
     let gated = false
     let lastSnapshot = { cli: null, cpu: null, ram: null }
 
+    //stopNow: 中止判定(呼叫端成果已無人接收), 回呼回傳恰為true才中止, 拋錯視為不中止
+    let stopNow = () => {
+        if (cfg.shouldStop === null) {
+            return false
+        }
+        let h = callHookSync(() => cfg.shouldStop())
+        return h.state === 'value' && h.value === true
+    }
+    let abortedResult = () => {
+        let waitedMs = now() - t0
+        if (trace) {
+            trace('aborted', { waitedMs })
+        }
+        return { outcome: 'aborted', gated, waitedMs, snapshot: lastSnapshot, failOpen: false, aborted: true }
+    }
+
     for (;;) {
 
         //中止(呼叫端成果已無人接收): 不再等待
-        if (cfg.shouldStop !== null) {
-            let h = callHookSync(() => cfg.shouldStop())
-            if (h.state === 'value' && h.value === true) {
-                let waitedMs = now() - t0
-                if (trace) {
-                    trace('aborted', { waitedMs })
-                }
-                return { outcome: 'aborted', gated, waitedMs, snapshot: lastSnapshot, failOpen: false, aborted: true }
-            }
+        if (stopNow()) {
+            return abortedResult()
         }
 
-        //臨界區: 檢查＋登記預約, 同行程之併發呼叫逐一通過
+        //臨界區: [補足放行間隔]＋檢查＋登記預約, 同行程之併發呼叫逐一通過(間隔之等待亦在區內, 使併發呼叫FIFO依序錯開, 且檢查緊接放行)
         let ev = null
+        let stopped = false
         await lock(st)
         try {
-            ev = await evaluate()
-            if (ev.pass) {
-                ev.pending = reserve(ev.visible)
+            if (cfg.minGapMs !== null) {
+                let tNow = now()
+                let last = lastReleaseAt(tNow)
+                if (last !== null) {
+                    let since = tNow - last
+                    let need = cfg.minGapMs - since
+                    if (need > 0) {
+
+                        //等待不超過截止(gateWaitMaxMs與deadlineAt − minAttemptMs之較早者), 到點即不再等(capped), 只降低競爭機率而非放行條件
+                        let ms = Math.min(need, Math.max(0, deadline - tNow))
+                        if (trace) {
+                            trace('gap-wait', { ms, minGapMs: cfg.minGapMs, sinceLastMs: since, capped: ms < need })
+                        }
+                        if (ms > 0) {
+                            await sleep(ms)
+                            stopped = stopNow()
+                        }
+                    }
+                }
+            }
+            if (!stopped) {
+                ev = await evaluate()
+                if (ev.pass) {
+                    ev.pending = reserve(ev.visible)
+                }
             }
         }
         finally {
             unlock(st)
+        }
+        if (stopped) {
+            return abortedResult()
         }
         lastSnapshot = ev.snapshot
 
@@ -859,13 +946,14 @@ async function run(opt, logArg) {
  * 特點：
  * 數「機器上實際存在之該CLI行程」(跨行程、跨專案、含使用者自開之TUI)，不靠套件內計數器、不需共享狀態檔；
  * 同行程之併發呼叫經互斥臨界區與預約逐一通過，不致整批同時放行(跨行程之同一瞬間見檔頭限制)；
+ * 放行之間另有最小間隔minGapMs(預設只對opencode，見檔頭【放行最小間隔】)，使併發啟動之實例不在同一瞬間搶本機資料庫；
  * 預設只對opencode啟用(claude、codex、antigravity預設不限，理由與實測見檔頭)；
  * 本函數永不reject、不因守門本身失敗而擋下派工
  *
  * @param {Object} [opt={}] 輸入設定物件
  * @param {String} [opt.kind] 輸入轉接器種類字串(opencode、claude、codex、antigravity)，決定預設值與預設image
  * @param {String} [opt.exe] 輸入實際執行檔，預設情形下僅當其去目錄與副檔名後等於該kind之CLI名才守門
- * @param {Boolean|Object} [opt.spawnGate] 輸入守門設定：false關閉；undefined／null取預設；true取預設且不受exe比對限制；物件可含maxCli(正整數或false)、ramUsedMax／cpuMax(0~1或false)、images、pollMs、gateWaitMaxMs、settleMs、probeTimeoutMs、probeFailCooldownMs、deadlineAt、minAttemptMs、shouldStop、ticketDir(路徑字串或false)、onTrace、log、debug、state，及可注入之countCli、sampleCpu、sampleRam、sleep、now、pid
+ * @param {Boolean|Object} [opt.spawnGate] 輸入守門設定：false關閉；undefined／null取預設；true取預設且不受exe比對限制；物件可含maxCli(正整數或false)、ramUsedMax／cpuMax(0~1或false)、minGapMs(正數毫秒或false，放行最小間隔，opencode預設1500、其餘kind預設不錯開)、images、pollMs、gateWaitMaxMs、settleMs、probeTimeoutMs、probeFailCooldownMs、deadlineAt、minAttemptMs、shouldStop、ticketDir(路徑字串或false)、onTrace、log、debug、state，及可注入之countCli、sampleCpu、sampleRam、sleep、now、pid
  * @param {Function} [opt.shouldStop] 輸入呼叫層提示之中止判定函數(遞補層傳入)，spawnGate物件未給同名鍵時採用，回傳值恰為true才中止
  * @param {Number} [opt.deadlineAt] 輸入呼叫層提示之整體時限(epoch ms，遞補層由budgetMs換算)，等待不超過deadlineAt減minAttemptMs
  * @param {Number} [opt.minAttemptMs] 輸入呼叫層提示之單次嘗試最低預算毫秒，預設20000
@@ -900,4 +988,4 @@ async function cliSpawnGate(opt = {}, log = null) {
 
 
 export default cliSpawnGate
-export { resolveSpawnGate, createGateState, createCountCli, createCpuSampler, parseTasklistCsv, parsePsComm, defaultImages, exeStem, readTickets, writeTicket, KIND_CLI }
+export { resolveSpawnGate, createGateState, createCountCli, createCpuSampler, parseTasklistCsv, parsePsComm, defaultImages, exeStem, readTickets, writeTicket, KIND_CLI, DEFAULT_MIN_ATTEMPT_MS }

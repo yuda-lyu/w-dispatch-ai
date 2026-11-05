@@ -46,6 +46,7 @@ function gateOf(extra = {}) {
         sleep: clock.sleep,
         state,
         ticketDir: false, //預設不寫跨行程預約票(不碰真實os.tmpdir(); 票之行為見專屬describe)
+        minGapMs: false, //本檔測行程數／RAM／CPU與預約, 關閉放行最小間隔(R-SPAWNGATE-4之預設1500ms會改變這些案例之時間軸); 間隔之行為見unit-cliSpawnGateMinGap.test.mjs
         onTrace: (e) => events.push(e),
         log: (level, msg) => logs.push([level, msg]),
         ...extra,
@@ -642,7 +643,7 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
             let ps = Array.from({ length: n }, (_, i) => (async () => {
                 let r = await cliSpawnGate({
                     kind: 'opencode',
-                    spawnGate: { maxCli: 3, ramUsedMax: false, cpuMax: false, pollMs: 10000, gateWaitMaxMs: 600000, settleMs: 3000, countCli: world.countCli, now: world.now, sleep: world.sleep, state, ticketDir: false, ...sgOpt },
+                    spawnGate: { maxCli: 3, ramUsedMax: false, cpuMax: false, minGapMs: false, pollMs: 10000, gateWaitMaxMs: 600000, settleMs: 3000, countCli: world.countCli, now: world.now, sleep: world.sleep, state, ticketDir: false, ...sgOpt },
                 })
                 world.spawn(i)
                 outs.push([i, r.outcome, world.now()])
@@ -684,7 +685,7 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
 
         it('狀態物件互相隔離: 另一個狀態物件之預約不影響本狀態(各自獨立計數)', async function() {
             let world = createWorld({ visibleLagMs: Infinity, lifeMs: Infinity })
-            let base = { kind: 'opencode', spawnGate: { maxCli: 1, ramUsedMax: false, cpuMax: false, countCli: world.countCli, now: world.now, sleep: world.sleep, ticketDir: false } }
+            let base = { kind: 'opencode', spawnGate: { maxCli: 1, ramUsedMax: false, cpuMax: false, minGapMs: false, countCli: world.countCli, now: world.now, sleep: world.sleep, ticketDir: false } }
             let a = createGateState()
             let b = createGateState()
             let ra = await cliSpawnGate({ ...base, spawnGate: { ...base.spawnGate, state: a } })
@@ -703,7 +704,7 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
             let state = createGateState()
             let order = []
             let ps = [0, 1, 2, 3, 4, 5].map((i) => (async () => {
-                await cliSpawnGate({ kind: 'opencode', spawnGate: { maxCli: 6, ramUsedMax: false, cpuMax: false, countCli: world.countCli, now: world.now, sleep: world.sleep, state, ticketDir: false } })
+                await cliSpawnGate({ kind: 'opencode', spawnGate: { maxCli: 6, ramUsedMax: false, cpuMax: false, minGapMs: false, countCli: world.countCli, now: world.now, sleep: world.sleep, state, ticketDir: false } })
                 order.push(i)
             })())
             await settleAll(world, ps)
@@ -797,7 +798,7 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
                 let states = [createGateState(), createGateState()]
                 let ps = [0, 1, 2, 3, 4, 5].map((i) => (async () => {
                     let proc = i < 3 ? 0 : 1
-                    await cliSpawnGate({ kind: 'opencode', spawnGate: { maxCli: 2, ramUsedMax: false, cpuMax: false, pollMs: 10000, settleMs: 3000, countCli: world.countCli, now: world.now, sleep: world.sleep, state: states[proc], pid: proc === 0 ? 111 : 222, ticketDir } })
+                    await cliSpawnGate({ kind: 'opencode', spawnGate: { maxCli: 2, ramUsedMax: false, cpuMax: false, minGapMs: false, pollMs: 10000, settleMs: 3000, countCli: world.countCli, now: world.now, sleep: world.sleep, state: states[proc], pid: proc === 0 ? 111 : 222, ticketDir } })
                     world.spawn(i)
                 })())
                 await settleAll(world, ps)
@@ -812,7 +813,7 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
             let dir = dirOf()
             let world = createWorld({ visibleLagMs: 1000, lifeMs: 20000 })
             let state = createGateState()
-            let sg = { maxCli: 2, ramUsedMax: false, cpuMax: false, countCli: world.countCli, now: world.now, sleep: world.sleep, state, pid: 111, ticketDir: dir }
+            let sg = { maxCli: 2, ramUsedMax: false, cpuMax: false, minGapMs: false, countCli: world.countCli, now: world.now, sleep: world.sleep, state, pid: 111, ticketDir: dir }
             let a = await cliSpawnGate({ kind: 'opencode', spawnGate: sg })
             let b = await cliSpawnGate({ kind: 'opencode', spawnGate: sg })
             assert.strict.deepEqual([a.outcome, b.outcome, b.snapshot.cli], ['pass', 'pass', 1])
@@ -821,7 +822,7 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
         it('他行程之票於settleMs內計入、過期不計: 新票(齡1秒, 當時所見1)令行程數估為2而被擋; 5秒前之票不計', async function() {
             let dir = dirOf()
             let world = createWorld({ visibleLagMs: Infinity, lifeMs: Infinity })
-            let sgOf = () => ({ maxCli: 2, ramUsedMax: false, cpuMax: false, countCli: async () => 1, now: world.now, sleep: world.sleep, state: createGateState(), pid: 111, ticketDir: dir, pollMs: 100, gateWaitMaxMs: 200 })
+            let sgOf = () => ({ maxCli: 2, ramUsedMax: false, cpuMax: false, minGapMs: false, countCli: async () => 1, now: world.now, sleep: world.sleep, state: createGateState(), pid: 111, ticketDir: dir, pollMs: 100, gateWaitMaxMs: 200 })
             writeTicket(dir, hashOf(['opencode.exe']), 222, world.now() - 1000, 1)
             let blocked = null
             await settleAll(world, [(async () => {
@@ -834,7 +835,7 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
             assert.strict.deepEqual([r.outcome, r.snapshot.cli], ['pass', 1])
         })
 
-        it('只在限行程數(maxCli)時才寫票: maxCli false(只看RAM／CPU)時不寫; ticketDir:false 不寫; 票寫入失敗(路徑為檔案)靜默, 守門照常放行', async function() {
+        it('只在限行程數(maxCli)或錯開間隔(minGapMs)時才寫票: 兩者皆關(maxCli false、minGapMs false，只看RAM／CPU)時不寫; ticketDir:false 不寫; 票寫入失敗(路徑為檔案)靜默, 守門照常放行(間隔啟用時之寫票見unit-cliSpawnGateMinGap)', async function() {
             let dir = dirOf()
             let g = gateOf({ maxCli: false, ramUsedMax: 0.9, sampleRam: () => 0.1, ticketDir: dir })
             await cliSpawnGate({ kind: 'opencode', spawnGate: g.sg })

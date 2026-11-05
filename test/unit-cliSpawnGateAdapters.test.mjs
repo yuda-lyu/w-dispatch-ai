@@ -273,6 +273,7 @@ describe('cliSpawnGate之接點: 四個CLI轉接器(R-SPAWNGATE-1)', function() 
                 maxCli: 2,
                 ramUsedMax: false,
                 cpuMax: false,
+                minGapMs: false, //本案測傳遞, 關閉放行最小間隔(否則共用state之連續呼叫會真實等1.5秒; 間隔見unit-cliSpawnGateMinGap)
                 countCli: async () => {
                     calls++
                     return 0
