@@ -1,7 +1,7 @@
 # 規則帳本(類型:CLI spawn 守門與 Go 用量冷卻)
 
 > 類型說明:CLI 類轉接器(`opencode`／`claude`／`codex`／`antigravity`)每次 spawn 前之機器級守門 `cliSpawnGate`(R-SPAWNGATE-1)、遞補層對 OpenCode Go 條目之用量冷卻 `quotaGate`(R-SPAWNGATE-2)、與修前行為之逐位元比對及文字守門(R-SPAWNGATE-3).主檔索引見 `sgud/rule/rulebook.md`;Go 條目與 `opencodeGoUsage` 見 `rulebook_opencodego.md`.
-> 來源:Gitea issue #67(提出端 tai-kns-trade,2026-11-04);主控任務 20261104001754 之 da67.**issue 之設計與預設值只作參考**,以下事實皆為 2026-11-04 當日讀碼與本機實測(證據夾 `agent-out/da67-evidence/`).
+> 來源:Gitea issue #67(提出端使用端,2026-11-04);主控任務 20261104001754 之 da67.**issue 之設計與預設值只作參考**,以下事實皆為 2026-11-04 當日讀碼與本機實測(證據夾 `agent-out/da67-evidence/`).
 
 ## 當日實測(2026-11-04;本機 8 核心、20 GB、Windows 11)
 

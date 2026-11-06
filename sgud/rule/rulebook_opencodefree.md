@@ -1,7 +1,7 @@
 # 規則帳本(類型:opencode 免費條目之漂移)
 
 > 類型說明:內建 `providers` 中 opencode 免費條目(`oc:opencode/*`,id 或 model 含 `free`,另有 `big-pickle`)會日日漂移;本檔記「何時下架、如何收錄」之判準(R-OCFREE-2)與工具 `filterOpencodeFree` 之規則(R-OCFREE-1).主檔索引見 `sgud/rule/rulebook.md`.
-> 來源:主控任務 20261030054322 之 run01(2026-10-30);建議檔 = Gitea issue #25(提出端 tai-kns-trade,2026-10-29).
+> 來源:主控任務 20261030054322 之 run01(2026-10-30);建議檔 = Gitea issue #25(提出端使用端,2026-10-29).
 
 ## opencode 免費條目漂移:判準與過濾工具(2026-10-30 立)
 

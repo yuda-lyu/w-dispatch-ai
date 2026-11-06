@@ -4,16 +4,16 @@ import createAiCaller from '../src/createAiCaller.mjs'
 import makeArrayCoverageValidator from '../src/wkf/makeArrayCoverageValidator.mjs'
 
 
-// unit-srcRunnerContract.test.mjs — 與執行殼srcRunner(w-task-runner 0.1.0)原行為契約之字面對照(2026-11-01 da42, Gitea #42; 帳本R-AISHELL-5)
+// unit-execShellContract.test.mjs — 與執行殼(w-task-runner 0.1.0)原行為契約之字面對照(2026-11-01 da42, Gitea #42; 帳本R-AISHELL-5)
 //
-// 規格來源: 建議檔§1～§5與§7(tai-kns-trade 2026-11-01), 主控裁定「行為與契約隨件移動、不改語意」, 五處皆改回原契約:
+// 規格來源: 建議檔§1～§5與§7(使用端 2026-11-01), 主控裁定「行為與契約隨件移動、不改語意」, 五處皆改回原契約:
 //   §1 tag原樣接在每行之前(不加[ ]與空白; 非字串視為''), 原契約core/ai/logAiOutcome.mjs:51-53,114;
 //   §2 「使用 AI」行以providerId有值為準, 不要求ok===true, 原契約core/ai/logAiOutcome.mjs:56;
 //   §3 遞補歷程耗時toFixed(1), 冷卻分鐘數Math.round(cooldownMs / 60000), 原契約core/ai/logAiOutcome.mjs:75,117;
 //   §4 createAiCaller.callAI零供應商之error: `無可用的 AI 供應商`後接`（<skipped以、相接>）`, 無skipped則無括號, missing不進error, 原契約core/ai/caller.mjs:97;
 //   §5 makeArrayCoverageValidator之indices非陣列之TypeError訊息為`makeArrayCoverageValidator 之 indices 須為陣列`, 原契約core/ai/parsers.mjs:118。
-// 期望輸出之字面逐字取自建議檔所引之srcRunner測試斷言(test/unit-runner.test.mjs:263-297,359-384; test/unit-check-ai.test.mjs:44-97)與§7驗證案;
-// 輸入物件則依建議檔對各斷言之描述重建(srcRunner原始碼本機無複本)。
+// 期望輸出之字面逐字取自建議檔所引之執行殼測試斷言(test/unit-runner.test.mjs:263-297,359-384; test/unit-check-ai.test.mjs:44-97)與§7驗證案;
+// 輸入物件則依建議檔對各斷言之描述重建(執行殼原始碼本機無複本)。
 // 全部為純函數測試（記錄器為測試替身）, 零供應商案不送任何請求。
 
 
@@ -149,7 +149,7 @@ describe('§3 遞補歷程耗時toFixed(1)與冷卻分鐘數Math.round', functio
         }
     })
 
-    // 原契約 core/ai/logAiOutcome.mjs:117: Math.round(cooldownMs / 60000); 現有srcRunner測試只用900000
+    // 原契約 core/ai/logAiOutcome.mjs:117: Math.round(cooldownMs / 60000); 現有執行殼測試只用900000
     it('冷卻分鐘數Math.round: 900000→15、90000→2、600000→10、30000→1、149999→2（不是1.5）', function() {
         let cases = [[900000, '15'], [90000, '2'], [600000, '10'], [30000, '1'], [149999, '2']]
         for (let [ms, m] of cases) {

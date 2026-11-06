@@ -163,7 +163,7 @@
 // 【OpenCode Go(月費訂閱) 接入方式——動 ocgo:條目前必讀】(2026-11-03 da65, Gitea #65; 帳本 sgud/rule/rulebook_opencodego.md R-OCGO-1)
 // ══════════════════════════════════════════════════════════════════════════════
 //
-//   註記: 〔官方〕＝官方文件所載; 〔本機實測〕＝da65於本機(opencode 1.19.5、一把已訂閱Go之金鑰)2026-11-03當日實跑; 〔提出端〕＝issue #65提出端(tai-kns-trade)
+//   註記: 〔官方〕＝官方文件所載; 〔本機實測〕＝da65於本機(opencode 1.19.5、一把已訂閱Go之金鑰)2026-11-03當日實跑; 〔提出端〕＝issue #65提出端(使用端)
 //   自述之實測, 本機未重現——不得當成已驗證。
 //
 //   權威來源(2026-11-03逐頁重查; 官方文件無「Go」專頁於 /docs/go/, 一律在 /docs/console/go/):
@@ -342,7 +342,7 @@
 //     故只收oc:版(實測見三條)。使用者告知三者額度少且慢, 故排在opencode免費條目之末。
 //     同日再以oc:opencode/minimax-m3.1-flash-free取代oc:opencode/space-bunny-free(使用者指示: 同一模型恢復真名):
 //     space-bunny已自CLI清單(--refresh)與官方文件消失, 依條目呼叫2次皆約2s即回UnknownError; 新條目置於原位(實測見該條)。
-//   2026-10-30之漂移(opencode 1.19.5; 提出端: Gitea issue #25, tai-kns-trade 2026-10-29以免費席位重評時發現):
+//   2026-10-30之漂移(opencode 1.19.5; 提出端: Gitea issue #25, 使用端 2026-10-29以免費席位重評時發現):
 //     移除oc:opencode/minimax-m3.1-flash-free、longcat-2.5-preview-free、nemotron-3-ultra-free三條: 當日重查(`opencode models`兩次與`opencode models opencode --refresh`
 //     皆不列; 依條目欄位以dispatchOpencode各呼叫2次共6次, 皆1.45~1.60s即回Exit code 1之UnknownError「Unexpected server error」, 離開碼1)——
 //     「已自CLI清單消失」與「依條目呼叫約2s即回UnknownError」兩條件同時滿足(同先例)。minimax-m3.1-flash-free之匿名REST同日另回400
@@ -352,7 +352,7 @@
 //     日後免費變體重新上架且實測可通時, 依收錄檢核重收即可。
 //     新增匯出函式filterOpencodeFree(src/filterOpencodeFree.mjs): 以`opencode models`過濾本目錄之opencode免費條目, 令「能不能用一律以`opencode models`加實測為準」之判準有工具可用
 //     (下游組遞補鏈或評比名單前對一次; 查詢失敗回明確錯誤狀態, 不得被當成「全部下架」); 連網守門test/api-providersOpencodeFree.test.mjs於`npm test`時對當日清單比對。
-//   2026-11-03之漂移(opencode 1.19.5; 提出端: Gitea issue #63, tai-kns-trade, 使用者另提供當日可用免費清單; 主控任務20261103173524之da63):
+//   2026-11-03之漂移(opencode 1.19.5; 提出端: Gitea issue #63, 使用端, 使用者另提供當日可用免費清單; 主控任務20261103173524之da63):
 //     目錄零增刪, 路徑與文件對齊: zen:jev-1.13-free之baseURL自/inference/v1改為官方端點欄之/inference/systemone/v1(新路徑匿名與第1把金鑰實測200, 見該條);
 //     檔頭權威來源、改名與分流、端點表、收錄檢核、診斷段依Console現況改寫(Zen已改名OpenCode Console; 429分FreeUsageLimitError與Policy budget exceeded; 補MissingSessionID)。
 //     未收oc:opencode/pulse-alpha-free(使用者清單與CLI清單皆有、官方〈Models〉〈Pricing〉列Free、CLI目錄release_date 2026-11-02): 依R-OCFREE-2②須各項實測全數完成才收,
@@ -362,7 +362,7 @@
 //       另官方〈Models〉載明: 免費期間所收資料可能被保留並用於改進模型, 且歐盟、冰島、列支敦斯登、挪威、古巴、伊朗、北韓、俄羅斯、烏克蘭、委內瑞拉不可用(收錄時須於條目註解記)。
 //     保留oc:opencode/nemotron-3.5-super-vl-free: `opencode models opencode --refresh`兩次(輸出相同)、匿名/inference/v1/models與官方〈Models〉頁皆仍列(R-OCFREE-2①清單消失條件不成立);
 //       匿名CLI呼叫1次45s逾時並見Free usage limit(同時段對照組big-pickle亦同), 不是約2s回UnknownError(②條件亦不成立)。
-//   2026-11-03稍晚之新增(opencode 1.19.5; 提出端: Gitea issue #65, tai-kns-trade; 主控任務20261103201852之da65): 新增OpenCode Go支援——
+//   2026-11-03稍晚之新增(opencode 1.19.5; 提出端: Gitea issue #65, 使用端; 主控任務20261103201852之da65): 新增OpenCode Go支援——
 //     8條CLI類ocgo:條目(provider opencode-go、envVar OPENCODE_GO_KEYS; 詳【OpenCode Go】段與各條註解之〔本機實測〕／〔提出端〕標註)、新匯出opencodeGoUsage
 //     (Go用量端點三視窗, 實測所得、官方文件未載); 不收REST類Go條目; 既有29條零增刪、零改動(逐欄比對差異0), 條目總數29 → 37。
 //

@@ -27,7 +27,7 @@ import { maskApiKeys } from '../redactText.mjs'
 //   作底線防護; 不輸出金鑰、不輸出stdout內容(模型輸出)。
 //
 // 【tag】多個呼叫點共用同一記錄器時區分來源: tag原樣接在每行訊息之前(不加括號與空白, 分隔符由呼叫端自帶, 如tag: '步驟6：'),
-//   非字串視為''; 與執行殼srcRunner原契約一致, 使用端的步驟行皆以`步驟N：`起頭, AI行須同形才能逐步驟grep。
+//   非字串視為''; 與執行殼原契約一致, 使用端的步驟行皆以`步驟N：`起頭, AI行須同形才能逐步驟grep。
 //
 // 【oneline】錯誤字串壓成單行並截斷(wsemi strTruncate, 刪節號`...`), 內嵌於本檔——不依賴w-data-pipeline。
 //   截斷字數n由oneline自行檢查(wsemi iseint之count), 有效才Number(n)交給strTruncate, 無效則不截斷(回壓平之整行),

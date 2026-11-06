@@ -10,8 +10,8 @@ import logAiOutcome, { createAiEventLogger, OUTCOME_TEXT } from '../src/wkf/logA
 //     渲染四行: ①使用 AI(INFO) ②AI 遞補歷程(WARN; 濾掉ok) ③AI 供應商未納入(WARN; providersSkipped) ④providerPick 有無效 id(ERROR; providersMissing);
 //     一律以成員呼叫形式觸發記錄器(class-based logger之this不可失);
 //   createAiEventLogger({ log, tag }): cooled事件時WARN'AI 供應商進入冷卻 → …'。
-// 2026-11-01 da42(Gitea #42)改回srcRunner原契約: tag原樣接在每行之前、「使用 AI」以providerId有值為準(不看ok)、遞補歷程耗時toFixed(1)、冷卻分鐘數Math.round;
-//   原契約字面逐字對照見unit-srcRunnerContract.test.mjs。
+// 2026-11-01 da42(Gitea #42)改回執行殼原契約: tag原樣接在每行之前、「使用 AI」以providerId有值為準(不看ok)、遞補歷程耗時toFixed(1)、冷卻分鐘數Math.round;
+//   原契約字面逐字對照見unit-execShellContract.test.mjs。
 // 另依診斷輸出與遮罩規格(D3/D4): 日誌不含金鑰、記錄器自身失敗不影響呼叫端。
 // 全部為純函數測試（記錄器為測試替身）。
 
@@ -237,7 +237,7 @@ describe('logAiOutcome', function() {
         assert.strict.deepEqual(lg2.lines.map((x) => x[0]), ['WARN'])
     })
 
-    it('①無ok之結果（{ providerId, kind, model }）照記「使用 AI」（srcRunner契約）', function() {
+    it('①無ok之結果（{ providerId, kind, model }）照記「使用 AI」（執行殼契約）', function() {
         let lg = mkLog()
         logAiOutcome({ result: { providerId: 'p', kind: 'k', model: 'm' }, log: lg })
         assert.strict.deepEqual(lg.lines, [['INFO', '使用 AI p（k／m）']])

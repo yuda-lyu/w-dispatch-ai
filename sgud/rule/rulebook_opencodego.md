@@ -1,7 +1,7 @@
 # 規則帳本(類型:OpenCode Go 月費訂閱)
 
 > 類型說明:OpenCode Go 是 OpenCode Console 的月費訂閱方案——同一把工作區金鑰(`oc_sk_`)、不同 provider id(`opencode-go`)、不同額度池.本檔記內建 `providers` 中 Go 條目(`ocgo:`,CLI 類)之收錄判準(R-OCGO-1)、用量查詢函數 `opencodeGoUsage` 之規則(R-OCGO-2)、檔頭／註解／README 之文字守門(R-OCGO-3)、opencode 單次輸出上限與截斷偵測(R-OCGO-4,Gitea #78).主檔索引見 `sgud/rule/rulebook.md`;免費條目見 `rulebook_opencodefree.md`;Console REST 條目見 `rulebook_console.md`.
-> 來源:Gitea issue #65(提出端 tai-kns-trade,2026-11-03);主控任務 20261103201852 之 da65.**issue 只作參考**,以下事實皆為 2026-11-03 當日重查官方文件與本機實測所得(證據夾 `agent-out/da65-evidence/`).
+> 來源:Gitea issue #65(提出端使用端,2026-11-03);主控任務 20261103201852 之 da65.**issue 只作參考**,以下事實皆為 2026-11-03 當日重查官方文件與本機實測所得(證據夾 `agent-out/da65-evidence/`).
 
 ## OpenCode Go:當日事實(2026-11-03;opencode 1.19.5;一把已訂閱 Go 之本機金鑰)
 
@@ -49,7 +49,7 @@
 
 ## R-OCGO-4 單次回應輸出上限(`OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`)與截斷偵測(Gitea #78,2026-11-04 da78)
 
-> 來源:issue #78(提出端 tai-kns-trade;自述「Go 單次回應 reasoning＋output 合計上限 32,000 token,建議 `ocgo:` 五條推理模型改 `--variant low`,並把診斷法寫進檔頭;未查證 32,000 是閘道還是 CLI 端」).**issue 只作參考**,以下事實皆為本機實測(opencode 1.19.5;證據夾 `agent-out/da78-evidence/`;不印金鑰).標記:〔假服務〕＝自建 127.0.0.1 OpenAI 相容服務攔截 CLI 實送之請求(不花額度,`test/api-opencodeOutputCap.test.mjs` 可重跑);〔Go實測〕＝以已訂閱 Go 之本機金鑰實呼(共 6 次;opencode 事件之 `cost` 欄合計約 US$0.14;Go 用量 rolling 3%→4%、weekly 39%、monthly 19%〔整數百分比,他人同時使用亦會混入,不作歸因〕).
+> 來源:issue #78(提出端使用端;自述「Go 單次回應 reasoning＋output 合計上限 32,000 token,建議 `ocgo:` 五條推理模型改 `--variant low`,並把診斷法寫進檔頭;未查證 32,000 是閘道還是 CLI 端」).**issue 只作參考**,以下事實皆為本機實測(opencode 1.19.5;證據夾 `agent-out/da78-evidence/`;不印金鑰).標記:〔假服務〕＝自建 127.0.0.1 OpenAI 相容服務攔截 CLI 實送之請求(不花額度,`test/api-opencodeOutputCap.test.mjs` 可重跑);〔Go實測〕＝以已訂閱 Go 之本機金鑰實呼(共 6 次;opencode 事件之 `cost` 欄合計約 US$0.14;Go 用量 rolling 3%→4%、weekly 39%、monthly 19%〔整數百分比,他人同時使用亦會混入,不作歸因〕).
 
 **提案主張對照**
 

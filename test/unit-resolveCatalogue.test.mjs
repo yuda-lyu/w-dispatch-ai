@@ -8,7 +8,7 @@ import providersAll from '../src/providers.mjs'
 
 // unit-resolveCatalogue.test.mjs — 目錄展開(mergeCatalogue／timeoutPatch／resolveCatalogue; 2026-11-01 da40, Gitea #40)
 //
-// 規格來源: 建議檔§1(自srcRunner移入之行為契約)與帳本R-CATALOGUE-1:
+// 規格來源: 建議檔§1(自執行殼移入之行為契約)與帳本R-CATALOGUE-1:
 //   mergeCatalogue: 新id追加、同id逐欄覆蓋(淺合併)、不改動輸入; extraProviders為undefined／null視為[],給了但非陣列拋'ai.extraProviders 須為陣列',
 //     條目非物件或缺id(非空字串)拋'ai.extraProviders[i] 須為含 id 之條目物件'; catalogue非陣列用內建目錄。
 //   timeoutPatch: 逐id取providerTimeouts[id] → 條目自帶timeoutMs → 全域timeoutMs, 只收正整數; pick省略或空陣列對全目錄;

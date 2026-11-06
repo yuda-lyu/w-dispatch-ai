@@ -1,6 +1,6 @@
 # 規則帳本:自專案端執行殼移入之 AI 件(目錄展開、原始呼叫器、結果日誌、嚴格解析)
 
-本檔為索引 `sgud/rule/rulebook.md` 所指之類型檔;來源為 Gitea #40(tai-kns-trade 提出,2026-11-01;建議檔 `建議w-dispatch-ai調整.md`,主控裁定見該 issue 留言與任務 `20261101152333` 之 `decisions.tsv`).專案端 srcRunner(w-task-runner 0.1.0)原始碼本機無複本,**實作一律依建議檔所載之行為契約與測試案**;契約未載明而由本套件補定者,逐條標「(推定)」,供主控與專案方對照.**2026-11-01 da42(Gitea #42)專案方對照 srcRunner 原始碼與測試後,其中 5 處推定與原契約不符,已全數改回原契約(見 R-AISHELL-5;下列各節對應處標「已依原契約」)**.
+本檔為索引 `sgud/rule/rulebook.md` 所指之類型檔;來源為 Gitea #40(使用端提出,2026-11-01;建議檔 `建議w-dispatch-ai調整.md`,主控裁定見該 issue 留言與任務 `20261101152333` 之 `decisions.tsv`).專案端執行殼(w-task-runner 0.1.0)原始碼本機無複本,**實作一律依建議檔所載之行為契約與測試案**;契約未載明而由本套件補定者,逐條標「(推定)」,供主控與專案方對照.**2026-11-01 da42(Gitea #42)專案方對照執行殼原始碼與測試後,其中 5 處推定與原契約不符,已全數改回原契約(見 R-AISHELL-5;下列各節對應處標「已依原契約」)**.
 
 ## 通則
 
@@ -8,13 +8,13 @@
 - **R-AISHELL-2 不依賴 w-data-pipeline**:盤點指令 `Grep "w-data-pipeline" src` 應僅見說明註解(`wkf/logAiOutcome.mjs` 檔頭)、不得有 import;`oneline` 於 `logAiOutcome.mjs` 內嵌(`strTruncate(String(s ?? '').replace(/\s+/g, ' ').trim(), n)` 等價,另先遮蔽金鑰樣式;2026-11-02 r3da 起 `n` 先經 `iseint` 之 count 把關,無效則不截斷,見 R-LOG-2).
 - **R-AISHELL-3 失敗通道(規格〈輸入參數之檢測機制〉§5.1)**:同步工廠/組裝(`mergeCatalogue`、`timeoutPatch`、`resolveCatalogue`、`createAiCaller`、`makeArrayCoverageValidator`、`logAiOutcome`、`createAiEventLogger`)之必要參數不合規即 throw,先於副作用;`callAI` 為回結果物件者,不 reject,失敗以結果物件回報;opt 選填鍵不合規一律視為未給、改用預設(K3),不 throw;錯誤訊息不回顯輸入值(K9).
 - **R-AISHELL-4 日誌不外洩憑證(規格〈診斷輸出與遮罩〉D3/D4)**:`logAiOutcome`/`createAiEventLogger` 每行輸出前套 `maskApiKeys`,記錄器自身失敗吞掉;`createAiCaller` 回傳之 `providers` 含金鑰(JSDoc 警示勿寫日誌),其 `skipped`/`error` 字串只含 id 與變數名.
-- **R-AISHELL-5 與 srcRunner 原契約之字面一致(Gitea #42,2026-11-01 da42;主控裁定「行為與契約隨件移動、不改語意」)**:五處已改回原契約,各附盤點指令與判準(已套/刻意不套);契約字面逐字對照測試 `test/unit-srcRunnerContract.test.mjs`(18 條),其期望輸出逐字取自建議檔所引之 srcRunner 測試斷言(`unit-runner.test.mjs:263-297,359-384`、`unit-check-ai.test.mjs:44-97`)與建議檔 §7 驗證案;輸入物件依建議檔對各斷言之描述重建(srcRunner 原始碼本機無複本).
+- **R-AISHELL-5 與執行殼原契約之字面一致(Gitea #42,2026-11-01 da42;主控裁定「行為與契約隨件移動、不改語意」)**:五處已改回原契約,各附盤點指令與判準(已套/刻意不套);契約字面逐字對照測試 `test/unit-execShellContract.test.mjs`(18 條),其期望輸出逐字取自建議檔所引之執行殼測試斷言(`unit-runner.test.mjs:263-297,359-384`、`unit-check-ai.test.mjs:44-97`)與建議檔 §7 驗證案;輸入物件依建議檔對各斷言之描述重建(執行殼原始碼本機無複本).
   1. **`tag` 原樣接在每行之前**(原契約 `core/ai/logAiOutcome.mjs:51-53,114`):`prefixOf(tag)` = `typeof tag === 'string' ? tag : ''`,不加 `[ ]` 與空白,分隔符由呼叫端自帶(`tag: '步驟6：'` → `步驟6：使用 AI …`).盤點:`Grep "prefixOf" src` 應見 `logAiOutcome` 與 `createAiEventLogger` 各一處呼叫;`Grep "\[\$\{tag\}\]" src` 應 0 筆.**已套**.
   2. **「使用 AI」行以 `providerId` 有值為準,不看 `ok`**(原契約 `core/ai/logAiOutcome.mjs:56`):條件 `isestr(result.providerId)`.後果(原契約如此,非本套件新增):`dispatchAiFallback` 全數失敗之結果帶最後嘗試之 `providerId`(`dispatchAiFallback.mjs:934` `{ ...r, ...lastMeta, tried }`),故失敗結果也會印「使用 AI」行,其後接遞補歷程.**刻意不套(保留 1.0.63 寫法,專案方不要求改回)**:`kind`/`model` 皆缺時省略括號(原契約恆印 `（${kind}／${model}…）`,會印出 `undefined`).
   3. **遞補歷程耗時 `toFixed(1)`、冷卻分鐘數 `Math.round(cooldownMs / 60000)`**(原契約 `core/ai/logAiOutcome.mjs:75,117`):盤點 `Grep "toFixed\|Math.round" src/wkf/logAiOutcome.mjs`.`cooldownMs` 無效(非數字、非有限、≤ 0)時寫「冷卻視窗內」;不足 30 秒者 `Math.round` 得 `0 分鐘內`(原契約如此,未另加特例).**刻意不套(保留 1.0.63 擴充,專案方不反對)**:金鑰冷卻行(`scope==='key'`,「降至組內最後」)與「冷卻視窗內」字樣.
   4. **`createAiCaller.callAI` 零供應商 `error`**(原契約 `core/ai/caller.mjs:97,18-20`):`無可用的 AI 供應商${skipped.length ? `（${skipped.join('、')}）` : ''}`,只列 skipped(各形如 `id（ENVVAR 無金鑰）`),missing 不進 error(由 `providersMissing` 與 `logAiOutcome` 之 ERROR 行表達).`providersSkipped`/`providersMissing`/`attempts`/`tried` 不變.
   5. **`makeArrayCoverageValidator` 之 `indices` 非陣列**(原契約 `core/ai/parsers.mjs:118`):`TypeError('makeArrayCoverageValidator 之 indices 須為陣列')`.
-  盤點/重跑:`npx mocha --no-parallel test/unit-srcRunnerContract.test.mjs test/unit-logAiOutcome.test.mjs test/unit-createAiCaller.test.mjs test/unit-makeArrayCoverageValidator.test.mjs`(經 `node C:/opensrcOper/tools/quiet-run.mjs --lock`).
+  盤點/重跑:`npx mocha --no-parallel test/unit-execShellContract.test.mjs test/unit-logAiOutcome.test.mjs test/unit-createAiCaller.test.mjs test/unit-makeArrayCoverageValidator.test.mjs`(經 `node C:/opensrcOper/tools/quiet-run.mjs --lock`).
 
 ## R-CATALOGUE-1 目錄展開(`src/resolveCatalogue.mjs`)
 
@@ -22,7 +22,7 @@
 1. `mergeCatalogue(catalogue, extraProviders)`:新 id 追加於末端、同 id 逐欄覆蓋(淺合併)、不改動輸入;`extraProviders` 為 undefined/null 視為 `[]`,給了非陣列拋 `ai.extraProviders 須為陣列`,條目非物件或缺 id(非空字串)拋 `ai.extraProviders[i] 須為含 id 之條目物件`(先全數檢核再合併);`catalogue` 非陣列用內建 `providers.mjs`(空陣列是陣列,不退回內建).
 2. `timeoutPatch(merged, { pick, providerTimeouts, timeoutMs })`:逐 id 取 `providerTimeouts[id]` → 條目自帶 `timeoutMs` → 全域 `timeoutMs`,回 `{ [id]: { timeoutMs } }`;`pick` 省略/空陣列/非陣列對全目錄;`merged` 非陣列拋 `timeoutPatch 需要 merged（條目陣列）`.**(推定)** 契約寫「只收正整數」,實作為每層經 `castPintOr`(數字字串轉為數字、K4;無效層視為未給而落到下一層、K3),與逐字 `??`(無效值即止)僅在「某層給了無效值」時不同.
 3. `resolveCatalogue(opt)`:`env` 為物件則用之,否則 `envFile` 有給才 `readEnvFile`,皆無交 `resolveProviders` 預設(`process.env`);逾時 patch 與 `opt.patch` 逐 id 淺合併、`opt.patch` 優先;回 `{ merged, env, resolved }`,`resolved` 即 `resolveProviders` 原始回傳(含 `warnings`).**(推定)** 皆無 env 時回傳之 `env` 為 `null`(不回 `process.env` 之參照,避免日誌誤傾印).`resolveProviders` 之 `splitSemicolon` 未開放(契約未列).
-4. 訊息字面保留(srcRunner 時代鍵名 `ai.extraProviders`),不改字——專案端與 tai-news-ai 有測試以字樣比對;改字須另案並通知使用端.
+4. 訊息字面保留(執行殼時代鍵名 `ai.extraProviders`),不改字——專案端與使用端有測試以字樣比對;改字須另案並通知使用端.
 
 盤點/重跑:`npx mocha --no-parallel test/unit-resolveCatalogue.test.mjs`(21 條;經 `node C:/opensrcOper/tools/quiet-run.mjs --lock`).建議檔 §7-2 驗收:`unit-resolveCatalogue` 之「逐id逾時優先於條目自帶…」.
 
@@ -43,7 +43,7 @@
    - 測試(`test/unit-createAiCaller.test.mjs` 之 `describe('逐次budgetMs（Gitea #52; 帳本R-CALLER-1-6）')`,8 條):以 `minAttemptMs` 設為極大令首次嘗試前即發 `budget-out` 事件,讀其 `remainingMs`(＝本次交 `dispatchAiFallback` 之 `budgetMs` 扣去極小耗時)判別取用哪個值——事件同步、無延時判定;案:逐次<建構→逐次、逐次>建構(及相等)→建構、未給／非法 13 種→建構、建構未給(或非法)＋逐次給→逐次、皆未給→不限、不殘留(同 caller 連呼三次)、零供應商、整合(兩家皆 `slow`、建構 60000／逐次 1000／`minAttemptMs` 500 → `errorType: 'budget'`、只嘗試第一家、替身端點只見第一家之請求、耗時 <8 秒;實約 1 秒).
    - **(推定)** 建構期 `budgetMs` 非法(如 `'abc'`、0、負數)＋逐次有效 → 取逐次值(非法視同未給,與 `dispatchAiFallback` 一致;若取 `Math.min` 於未正規化之建構值會得 `NaN` 而靜默變成不限,故建構值先經 `castPintOr`).
 
-盤點/重跑:`npx mocha --no-parallel test/unit-createAiCaller.test.mjs`(38 條;零供應商字面另見 `test/unit-srcRunnerContract.test.mjs`,含一條約 5 秒之 `maxRetries` 實跑;全程本機替身端點 `test/tools/fakeServerForCallerTest.mjs` 與假 CLI,不連外網).
+盤點/重跑:`npx mocha --no-parallel test/unit-createAiCaller.test.mjs`(38 條;零供應商字面另見 `test/unit-execShellContract.test.mjs`,含一條約 5 秒之 `maxRetries` 實跑;全程本機替身端點 `test/tools/fakeServerForCallerTest.mjs` 與假 CLI,不連外網).
 
 ## R-LOG-1 結果日誌(`src/wkf/logAiOutcome.mjs`)
 
@@ -89,7 +89,7 @@
 
 共 7 個變異,**7/7 被抓到**(括號為失敗條數):M1 `min` 改 `max`(逐次可放寬;4)、M2 逐次直接覆蓋建構值(1)、M3 逐次值不經 `castPintOr`(1)、M4 建構未給時忽略逐次值(1)、M5 逐次結果寫回 `base`(殘留到下一次;1)、M6 建構值不經 `castPintOr`(建構非法時 `Math.min` 得 `NaN`;1)、M7 逐次值只檢有限數(0、負數、小數照收;1).**修前紅**:未改 src(僅加測試)時新 describe 8 條中 4 條 failing(逐次<建構、建構未給＋逐次給、不殘留、整合)、4 條 passing(皆為「不得改變」守門:逐次>建構、未給／非法、皆未給、零供應商).重跑:自 repo 根 `node tmp/da52/mutate.mjs [M編號]`(腳本存於任務證據夾 `agent-out/da52-evidence/`,不入版控).
 
-## 變異驗證表(da42,R-AISHELL-5;`tmp/da42/mutate.mjs` 於 `tmp/da42/mut/work` 副本逐一套用,每個變異跑兩組:A=契約檔 `unit-srcRunnerContract` 單獨、B=該功能既有單元檔單獨;皆經 `quiet-run --lock`)
+## 變異驗證表(da42,R-AISHELL-5;`tmp/da42/mutate.mjs` 於 `tmp/da42/mut/work` 副本逐一套用,每個變異跑兩組:A=契約檔 `unit-execShellContract` 單獨、B=該功能既有單元檔單獨;皆經 `quiet-run --lock`)
 
 共 23 個變異,**A、B 兩組皆 23/23 被抓到**(括號為 A 組失敗條數):X1a tag 改回 `[tag] `(5)、X1b tag 後多一空白(5)、X1c 非字串 tag 也字串化(1)、X1d 事件記錄器忽略 tag(1)、X1e logAiOutcome 忽略 tag(4)、X2a 使用 AI 要求 `ok===true`(8)、X2b providerId 只排除 undefined(1)、X2c 使用 AI 不檢 providerId(3)、X3a 耗時不 `toFixed(1)`(3)、X3b 耗時 `toFixed(2)`(3)、X3c 冷卻分鐘一位小數(1)、X3d 冷卻分鐘 `Math.floor`(1)、X3e 冷卻分鐘 `Math.ceil`(1;B 組初次未抓到,補 70000 ms 案例後抓到)、X3f 保留項「冷卻視窗內」被移除(1)、X3g 保留項金鑰冷卻行被移除(1)、X4a 零供應商 error 改回 1.0.63 形(5)、X4b 無 skipped 仍帶空括號(2)、X4c skipped 以全形逗號相接(1)、X4d missing 併入括號(2)、X4e 括號內加「缺金鑰略過：」(4)、X4f 括號改列 missing(4)、X5a TypeError 訊息改回 `opt.indices`(1)、X5b 改拋 `Error`(1).**逐處改回 1.0.63 寫法者**(任務書要求):X1a、X2a、X3a、X3c、X4a、X5a.**修前紅**:未改碼(1.0.63 源碼)上契約檔 18 條全 failing.重跑:自 repo 根 `node tmp/da42/mutate.mjs`(腳本存於任務證據夾 `agent-out/da42-evidence/`,不入版控;可帶一個正規表達式只跑符合之變異).
 
