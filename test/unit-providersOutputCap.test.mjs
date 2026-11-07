@@ -29,10 +29,10 @@ describe('providers目錄之輸出上限與截斷偵測欄位', function() {
         assert.strict.deepEqual(withCap, PINNED.map((id) => [id, 32000]).sort((a, b) => providers.findIndex((p) => p.id === a[0]) - providers.findIndex((p) => p.id === b[0])))
     })
 
-    it('P3: detectTruncation只出現在kind opencode條目, 且恰為8條ocgo:條目(true); oc:與其他kind不帶', function() {
+    it('P3: detectTruncation只出現在kind opencode條目, 且恰為9條ocgo:條目(true; 2026-11-07起含crouton-alpha-free); oc:與其他kind不帶', function() {
         let withDt = providers.filter((p) => 'detectTruncation' in p)
         let r = [withDt.every((p) => p.kind === 'opencode'), withDt.map((p) => p.id.startsWith('ocgo:')), withDt.every((p) => p.detectTruncation === true), withDt.length]
-        assert.strict.deepEqual(r, [true, withDt.map(() => true), true, 8])
+        assert.strict.deepEqual(r, [true, withDt.map(() => true), true, 9])
     })
 
     it('P4: 經resolveProviders展開後欄位保留, patch可覆寫outputTokenMax', function() {

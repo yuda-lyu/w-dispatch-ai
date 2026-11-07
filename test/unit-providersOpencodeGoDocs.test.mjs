@@ -38,6 +38,7 @@ let entrySrc = (id) => {
 //anchor: 本機實測之「證據句」(標記須緊接實測結果, 不只是條目內任一處出現〔本機實測〕字樣)
 let LOCAL = {
     'ocgo:opencode-go/beam-free': { local: true, proposer: false, anchor: '〔本機實測〕(opencode 1.19.5、variant high): 簡答5.5s與6.1s、推理題4.9s答對(54)' },
+    'ocgo:opencode-go/crouton-alpha-free': { local: true, proposer: true, anchor: '〔本機實測〕(opencode 1.19.5、variant high、OC_READONLY、2026-11-07): 簡答25.3s成功' }, //proposer: 提出端同日以extraProviders自帶同形條目實呼(Gitea #92)
     'ocgo:opencode-go/iceman-contributor-free': { local: true, proposer: true, anchor: '〔本機實測〕(opencode 1.19.5、OC_READONLY): 簡答6.5s、推理題8.0s答對(54)' }, //proposer: 隱私開關未開之錯誤字樣為提出端自述
     'ocgo:opencode-go/glm-5.3-flash': { local: true, proposer: true, anchor: '〔本機實測〕本條為本輪唯一一次付費簡答(variant high、OC_READONLY): 36.7s成功' },
     'ocgo:opencode-go/deepseek-v4.1-flash': { local: false, proposer: true },
@@ -54,7 +55,7 @@ describe('providers.mjs檔頭【OpenCode Go】段', function() {
         let r = [
             goHead.includes('【OpenCode Go(月費訂閱) 接入方式——動 ocgo:條目前必讀】(2026-11-03 da65, Gitea #65'),
             goHead.includes('https://opencode.ai/v2/docs/console/go/        ← 【主】方案、模型表、各模型月額、額度比例、隱私前提、端點、Extra Usage'),
-            goHead.includes('https://opencode.ai/inference/go/v1/models     ← Go公開型錄(匿名可查; 當日28個;'),
+            goHead.includes('https://opencode.ai/inference/go/v1/models     ← Go公開型錄(匿名可查; 2026-11-03當日28個、2026-11-07複查30個〔漂移見【條目與收錄】段之漂移紀錄〕;'),
             goHead.includes('https://models.dev/api.json 之 opencode-go'),
         ]
         assert.strict.deepEqual(r, [true, true, true, true])
@@ -129,10 +130,10 @@ describe('providers.mjs檔頭【OpenCode Go】段', function() {
         assert.strict.deepEqual(r, [true, true, true, true])
     })
 
-    it('收錄範圍: 8條與未收之22個及理由(提出端未測、本機不得多次發付費請求; 依R-OCFREE-2「實測不到者不收」)', function() {
+    it('收錄範圍: 9條與未收之21個及理由(提出端未測、本機不得多次發付費請求; 依R-OCFREE-2「實測不到者不收」)', function() {
         let r = [
-            goHead.includes('ocgo:共8條, 置於oc:opencode/*之後、agy:之前'),
-            goHead.includes('未收之其餘22個Go模型('),
+            goHead.includes('ocgo:共9條, 置於oc:opencode/*之後、agy:之前'),
+            goHead.includes('未收之其餘21個Go模型('),
             goHead.includes('依R-OCFREE-2「實測不到者不收」之精神不收'),
         ]
         assert.strict.deepEqual(r, [true, true, true])
@@ -172,8 +173,10 @@ describe('各ocgo:條目註解(實測不到者不得寫成已驗證)', function(
             entrySrc('ocgo:opencode-go/muse-spark-1.3-contributor').includes('【訓練資料】官方Privacy'),
             entrySrc('ocgo:opencode-go/muse-spark-1.3-contributor').includes('工作區須開「Allow paid endpoints that train on request data」'),
             entrySrc('ocgo:opencode-go/beam-free').includes('不訓練、保留30天、限地區'),
+            entrySrc('ocgo:opencode-go/crouton-alpha-free').includes('Privacy不訓練、保留30天'),
+            entrySrc('ocgo:opencode-go/crouton-alpha-free').includes('限地區(官方): 歐盟、阿富汗、白俄羅斯、中國(含港澳)'),
         ]
-        assert.strict.deepEqual(r, [true, true, true, true, true, true])
+        assert.strict.deepEqual(r, [true, true, true, true, true, true, true, true])
     })
 
     it('qwen3.8-flash註解載明無high檔而取xhigh、偏離「一律high」並待裁示; iceman註解載明脈絡實測上限(262139、輸入約23萬)', function() {
@@ -191,16 +194,16 @@ describe('各ocgo:條目註解(實測不到者不得寫成已驗證)', function(
         assert.strict.deepEqual([s.includes('無法歸因於這1次'), s.includes('「用量計入」未能由此證明')], [true, true])
     })
 
-    it('目錄之ocgo:條目數與README／resolveProviders註解之37一致', function() {
+    it('目錄之ocgo:條目數與README／resolveProviders註解之38一致(2026-11-07 Gitea #92: 37 → 38)', function() {
         let n = providers.length
         let readme = readSrc('../README.md')
         let rp = readSrc('../src/resolveProviders.mjs')
         let r = [
             n,
-            readme.includes('量級感受：內建providers 37條全上陣時'),
-            rp.includes('// => 37 []') && rp.includes('內建條目共37條'),
+            readme.includes('量級感受：內建providers 38條全上陣時'),
+            rp.includes('// => 38 []') && rp.includes('內建條目共38條'),
         ]
-        assert.strict.deepEqual(r, [37, true, true])
+        assert.strict.deepEqual(r, [38, true, true])
     })
 
 })
@@ -264,13 +267,95 @@ describe('opencodeGoUsage.mjs檔頭與README', function() {
             readme.includes('| `opencodeGoUsage({ key, baseURL, timeoutMs })` |'),
             readme.includes('**The endpoint is not in the official docs — it is observed behaviour (2026-11-03), not a promise.**'),
             readme.includes('62. 內建 providers 新增 **8 條 OpenCode Go 之 CLI 類條目**'),
-            readme.includes('**OpenCode Go（月費訂閱）：8 條 `ocgo:` 條目與用量查詢 `opencodeGoUsage`（2026-11-03 起，Gitea #65）**'),
+            readme.includes('**OpenCode Go（月費訂閱）：9 條 `ocgo:` 條目與用量查詢 `opencodeGoUsage`（2026-11-03 起，Gitea #65；2026-11-07 新增 `crouton-alpha-free`，Gitea #92）**'),
             readme.includes('//.env: OPENCODE_GO_KEYS=oc_sk_xxxx（只放「已訂閱 Go」之工作區金鑰'),
             readme.includes('**沒有 REST 類 Go 條目**'),
             readme.includes('**遞補層預設於用量 ≥95% 時略過該把金鑰（`quotaGate`，2026-11-04 起，Gitea #67；取代原「遞補層不接用量」）**'),
             !readme.includes('- **遞補層不接用量**：'),
         ]
         assert.strict.deepEqual(r, [true, true, true, true, true, true, true, true])
+    })
+
+})
+
+
+// 2026-11-07 Gitea #92(主控任務20261107120446之ke339)文字守門: 型錄漂移紀錄、未收清單、官方月額表、用量端點限制、免費額度逐模型計
+// 規格來源(任務書〈主控已定〉1、3、4、5): 斷言一律錨定在「目標句」本身。
+describe('Gitea #92: Go型錄漂移紀錄、官方月額表、用量端點限制、免費額度逐模型計', function() {
+
+    //未收清單那一句(自「未收之其餘21個Go模型(」起至「提出端未測」止)
+    let uncollected = (() => {
+        let i = goHead.indexOf('未收之其餘21個Go模型(')
+        let j = goHead.indexOf('提出端未測', i + 1)
+        return i < 0 || j < 0 ? '' : goHead.slice(i, j)
+    })()
+
+    it('未收清單為2026-11-07型錄之21個: 刪已下架之mimo-v2.5／v2.5-pro、加hy4, 其餘20個照舊', function() {
+        let r = [
+            uncollected.includes('2026-11-07型錄'),
+            uncollected.includes('kimi-k3／k3.1-pro、glm-5.3／5.2、gpt-6-luna／5.6-luna、claude-haiku-5-5、gemini-4-argon、grok-4.7、deepseek-v4-pro、qwen3.8-max／3.7-plus、minimax-m3、'),
+            uncollected.includes('longcat-2.0、hy3／hy4／hy4-preview、step-5-preview、mimo-v2.6-pro、kimi-k2.7-code、muse-spark-1.2-contributor)'),
+            !uncollected.includes('mimo-v2.5'),
+            !uncollected.includes('crouton'),
+        ]
+        assert.strict.deepEqual(r, [true, true, true, true, true])
+    })
+
+    it('Go型錄漂移紀錄: 日期、來源、新增hy4與crouton-alpha-free、下架mimo-v2.5／v2.5-pro、已收9＋未收21＝公開型錄30', function() {
+        let r = [
+            goHead.includes('【Go型錄漂移紀錄】2026-11-07('),
+            goHead.includes('公開型錄30個＝已收9個＋未收21個, 逐一對得上'),
+            goHead.includes('新增hy4(release 2026-11-04, 月額$60／$240／$65, 不訓練、保留0天, 未收)與'),
+            goHead.includes('crouton-alpha-free(release 2026-11-03, 限時免費、三方案皆Unlimited, 不訓練、保留30天、限地區; 已收, 見該條註解);'),
+            goHead.includes('下架mimo-v2.5、mimo-v2.5-pro(公開型錄已無; 官方月額表與隱私表仍列, 屬文件落後;'),
+            goHead.includes('Go型錄沒有Claude Sonnet, Claude只有claude-haiku-5-5'),
+        ]
+        assert.strict.deepEqual(r, [true, true, true, true, true, true])
+    })
+
+    it('官方月額表: 標明未實測、依官方表、抄錄日期; 列各模型Go／Go Plus／Go Teams月額與Unlimited三者; 其餘付費模型維持「實測不到者不收」', function() {
+        let r = [
+            goHead.includes('★ 官方月額表〔官方Go頁〈Usage limits〉, 2026-11-07本機匿名GET抄錄; 未實測, 依官方表;'),
+            goHead.includes('GLM-5.3-Flash 60／180／65、GLM-5.3 15／120／20、GLM-5.2 60／180／65'),
+            goHead.includes('Crouton Alpha Free／Beam Free／Iceman Contributor Free 皆Unlimited(限時免費)'),
+            goHead.includes('Hy4 60／240／65、Hy4 preview 30／120／35、Hy3 60／240／65'),
+            goHead.includes('Gemini 4 Argon 30／120／35(50%折扣至2026-11-30)'),
+            goHead.includes('其餘付費Go模型維持R-OCFREE-2「實測不到者不收」, 本機不對付費模型多次發請求;'),
+        ]
+        assert.strict.deepEqual(r, [true, true, true, true, true, true])
+    })
+
+    it('用量端點限制: providers檔頭、goQuotaGate.mjs、opencodeGoUsage.mjs檔頭皆註明「只回整把金鑰之三視窗百分比、無逐模型分項, quotaGate以單一百分比擋該把金鑰之全部ocgo:條目」', function() {
+        let gate = readSrc('../src/goQuotaGate.mjs')
+        let usage = readSrc('../src/opencodeGoUsage.mjs')
+        let r = [
+            goHead.includes('★ 用量端點之限制 ★ 用量端點(opencodeGoUsage／goQuotaGate所用)只回該把金鑰「整把」之三視窗百分比(rolling／weekly／monthly), 無逐模型分項'),
+            goHead.includes('quotaGate以單一百分比(任一視窗≥95)擋該把金鑰之全部ocgo:條目'),
+            gate.includes('【用量端點之限制(2026-11-07 Gitea #92補記; 不改行為)】用量端點只回「整把金鑰」之三視窗(rolling／weekly／monthly)百分比, 沒有逐模型分項'),
+            gate.includes('故本層以單一百分比(任一視窗≥門檻)擋該把金鑰之「全部」ocgo:條目'),
+            usage.includes('限制(2026-11-07 Gitea #92補記): 端點只回「整把金鑰」之三視窗百分比, 無逐模型分項;'),
+        ]
+        assert.strict.deepEqual(r, [true, true, true, true, true])
+    })
+
+    it('免費額度改為「逐模型計」並標〔提出端實測, 2026-11-07〕; 舊句「視為整個免費層暫不可用」已更正', function() {
+        let r = [
+            head.includes('〔提出端實測, 2026-11-07〕免費額度「逐模型計」, 不是整個免費層共用一池'),
+            head.includes('oc:opencode/mimo-v2.6-flash-free自08:16起opencode日誌回報當日額度用盡(11次成交後)'),
+            head.includes('oc:opencode/deepseek-v4.1-flash-free經CLI連續32回(單回7~8秒)全部成交'),
+            head.includes('全部免費條目皆見此字樣才視為免費層暫不可用'),
+            !head.includes('處置: 視為整個免費層暫不可用, 遞補層換付費或Go條目, 不必逐個免費條目重試。'),
+        ]
+        assert.strict.deepEqual(r, [true, true, true, true, true])
+    })
+
+    it('zen漂移段記2026-11-07免費池核對: 目錄8個oc:免費條目皆在、另3個未收(crouton-alpha-free、iceman-free、inkling-2-small-free)', function() {
+        let r = [
+            head.includes('2026-11-07之漂移(opencode 1.19.5; 提出端: Gitea issue #92; 主控任務20261107120446之ke339):'),
+            head.includes('oc:／zen:條目零增刪、零改動'),
+            head.includes('opencode/crouton-alpha-free、opencode/iceman-free、opencode/inkling-2-small-free'),
+        ]
+        assert.strict.deepEqual(r, [true, true, true])
     })
 
 })

@@ -23,6 +23,7 @@ import fetchQuotaJson from './quota/fetchQuotaJson.mjs'
 //   rolling＝5小時滾動視窗; weekly＝本機實測resetsAt為週一00:00Z; monthly＝帳務月(resetsAt為訂閱時刻之次月同時)。
 //   percent為0~100之整數(實測); 端點無每模型分項、無金額——「各模型月額不同、百分比如何換算成某模型還能呼叫幾次」屬呼叫端依官方表自行決定,
 //   本函數只回原值, 不換算金額。每次回應之 opencode.allowance(本次計入額度之美元數)在推論回應內, 不在此端點。
+//   限制(2026-11-07 Gitea #92補記): 端點只回「整把金鑰」之三視窗百分比, 無逐模型分項; 遞補層quotaGate因而以單一百分比擋該把金鑰之全部ocgo:條目, 詳goQuotaGate.mjs檔頭【用量端點之限制】。
 //
 // 【判讀: 用 available, 不要用 !limited】
 //   limited       任一視窗 status 恰為 'rate-limited'(端點明說被限)

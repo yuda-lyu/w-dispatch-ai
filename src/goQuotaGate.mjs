@@ -15,6 +15,11 @@ import { awaitUserFn, readCallerObj } from './callUserFn.mjs'
 //   為何不等到頂: Go額度到頂時 `opencode run` 之行為與字樣未查明(免費池到頂時 run 不結束只到逾時, 見dispatchOpencode.mjs檔頭), 整批派下去恐全部耗滿逾時照耗時間與token,
 //   「到頂才知道」之代價高於「提前一點停」。
 //
+// 【用量端點之限制(2026-11-07 Gitea #92補記; 不改行為)】用量端點只回「整把金鑰」之三視窗(rolling／weekly／monthly)百分比, 沒有逐模型分項,
+//   而官方各模型月額獨立(見providers.mjs檔頭【OpenCode Go】段之官方月額表)。故本層以單一百分比(任一視窗≥門檻)擋該把金鑰之「全部」ocgo:條目:
+//   無從得知是哪個模型用掉額度, 也無法讓Unlimited之免費期模型(beam-free、crouton-alpha-free、iceman-contributor-free)免於被一併略過。
+//   使用端若以為「其他模型仍有額度」卻整組被略過, 即此限制所致; 需要單獨放行者以條目或呼叫層的`quotaGate: false`(或調高門檻)處理。
+//
 // 【不得誤判到頂(用量端點官方文件未載, 為實測所得, 見opencodeGoUsage.mjs檔頭)】只有「端點成功回應且該視窗之percent為有效數字且 ≥ 門檻」或「該視窗status明確為'rate-limited'」才擋:
 //   端點失敗(逾時、網路、401／403／429／其他非2xx、非JSON、形狀不符)、視窗缺漏、percent缺漏或非數字 → 一律不擋(fail-open), 另以結果之reason:'error'讓呼叫端記WARN;
 //   未知之status字樣不當作被限。門檻本身無效(非0~100之數字)改用預設95, 給false關閉該視窗之判定。

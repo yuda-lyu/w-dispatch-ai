@@ -95,8 +95,9 @@ describe('providers之opencode免費條目裁定(2026-11-03)', function() {
             providers.some((p) => p.model === 'opencode/pulse-alpha-free' || p.model === 'pulse-alpha-free'),
             providers.length,
         ]
-        //條目數: 2026-11-03 da63時為29; 同日da65(Gitea #65)新增8條CLI類Go條目(ocgo:, 見unit-providersOpencodeGoEntries)而為37
-        assert.strict.deepEqual(r, [false, false, 37])
+        //條目數: 2026-11-03 da63時為29; 同日da65(Gitea #65)新增8條CLI類Go條目(ocgo:, 見unit-providersOpencodeGoEntries)而為37;
+        //2026-11-07 ke339(Gitea #92)再新增ocgo:opencode-go/crouton-alpha-free而為38(oc:／zen:條目零增刪)
+        assert.strict.deepEqual(r, [false, false, 38])
     })
 
 })
