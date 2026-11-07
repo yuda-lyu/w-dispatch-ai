@@ -41,8 +41,8 @@ describe('dispatchAntigravity', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('prompt超過30000字元時回傳prompt too long且不spawn', async function() {
-        let t = await dispatchAntigravity('x'.repeat(30001), { exe: fake.exe })
+    it('promptVia為argv且prompt超過30000字元時回傳prompt too long且不spawn(預設auto下超長改走stdin, 見unit-dispatchAntigravityStdin)', async function() {
+        let t = await dispatchAntigravity('x'.repeat(30001), { exe: fake.exe, promptVia: 'argv' })
         let r = [t.ok, t.error.indexOf('prompt too long (30001 chars > 30000)') === 0, t.attempts]
         let rr = [false, true, 0]
         assert.strict.deepEqual(r, rr)

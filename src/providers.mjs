@@ -410,6 +410,8 @@
 //     budgetMs:     鏈長K×timeoutMs (逾時型失敗每組只燒一次timeout即跳組, 故K×20min
 //                   保證能走到最末; 例K=4 → 4800000＝80min。無外部排程時限則可null＝不限)
 //     agy之printTimeout由timeoutMs自動推導(＋30s, 令外層先逾時), 無須另設。
+//     agy之提示詞傳法(promptVia, 預設auto): 不超過30000字元走--print旗標(命令列受Windows上限約束)、超過改走stdin之stream-json(需agy>=1.1.15, 無此命令列上限; 見dispatchAntigravity.mjs檔頭、帳本R-AGY-4)——
+//       內建agy條目皆不另給promptVia, 超長提示詞由auto自動分流; 要避開轉義膨脹或固定走stdin者以patch對條目明給promptVia:'stdin'。
 //   工作流層總時長: RolePipeline為各階段序列相加(M階段≈M×名額預算);
 //   Fanout各名額並行(≈單一名額預算＋整合名額預算), 外部排程上限須據此預留。
 //   外部調整四層(細者覆蓋粗者): dispatchAiWkf之defaults(全域) → 各工作流callOpt
@@ -832,6 +834,7 @@ let providers = [
         model: 'gemini-3.8-flash-high', //2026-09-03自3.7升版(agy 1.1.25): 實測12.5s vs 3.7之62.2s, 讀檔14.6s vs 57.6s
         kind: 'antigravity',
         addDirs: ['.'],
+        //提示詞傳法不另給(預設auto): 不超過30000字元走--print、超過走stdin之stream-json(需agy>=1.1.15, 2026-11-07 Gitea #94); 30000字元之命令列上限已不是硬上限, 僅明給promptVia:'argv'時仍適用
         //保留CLI權限閘門(條目自帶防寫, 與其餘三家CLI條目一致): canary實測(2026-08-15)
         //無此鎖時要求建檔會真的落地(12.5s); false之下寫入被擋且不卡逾時(6.4s正常返回)、
         //唯讀工具照常(8.0s讀檔答對)。注意被擋時agy回ok:true且stdout為空(非報錯; agy 1.4.0起stderr帶

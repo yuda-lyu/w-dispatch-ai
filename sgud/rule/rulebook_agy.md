@@ -1,6 +1,6 @@
 # 規則帳本(類型:agy)
 
-> 自 `rulebook.md` 抽出(2026-10-25 依全域 sgud 規則整理:過長即依類型拆檔;節號與標題不變,不刪內容,只搬移).類型說明:agy(Antigravity)型錄與額度結構、非成功結局與逾時階梯(R-QUOTA-1～2、R-AGY-1～3).主檔索引見 `sgud/rule/rulebook.md`.
+> 自 `rulebook.md` 抽出(2026-10-25 依全域 sgud 規則整理:過長即依類型拆檔;節號與標題不變,不刪內容,只搬移).類型說明:agy(Antigravity)型錄與額度結構、非成功結局與逾時階梯(R-QUOTA-1～2、R-AGY-1～3),及提示詞傳法 `promptVia` 與 stdin 路徑(stream-json)之判成敗(R-AGY-4,2026-11-07 ke342 加入).主檔索引見 `sgud/rule/rulebook.md`.
 
 ## agy(Antigravity)型錄與額度結構變動之適應、非成功結局與逾時階梯(2026-10-16 立)
 
@@ -50,10 +50,53 @@
 - 盤點指令:`Grep "stdout為空|靜默" src README.md`(權限拒絕之敘述須含 stderr 說明);`Grep "agy自行決定" src`(model 預設敘述須含 Argon Medium)。
 - 對應測試:T-B2 `test/unit-agyFailShapes.test.mjs`「權限閘門擋下寫入…」、「未知模型…」。
 
+### R-AGY-4 提示詞傳法(`promptVia`)與 stdin 路徑(stream-json)之判成敗(2026-11-07 ke342,Gitea #94)
+
+> 狀態:**生效**(2026-11-07;主控已定採建議 A＋B＋C 中屬本套件者,預設 `'auto'`)。
+> 來源:`建議w-dispatch-ai調整.md`(使用端建議,實測 agy 1.5.2)。**未驗證(明標,不得寫成事實)**:agy 1.1.15～1.5.1 之輸入訊息形狀(旗標存在之最早版本由 `agy changelog` 1.1.15 得知,訊息形狀只在 1.5.2 實測);stdin 路徑下權限閘門擋下、自身 `--print-timeout` 到時、額度用盡之事件形狀;`message.content` 之陣列形式;重複 `--output-format` 之 last-wins(故改為明確拒絕)。
+
+#### 軸
+
+- 傳法 `promptVia`:`argv`／`stdin`／`auto`／無效值(回退 `auto`)。
+- 提示詞長度:不超過 30000(含恰 30000)／30001／35000 以上;內容:純文字／含換行、引號、反斜線、U+2028／大量引號。
+- agy 版本:≥1.1.15(含邊界 1.1.15、數值比較 1.10.0)／低於(1.1.14)／探測不確定(`--version` 失敗、解析不出版本號)。
+- agy 輸出結局(stdin 路徑):result SUCCESS／result ERROR(離開碼 0)／result ERROR(離開碼 1)／只有 init 且離開碼 0(不認得之輸入事件)／無任何輸出且離開碼 0／非 JSON 輸出且離開碼 0／不認得 `--input-format`(旗標錯誤,離開碼 2)。
+- `extraArgs`:無／含衝突旗標(`--output-format`、`--input-format`、`--print`、`-p`、`--prompt`、`-i`、`--prompt-interactive`,含 `=值` 與單橫線寫法)／近似但不衝突(`--print-timeout`、`--json-schema`)。
+- `validate`:無／`nonempty`／`json`／自訂函式(對改寫後之 `stdout` 判)。
+
+#### 規則
+
+1. **預設 `'auto'`,不是 `'stdin'`**:不超過 `MAX_PROMPT_LENGTH`(30000)走 argv(`--print`,行為與修前逐位元相同)、超過走 stdin。理由:本套件無確保各機 agy 版本之機制(僅 `getQuotaAntigravity` 對 `/usage` 有自己的 1.1.11 版本把關);`agy --version` 雖可低成本探測(實測約 0.15 秒),但探測只能把舊版上的失敗變成明確錯誤,**無法讓舊版上原本可用的 argv 呼叫繼續可用**;預設 `'stdin'` 另使 `extraArgs` 自帶輸出旗標者衝突、輸出來源改為 NDJSON 解析,且現有假 CLI 測試與使用端之假 agy 全依賴 argv。何時改預設 `'stdin'`:待使用者確認各機 agy 皆 ≥1.1.15,且接受上述行為變更(見 `state_agy.md` 待辦)。
+2. **argv 路徑不變**:`promptVia:'argv'` 與 `auto` 未超過上限者,args、`prompt too long` 訊息字面(`prompt too long (N chars > 30000), agy passes prompt via --print flag and Windows command line is capped at 32767 chars`)、params／attempts 0 皆不變;`MAX_PROMPT_LENGTH` 只在 argv 路徑檢查。
+3. **stdin 路徑之 args**:`--dangerously-skip-permissions`(依 `skipPermissions`)、`--print-timeout`(推導同 R-AGY-2)、`--model`、`--effort`、`--add-dir…`、`extraArgs`,最後固定接 `--input-format stream-json --output-format stream-json`;**不帶 `--print`**。stdin 為一行 `JSON.stringify({ event: 'user', message: { role: 'user', content: prompt } })` 加 `\n`。
+4. **判成敗只看 `result` 事件**(`src/parseAgyStream.mjs`:取最後一個 `init` 之後的最後一個 `result` 事件,非 JSON／無 `event` 欄之行略過):`status==='SUCCESS'` → `ok:true`、`stdout`＝`result.response`、原始 NDJSON 放結果之 `raw`;其餘 status → `ok:false`、errorType `exec`;**無 `result` 事件一律 `ok:false`**(errorType `exec`,`error` 含 `no result event` 與 stderr 尾 200 字元)——不得以離開碼 0 或非空 stdout 判成功(agy 對不認得之輸入事件離開碼為 0,只印 `init`)。失敗結果(離開碼非 0、逾時)保留 execCli 之 `error`／`errorType`,若有 `result` ERROR 則附其說明;`stdout` 為(截 500 字元之)response 或空字串,不留 NDJSON。
+5. **`validate` 在改寫 `stdout` 之後判**:經 `runExecCli` 之 `reshapeResult` 接縫(與 opencode 之 `detectTruncation` 同一機制;重整先於驗證)。**不得**改成「先驗證、後改寫」(`nonempty` 會以非空 NDJSON 誤過、`json` 會以多行 NDJSON 誤敗)。累積全文用 `onStdout`(失敗結果之 `stdout` 被 execCli 裁到 500 字元,`result` 在最後一行會被裁掉)。
+6. **`extraArgs` 衝突旗標明確拒絕**(擇「拒絕」而非「合流」):stdin 路徑下含衝突旗標者回 `params`、attempts 0、不 spawn,訊息含 `[<原字串>]`。不依賴 agy 對重複旗標之 last-wins(未實測);`-p`／`--print`／`--prompt` 與 `--input-format` 並用時 agy 立即結束(實測離開碼 2),`-i`／`--prompt-interactive` 會進互動模式。argv 路徑之 `extraArgs` 不受影響。
+7. **舊版 agy → 明確錯誤**:stdin 路徑 spawn 前以 `agy --version` 探測(`src/checkAgyStdinSupport.mjs`;門檻 `MIN_STDIN_VERSION='1.1.15'`,數值比較;只快取「已確認支援」者,依 `exe` 為鍵;探測不確定放行〔fail-open〕):低於門檻回 `params`、attempts 0,`error` 含 `[<版本>]`、`needs agy >= 1.1.15`、`agy update`。探測不確定時若 agy 回「flags provided but not defined: -input-format」(Go flag 套件之未知旗標錯誤,實測離開碼 2、約 0.2 秒),結果之 `error` 改寫為同樣的升級指引、errorType 改 `params`(其餘欄位保留)。
+8. **不重試**:「無 result 事件」於 execCli 回報成功之後才判定,不經 `maxRetries` 之 execCli 內部重試;離開碼非 0 之失敗照舊由 execCli 重試。
+9. **`usage` 不放結果之 `usage` 欄**:`dispatchAiFallback` 之 `tried[].usage` 與 `callAiWithFallback` 以 API 類形狀消費該欄,agy 之 `{input_tokens,output_tokens,thinking_tokens,…}` 形狀不同;agy 自帶用量留在 `raw`。要提供用量需另案定欄位名與消費端。
+10. `quotaGate`(#93)、`--effort` 與 slug 檔位之規則在兩路徑相同(門檻在遞補層、轉接器之前;`--effort` 與 slug 檔位衝突仍由 agy 回報)。
+
+#### 站點全集與盤點指令
+
+- 傳法與長度檢查:`Grep "viaStdin|promptVia|MAX_PROMPT_LENGTH" src/dispatchAntigravity.mjs`——長度檢查只能出現在 `!viaStdin` 之內。
+- 判成敗:`Grep "reshapeAgyResult|parseAgyStream|hasResult" src`——唯一消費者為 `dispatchAntigravity`;`reshapeResult` 接縫在 `runExecCli` 內先於 `validator`(`Grep "reshapeFn|shape\(" src/runExecCli.mjs`)。
+- 版本探測:`Grep "checkAgyStdinSupport|MIN_STDIN_VERSION" src`。
+- 文件:`Grep "30000字元|30,000|--print旗標" README.md src`——除 `promptVia:'argv'` 與 argv 路徑之敘述外,預期 0 筆「prompt 一律受 30000 限制」之過時敘述。
+
+#### 對應測試
+
+- `test/unit-dispatchAntigravityStdin.test.mjs`(25 案;假 agy 重現 1.5.2 實測形狀):A 傳法分流 6 案(含 `[修前紅]` 35000 字元預設可派)、B 單行 NDJSON 2 案、C 輸出解析 8 案(含 validate 順序、no result、經遞補層)、D extraArgs 衝突 3 案、E 版本 5 案、F 額度門檻 1 案。
+- `test/unit-parseAgyStream.test.mjs`(8 案):事件取法、多 session、非 JSON 行、status／error 形狀。
+- `test/unit-dispatchAntigravity.test.mjs`:`prompt too long` 案改帶 `promptVia:'argv'`(其餘既有案不動,證明 argv 路徑不變)。
+- 修前紅:`git archive HEAD src` 解到 `./tmp/<案名>/pre`(補 `checkAgyStdinSupport` 存根)跑新測試 → 25 案中 22 案紅(3 案為保留行為／修前即不受影響:`argv` 超長仍 `prompt too long`、近似旗標不誤拒、版本邊界 1.1.15／1.10.0 走 argv 皆綠)。
+- 變異(複製 `src` 與測試到 `./tmp/<案名>/mut<X>`):A 拿掉「無 result 判失敗」→ 4 案紅;B validate 移到改寫前 → 2 案紅;C 輸入不經 `JSON.stringify` → 18 案紅;E 拿掉版本檢查 → 3 案紅;F 任何 result 皆當成功 → 1 案紅。
+- 真 agy(耗額度,不入 `npm test`):`gemini-3.8-flash-low` 經 stdin 短提示詞、36060 字元(預設 auto)、argv 短提示詞各 1 次,皆 `result:SUCCESS`、`stdout` 為「完成」。
+
 ### 文件同步點(改上列規則時一併改)
 
-- `README.md`:範例 slug(`model`/`effort` 列、各範例程式)、`timeoutMs`/`printTimeout` 列與 Timeout 階梯圖、額度段(群組與窗口、severity 句、errorType `parse`、預檢食譜)、內建 providers 計數、防寫對照表後之「靜默」敘述、行為變更紀錄「1.0.50 起」。
-- JSDoc 與檔頭:`src/quota/getQuotaAntigravity.mjs`(檔頭資料來源、`fromBucket`、`@returns` windows、範例輸出)、`src/quota/toQuotaWindow.mjs`(key 說明)、`src/dispatchAntigravity.mjs`(檔頭雙逾時、`model`/`printTimeout` 參數、範例)、`src/dfTimeoutMs.mjs`、`src/providers.mjs`(EFFORT 註解、Argon 條目、權限拒絕註解)、`src/resolveProviders.mjs`(範例計數)。
+- `README.md`:範例 slug(`model`/`effort` 列、各範例程式)、`timeoutMs`/`printTimeout` 列與 Timeout 階梯圖、額度段(群組與窗口、severity 句、errorType `parse`、預檢食譜)、內建 providers 計數、防寫對照表後之「靜默」敘述、行為變更紀錄「1.0.50 起」;R-AGY-4:agy 註記句(第 25 行)、範例註解、`promptVia` 選項列與 `extraArgs` 列註、選項表後「注意」段、行為變更第 68 條、Known design notes 之 agy 非成功結局段。
+- JSDoc 與檔頭:`src/quota/getQuotaAntigravity.mjs`(檔頭資料來源、`fromBucket`、`@returns` windows、範例輸出)、`src/quota/toQuotaWindow.mjs`(key 說明)、`src/dispatchAntigravity.mjs`(檔頭雙逾時、`model`/`printTimeout`/`promptVia`/`extraArgs` 參數、`@returns` 之 `raw`、範例)、`src/parseAgyStream.mjs`、`src/checkAgyStdinSupport.mjs`、`src/dfTimeoutMs.mjs`、`src/providers.mjs`(EFFORT 註解、Argon 條目、權限拒絕註解、agy 傳法註記)、`src/resolveProviders.mjs`(範例計數)。
 
 ### 驗證指令
 

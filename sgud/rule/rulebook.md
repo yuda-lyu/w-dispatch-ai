@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 子進程啟動與回報分流 | `sgud/rule/rulebook_spawn.md` | R-SPAWN-1～3、R-VALIDATE-1、R-REDACT-1、R-NOREJECT-1 | `isSpawnFail` 結構判定、遞補之「與金鑰無關」分流、CLI 單一入口 `runExecCli`、validate、錯誤訊息遮蔽單一來源 `redactText`、永不 reject |
 | 呼叫端注入之函數與物件 | `sgud/rule/rulebook_userfn.md` | R-USERFN-1～3 | 注入之函數與物件只經 `callUserFn.mjs`;validate 之判定(CLI、REST、遞補、工作流同規則);wsemi 1.9.16／1.9.17 連動 |
-| agy 型錄、額度與逾時 | `sgud/rule/rulebook_agy.md` | R-QUOTA-1～2、R-AGY-1～3 | `/usage` 群組與窗口由 agy 決定、格式漂移不得靜默成功、內建 agy 條目與型錄對齊、逾時階梯、非成功結局分流 |
+| agy 型錄、額度、逾時與提示詞傳法 | `sgud/rule/rulebook_agy.md` | R-QUOTA-1～2、R-AGY-1～4 | `/usage` 群組與窗口由 agy 決定、格式漂移不得靜默成功、內建 agy 條目與型錄對齊、逾時階梯、非成功結局分流;R-AGY-4(Gitea #94,2026-11-07 ke342):`promptVia`(argv／stdin／auto,預設 auto)、stdin 路徑走 `--input-format stream-json`、只看 `result` 事件判成敗(無 result 一律失敗)、validate 在改寫 stdout 之後、extraArgs 衝突旗標拒絕、agy 最低版本 1.1.15 與舊版明確錯誤 |
 | Anthropic API 金鑰計費 | `sgud/rule/rulebook_anthropic.md` | R-ANTHROPIC-1～4 | CLI 帶 `key`(子進程環境、移除優先憑證、遮蔽)、kind `api-anthropic`(請求形狀、stop_reason、HTTP 錯誤)、providers 六條與 `ANTHROPIC_KEYS`、CLI key 模式移除繼承之父 Claude Code session 連結變數(R-ANTHROPIC-4)、變異驗證表(M1～M40) |
 | Anthropic 失敗細分類與遞補處置 | `sgud/rule/rulebook_failurekind.md` | R-ANTHROPIC-5 | `failureKind` 細分類(REST／CLI)、CLI「沒額度」REST 交叉確認、遞補依分類處置(沒額度跨條目略過／脈絡過長立即結束／網路與環境錯誤整組跳過／金鑰冷卻)、金鑰探測 `probeAnthropicKeys`、`*_KEYS` 分號處置、94 個變異驗證表 |
 | codex 條目 | `sgud/rule/rulebook_codex.md` | R-CODEX-1 | codex 條目欄位比照(唯讀 `sandbox`、強度常數)、強度必傳(型錄預設 low)、新首選排在舊首選之前、群組相鄰、`patch` 覆寫 max 不解除唯讀 |
