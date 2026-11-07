@@ -5332,7 +5332,7 @@ console.log(castPintOr(undefined, null))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line171">line 171</a>
+        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line176">line 176</a>
     </li></ul></dd>
     
 
@@ -9954,7 +9954,7 @@ let store = createFileStore({ dir: './state' })
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line47">line 47</a>
+        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line52">line 52</a>
     </li></ul></dd>
     
 
@@ -20704,7 +20704,7 @@ console.log(extractOutputText(output))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="opencodeGoUsage.mjs.html">opencodeGoUsage.mjs</a>, <a href="opencodeGoUsage.mjs.html#line75">line 75</a>
+        <a href="opencodeGoUsage.mjs.html">opencodeGoUsage.mjs</a>, <a href="opencodeGoUsage.mjs.html#line76">line 76</a>
     </li></ul></dd>
     
 
@@ -22368,7 +22368,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line159">line 159</a>
+        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line164">line 164</a>
     </li></ul></dd>
     
 
@@ -27284,7 +27284,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line104">line 104</a>
+        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line109">line 109</a>
     </li></ul></dd>
     
 
@@ -28477,7 +28477,7 @@ console.log(isTransientFailure({ ok: false, code: 1, error: 'TIMEOUT after 300s'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line118">line 118</a>
+        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line123">line 123</a>
     </li></ul></dd>
     
 
@@ -31807,7 +31807,7 @@ console.log(normalizeFinishReason(' LENGTH '), normalizeFinishReason(null))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="opencodeGoUsage.mjs.html">opencodeGoUsage.mjs</a>, <a href="opencodeGoUsage.mjs.html#line134">line 134</a>
+        <a href="opencodeGoUsage.mjs.html">opencodeGoUsage.mjs</a>, <a href="opencodeGoUsage.mjs.html#line135">line 135</a>
     </li></ul></dd>
     
 
@@ -37925,7 +37925,7 @@ providers與table同源產出故必然一致；
 
     <h5 class="h5-examples">Example</h5>
     
-    <pre class="prettyprint"><code>import resolveProviders from './src/resolveProviders.mjs'import readEnvFile from './src/readEnvFile.mjs'import providersAll from './src/providers.mjs'//金鑰放.env(變數值以逗號分隔多把), 以readEnvFile讀成物件, 不污染process.envlet env = readEnvFile('./.env')//全取: envVar展開為keys, 缺環境變數者列入skippedlet { providers, table, skipped } = resolveProviders(providersAll, { env })console.log(providers.length, skipped)// => 37 [] (設.env已備齊各條目之envVar; 內建條目共37條〔含8條OpenCode Go之ocgo:, 其金鑰變數為OPENCODE_GO_KEYS〕, 缺變數者改列於skipped且不計入providers)//pick打錯字時, missing附拼寫提示hints(最接近之可用id)let rm = resolveProviders(providersAll, { env, pick: ['poolside/laguna-s-2.1'] })console.log(rm.missing, rm.hints)// => [ 'poolside/laguna-s-2.1' ] { 'poolside/laguna-s-2.1': 'poolside:laguna-s-2.1' }//自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallbacklet r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] })console.log(r2.providers.map((p) => p.id))// => [ 'agnes:agnes-3.0-flash', 'claude:sonnet' ]//後處理: exes逐kind注入執行檔、patch逐id覆寫欄位, 陣列與table同步生效let r3 = resolveProviders(providersAll, {    env,    pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'],    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },    patch: { 'claude:sonnet': { timeoutMs: 360000 } },})console.log(r3.table['claude:sonnet'].exe, r3.table['claude:sonnet'].timeoutMs)// => 'C:/Users/x/.local/bin/claude.exe' 360000//table可直接餵dispatchAiWkf之providers定義表//let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })</code></pre>
+    <pre class="prettyprint"><code>import resolveProviders from './src/resolveProviders.mjs'import readEnvFile from './src/readEnvFile.mjs'import providersAll from './src/providers.mjs'//金鑰放.env(變數值以逗號分隔多把), 以readEnvFile讀成物件, 不污染process.envlet env = readEnvFile('./.env')//全取: envVar展開為keys, 缺環境變數者列入skippedlet { providers, table, skipped } = resolveProviders(providersAll, { env })console.log(providers.length, skipped)// => 38 [] (設.env已備齊各條目之envVar; 內建條目共38條〔含9條OpenCode Go之ocgo:, 其金鑰變數為OPENCODE_GO_KEYS〕, 缺變數者改列於skipped且不計入providers)//pick打錯字時, missing附拼寫提示hints(最接近之可用id)let rm = resolveProviders(providersAll, { env, pick: ['poolside/laguna-s-2.1'] })console.log(rm.missing, rm.hints)// => [ 'poolside/laguna-s-2.1' ] { 'poolside/laguna-s-2.1': 'poolside:laguna-s-2.1' }//自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallbacklet r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] })console.log(r2.providers.map((p) => p.id))// => [ 'agnes:agnes-3.0-flash', 'claude:sonnet' ]//後處理: exes逐kind注入執行檔、patch逐id覆寫欄位, 陣列與table同步生效let r3 = resolveProviders(providersAll, {    env,    pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'],    exes: { claude: 'C:/Users/x/.local/bin/claude.exe' },    patch: { 'claude:sonnet': { timeoutMs: 360000 } },})console.log(r3.table['claude:sonnet'].exe, r3.table['claude:sonnet'].timeoutMs)// => 'C:/Users/x/.local/bin/claude.exe' 360000//table可直接餵dispatchAiWkf之providers定義表//let wkf = dispatchAiWkf({ providers: r2.table, defaults: { timeoutMs: 1200000 } })</code></pre>
 
 
 
@@ -38327,7 +38327,7 @@ providers與table同源產出故必然一致；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line59">line 59</a>
+        <a href="goQuotaGate.mjs.html">goQuotaGate.mjs</a>, <a href="goQuotaGate.mjs.html#line64">line 64</a>
     </li></ul></dd>
     
 
@@ -39175,7 +39175,7 @@ providers與table同源產出故必然一致；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="opencodeGoUsage.mjs.html">opencodeGoUsage.mjs</a>, <a href="opencodeGoUsage.mjs.html#line162">line 162</a>
+        <a href="opencodeGoUsage.mjs.html">opencodeGoUsage.mjs</a>, <a href="opencodeGoUsage.mjs.html#line163">line 163</a>
     </li></ul></dd>
     
 
@@ -46357,7 +46357,7 @@ console.log(w.label, w.remainingPercent)
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Thu Nov 05 2026 17:57:48 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sat Nov 07 2026 12:36:10 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
