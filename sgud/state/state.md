@@ -15,7 +15,7 @@
 | codex 條目(wda-run01) | `sgud/state/state_codex.md` | 2026-10-28 wda-run01:內建 `codex:gpt-6.1-terra`(luna → terra → sol) |
 | opencode 免費條目漂移與 `filterOpencodeFree`、OpenCode Console(原 Zen)端點與文件對齊 | `sgud/state/state_opencodefree.md` | 2026-10-30 run01(Gitea #25):免費條目漂移與 `filterOpencodeFree`;2026-11-03 da63(Gitea #63):OpenCode Console 端點與文件對齊;待辦:免費池 3 個未收之免費模型 |
 | OpenCode Go 月費訂閱(條目與用量查詢)、單次輸出上限與截斷偵測、Go 型錄漂移對齊 | `sgud/state/state_opencodego.md` | 2026-11-03 da65(Gitea #65):OpenCode Go 8 條 `ocgo:`、`opencodeGoUsage`;2026-11-04 da78(Gitea #78):輸出上限與截斷偵測;2026-11-07 ke339(Gitea #92):Go 型錄漂移對齊、新增 `crouton-alpha-free`(38 條) |
-| CLI spawn 守門、Go 用量冷卻、放行最小間隔與暫時性重試(da67／da320) | `sgud/state/state_spawngate.md` | 2026-11-04 da67(Gitea #67):`cliSpawnGate`、`quotaGate`;2026-11-05 da320(Gitea #85):`minGapMs` 與 `database is locked` 暫時性重試 |
+| CLI spawn 守門、Go 用量冷卻、放行最小間隔與暫時性重試、訂閱類用量門檻與額度帳(da67／da320／ke340) | `sgud/state/state_spawngate.md` | 2026-11-04 da67(Gitea #67):`cliSpawnGate`、`quotaGate`;2026-11-05 da320(Gitea #85):`minGapMs` 與 `database is locked` 暫時性重試;2026-11-07 ke340(Gitea #93):`quotaGate` 擴及 claude 無金鑰者／codex／antigravity(預設開啟)、額度帳 `store.quota`、`quota-skip` 加 `source`、與 Go 共用判定件 |
 | 自專案端執行殼移入之 AI 件(da40／da42／da52／r3da) | `sgud/state/state_aishell.md` | 2026-11-01 da40／da42(Gitea #40／#42):自專案端執行殼移入之 8 個匯出與契約字面;2026-11-02 da52:逐次 `budgetMs`;r3da:`oneline` 與 `strTruncate` 站點 |
 
 ## 二、功能現況(對應帳本與測試)
@@ -24,4 +24,4 @@
 
 ## 三、已知待辦
 
-待辦與已知缺口分列於各類型檔之 `## 三` 節(無者標「本類型無」):Anthropic 實測回填與已知限制 → `state_anthropic.md`;terra 條目缺口 → `state_codex.md`;免費條目缺口、待收錄 `pulse-alpha-free`、付費跨協定轉譯、`FreeUsageLimitError` 恢復時機、免費池未收之 3 個免費模型 → `state_opencodefree.md`;Go 與輸出上限待辦(含 ke339) → `state_opencodego.md`;spawnGate／quotaGate／minGapMs 待辦 → `state_spawngate.md`;da40／da42 待對照處 → `state_aishell.md`;experience 整理註記與 sgud 檔案大小盤點 → `state_general.md`.
+待辦與已知缺口分列於各類型檔之 `## 三` 節(無者標「本類型無」):Anthropic 實測回填與已知限制 → `state_anthropic.md`;terra 條目缺口 → `state_codex.md`;免費條目缺口、待收錄 `pulse-alpha-free`、付費跨協定轉譯、`FreeUsageLimitError` 恢復時機、免費池未收之 3 個免費模型 → `state_opencodefree.md`;Go 與輸出上限待辦(含 ke339) → `state_opencodego.md`;spawnGate／quotaGate／minGapMs 待辦與訂閱類用量門檻待辦(ke340;含 Go 免費期條目連坐未處理之待實證條件) → `state_spawngate.md`;da40／da42 待對照處 → `state_aishell.md`;experience 整理註記與 sgud 檔案大小盤點 → `state_general.md`.

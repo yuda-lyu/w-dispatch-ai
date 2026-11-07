@@ -89,3 +89,10 @@
 - 變異驗證(`tmp/da78/mutate.mjs`,副本上套用,45 個):43 個被抓到、2 個等價變異(M08:`castOutputTokenMax` 之 `iseint` min 與其後 `n > 0` 重複把關;M25:`reshapeResult` 轉傳 `execCli` 無害);涵蓋預設值／優先序／無效值／大小寫(M01～M09)、事件解析(最後 `step_finish`、trim、EOL、session 過濾、連字號、錯誤還原、未知類型,M10～M18、M43～M45)、`runExecCli` 裁定(M19～M25)、`dispatchOpencode` 接縫(`--format json`、預設關、環境注入、累積全文、失敗路徑,M26～M37)、目錄欄位(M38～M41)、遞補整組跳過(M42);首輪存活者 M30（只取最後 session）、M33（失敗結果誤帶 `truncated`）已補測試後 killed.
 - 教訓:變異腳本對 CRLF 檔(`providers.mjs`、`README.md`)之多行字串須依檔案實際行尾轉換,否則整批「找到 0 處」成無效變異.
 - 指令:`npx mocha --no-parallel test/unit-outputTokenMax.test.mjs test/unit-parseOpencodeEvents.test.mjs test/unit-opencodeTruncation.test.mjs test/api-opencodeOutputCap.test.mjs test/unit-providersOutputCap.test.mjs test/unit-opencodeOutputCapDocs.test.mjs --timeout 180000`(`api-` 需本機有 opencode,首次可能連網安裝 provider 套件).
+
+## R-OCGO-5 Unlimited 免費期條目是否免於整把金鑰之用量門檻(評估紀錄,Gitea #93 / ke340,2026-11-07;**結論:不處理,行為不變**)
+
+- 問題:`quotaGate` 以「整把金鑰」之三視窗百分比擋該把金鑰的全部 `ocgo:` 條目(用量端點無逐模型分項,R-OCGO-1⑦),故金鑰因付費模型(如 glm、deepseek)weekly／monthly ≥95% 被擋時,Unlimited 免費期條目(`beam-free`、`crouton-alpha-free`、`iceman-contributor-free`;官方標示「不計額度」)亦被一併略過.是否讓內建免費期條目不受該門檻約束?
+- 評估與結論:**不採**.理由:①**缺證據**——金鑰用量達門檻或到頂時,免費期模型是否仍可呼叫從未實測(本層存在的前提即 R-SPAWNGATE-2⑧「Go 額度到頂時 `opencode run` 之行為與字樣未查明」,免費池到頂時 run 不結束只到逾時);②繞過門檻會把「略過一次」換成「可能整個逾時(預設 300 秒)」,方向與門檻存在目的相反;③本輪**不得以真模型呼叫驗證**(派工限制),且本機金鑰用量離門檻尚遠(weekly 約 50%),無法造出該情境;④已有逐條放行手段(條目或呼叫層 `quotaGate: false`,或調高 `weeklyMax`／`monthlyMax`),使用端自擔風險;⑤免費期會結束(限時免費),內建「免費期條目免門檻」須隨之下架或改標,否則日後變成付費條目卻不受門檻約束(R-OCGO-1⑩ 之下架流程要多一步).
+- 待實證條件(任一使用端遇到即可驗,零成本):在**某把用量已 ≥95% 的 Go 金鑰**上,以 `quotaGate: false` 對 `ocgo:opencode-go/beam-free` 做一次**短逾時(60 秒)**簡答呼叫:①成功 → 免費期模型確實免門檻,可考慮內建(條目標明、免費期結束時依 R-OCGO-1⑩ 下架或改標、加測試);②逾時或失敗 → 維持現狀並把字樣記入 `providers.mjs` 診斷段(同時解答「Go 到頂時 run 之行為」).
+- 現況記載處:`goQuotaGate.mjs` 檔頭【Unlimited免費期條目之連坐】、README 行為變更第 67 條④、`rulebook_quotagate.md` 已知限制⑩.

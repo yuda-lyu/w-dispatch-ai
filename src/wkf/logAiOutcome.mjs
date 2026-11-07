@@ -43,6 +43,10 @@ let OUTCOME_TEXT = Object.freeze({
 })
 
 
+//ledgerNoticed, 額度帳命中(quota-skip且source為ledger)已記過之條目＋重置時刻鍵(行程內模組層, 令「每行程每條目一次」跨記錄器實例成立; 見createAiEventLogger)
+let ledgerNoticed = new Set()
+
+
 //METHODS, 各等級依序嘗試之記錄器成員名
 let METHODS = {
     info: ['log', 'info'],
@@ -277,10 +281,11 @@ function logAiOutcome(opt) {
 
 
 /**
- * 建立遞補事件記錄函數(目前處理cooled事件：供應商或金鑰進入冷卻)，可直接掛進onEvent
+ * 建立遞補事件記錄函數(目前處理cooled事件：供應商或金鑰進入冷卻；與quota-skip事件之額度帳命中)，可直接掛進onEvent
  *
  * 特點：
- * 回傳(ev)=>void，ev.type為'cooled'時以WARN記一行(供應商冷卻：降至鏈尾；scope為'key'之金鑰冷卻：降至組內最後)，其餘事件忽略；
+ * 回傳(ev)=>void，ev.type為'cooled'時以WARN記一行(供應商冷卻：降至鏈尾；scope為'key'之金鑰冷卻：降至組內最後)；
+ * ev.type為'quota-skip'且source為'ledger'(訂閱類條目因store.quota記載額度用盡至某時刻而被略過)時以WARN記一行「額度帳：<id> 至 <until> 略過」，每行程每條目(同一重置時刻)只記一次；其餘事件忽略；
  * 記錄器之規則同logAiOutcome(成員呼叫形式、兩種介面、整行遮蔽、自身失敗吞掉)；log缺或非物件即throw
  *
  * @param {Object} opt 輸入設定物件
@@ -303,6 +308,18 @@ function createAiEventLogger(opt) {
     let pre = prefixOf(get(opt, 'tag', ''))
 
     return (ev) => {
+
+        //額度帳命中(quota-skip且source為ledger): 該條目因store.quota記載「至某時刻額度用盡」而被略過; 每行程每條目(同一重置時刻)只記一行, 免滿額期間每輪每席洗版
+        if (get(ev, 'type', null) === 'quota-skip' && get(ev, 'source', null) === 'ledger') {
+            let pid = get(ev, 'providerId', '?')
+            let until = get(ev, 'until', null)
+            let k = `${pid}|${until}`
+            if (!ledgerNoticed.has(k)) {
+                ledgerNoticed.add(k)
+                emitLine(log, 'warn', `${pre}額度帳：${pid} 至 ${until === null || until === undefined ? '?' : until} 略過（額度用盡，重置前不派；quotaGate: false 可關閉）`)
+            }
+            return
+        }
         if (get(ev, 'type', null) !== 'cooled') {
             return
         }
@@ -317,5 +334,15 @@ function createAiEventLogger(opt) {
 }
 
 
+/**
+ * 清空「額度帳命中已記過」之行程內記錄(僅供單元測試；對外匯出鍵不含此函數)
+ *
+ * @returns {undefined} 無回傳值
+ */
+function resetLedgerNotice() {
+    ledgerNoticed.clear()
+}
+
+
 export default logAiOutcome
-export { createAiEventLogger, OUTCOME_TEXT, oneline }
+export { createAiEventLogger, OUTCOME_TEXT, oneline, resetLedgerNotice }

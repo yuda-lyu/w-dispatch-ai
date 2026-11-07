@@ -62,7 +62,8 @@ import { callHookSync } from './callUserFn.mjs'
  * @param {String} [opt.cwd=null] 輸入CLI類條目之工作目錄字串，預設null
  * @param {Object} [opt.store=null] 輸入狀態持久化物件{get,set}，建議createFileStore({ dir })令游標與冷卻跨行程保留，預設null代表行程內記憶體
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入CLI類條目spawn前之機器級守門設定，原樣交dispatchAiFallback(false關閉；物件可覆寫maxCli、ramUsedMax、cpuMax等，預設只對opencode啟用，見cliSpawnGate.mjs檔頭)，預設undefined
- * @param {Boolean|Object} [opt.quotaGate=undefined] 輸入OpenCode Go條目之用量冷卻設定，原樣交dispatchAiFallback(false關閉；物件可覆寫rollingMax、weeklyMax、monthlyMax、cacheMs，見goQuotaGate.mjs檔頭)，預設undefined
+ * @param {Boolean|Object} [opt.quotaGate=undefined] 輸入用量門檻設定，原樣交dispatchAiFallback(false關閉；物件可覆寫OpenCode Go條目之rollingMax、weeklyMax、monthlyMax、cacheMs〔見goQuotaGate.mjs檔頭〕，與訂閱類條目〔claude無金鑰者、codex、antigravity；2026-11-07起預設開啟〕之claudeMax、codexMax、antigravityMax、windowMax等〔見subQuotaGate.mjs檔頭〕)，預設undefined
+ * @param {Function} [opt.quotaUntilOf=undefined] 輸入訂閱類條目失敗後由失敗結果判定額度重置時刻之同步函數(r)=>Date|ISO字串|毫秒數|null，原樣交dispatchAiFallback(見其opt.quotaUntilOf)，預設undefined
  * @param {Function} [opt.onUsage=null] 輸入用量回調(providerId)=>void，於try事件呼叫，預設null
  * @param {Function} [opt.onEvent=null] 輸入事件回調(ev)=>void，每個遞補事件皆轉呼叫，預設null
  * @returns {Object} 回傳物件，內含callAI(async函數(prompt, { timeoutMs, budgetMs, validate, acceptTruncated, onEvent })，回dispatchAiFallback原始結果並另掛providersSkipped與providersMissing；逐次budgetMs為正整數時本次整輪預算取min(建構budgetMs，逐次budgetMs)，只收緊不放寬，未給、null或非法視為未給而沿用建構值)、providers(解析後條目陣列，含金鑰勿寫入日誌)、skipped(缺金鑰而停用之字串陣列，形如'id（ENVVAR 無金鑰）')、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之提示物件)
@@ -123,7 +124,7 @@ function createAiCaller(opt = {}) {
 
     //建構期設定, 只收有給(非undefined與null)者原樣交dispatchAiFallback, 其檢核與預設由其負責
     let base = {}
-    for (let k of ['maxRetries', 'budgetMs', 'minAttemptMs', 'cooldownMs', 'coolDetect', 'cwd', 'store', 'spawnGate', 'quotaGate']) {
+    for (let k of ['maxRetries', 'budgetMs', 'minAttemptMs', 'cooldownMs', 'coolDetect', 'cwd', 'store', 'spawnGate', 'quotaGate', 'quotaUntilOf']) {
         let v = get(opt, k, null)
         if (v !== null && v !== undefined) {
             base[k] = v

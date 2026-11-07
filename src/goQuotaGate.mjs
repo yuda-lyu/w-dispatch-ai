@@ -5,6 +5,7 @@ import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isenum from 'wsemi/src/isenum.mjs'
 import opencodeGoUsage from './opencodeGoUsage.mjs'
+import { judgeWindowItems, cachedQuery } from './quotaJudge.mjs'
 import { awaitUserFn, readCallerObj } from './callUserFn.mjs'
 
 
@@ -19,6 +20,14 @@ import { awaitUserFn, readCallerObj } from './callUserFn.mjs'
 //   而官方各模型月額獨立(見providers.mjs檔頭【OpenCode Go】段之官方月額表)。故本層以單一百分比(任一視窗≥門檻)擋該把金鑰之「全部」ocgo:條目:
 //   無從得知是哪個模型用掉額度, 也無法讓Unlimited之免費期模型(beam-free、crouton-alpha-free、iceman-contributor-free)免於被一併略過。
 //   使用端若以為「其他模型仍有額度」卻整組被略過, 即此限制所致; 需要單獨放行者以條目或呼叫層的`quotaGate: false`(或調高門檻)處理。
+//
+// 【Unlimited免費期條目之連坐(2026-11-07 ke340評估, Gitea #93; 不改行為)】被擋的是「整把金鑰」, 故該金鑰因付費模型用量達門檻時, 免費期條目(beam-free、crouton-alpha-free、iceman-contributor-free)亦被略過。
+//   曾評估「內建之免費期條目不受該金鑰用量門檻約束」而不採: 缺證據——金鑰用量達門檻或到頂時, 免費期模型是否仍可呼叫從未實測(本層存在的前提即「Go額度到頂時run之行為與字樣未查明」,
+//   免費池到頂時run不結束只到逾時), 繞過門檻會把「略過一次」換成「可能整個逾時(預設300秒)」, 與本層目的相反; 且此項不得以真模型呼叫驗證。要放行者以條目或呼叫層的quotaGate: false逐條處理、自擔風險;
+//   待實證(在用量≥門檻之金鑰上以quotaGate: false對一條免費期條目做一次短逾時呼叫)後再決定是否內建, 見規則帳本R-OCGO-5。
+//
+// 【與訂閱類門檻共用判定件(2026-11-07 Gitea #93)】視窗判定(judgeWindowItems)與快取(cachedQuery)抽至quotaJudge.mjs, Go只負責把rolling／weekly／monthly三視窗轉成視窗項;
+//   行為(判定、快取、事件)逐案不變。同一個quotaGate鍵亦作用於訂閱類條目(claude無金鑰者、codex、antigravity), 見subQuotaGate.mjs。
 //
 // 【不得誤判到頂(用量端點官方文件未載, 為實測所得, 見opencodeGoUsage.mjs檔頭)】只有「端點成功回應且該視窗之percent為有效數字且 ≥ 門檻」或「該視窗status明確為'rate-limited'」才擋:
 //   端點失敗(逾時、網路、401／403／429／其他非2xx、非JSON、形狀不符)、視窗缺漏、percent缺漏或非數字 → 一律不擋(fail-open), 另以結果之reason:'error'讓呼叫端記WARN;
@@ -124,34 +133,23 @@ function judgeGoUsage(usage, max) {
     if (!isobj(usage) || usage.ok !== true || !isobj(usage.usage)) {
         return { blocked: false, reason: 'error', windows: [], until: null, errorType: isestr(get(usage, 'errorType', null)) ? usage.errorType : 'other', code: get(usage, 'code', null) }
     }
-    let windows = []
+    //視窗判定與訂閱類共用(quotaJudge.mjs): 此處只把Go三視窗轉成視窗項
+    let items = []
     for (let w of WINDOWS) {
         let win = get(usage.usage, w.name, null)
         if (!isobj(win)) {
             continue
         }
-        let m = max[w.name]
-        let pct = get(win, 'percent', null)
-        let hasPct = pct !== null && pct !== undefined && isenum(pct)
-        let overLimit = m !== null && hasPct && Number(typeof pct === 'string' ? pct.trim() : pct) >= m
-        let stated = get(win, 'status', null) === 'rate-limited'
-        if (overLimit || stated) {
-            windows.push({
-                name: w.name,
-                percent: hasPct ? Number(typeof pct === 'string' ? pct.trim() : pct) : null,
-                resetsAt: isestr(win.resetsAt) ? win.resetsAt : null,
-                limited: stated,
-            })
-        }
+        items.push({
+            name: w.name,
+            percent: get(win, 'percent', null),
+            max: max[w.name],
+            limited: get(win, 'status', null) === 'rate-limited',
+            resetsAt: win.resetsAt,
+        })
     }
-    let until = null
-    if (windows.length > 0) {
-        let ts = windows.map((x) => (isestr(x.resetsAt) ? Date.parse(x.resetsAt) : NaN))
-        if (ts.every((t) => Number.isFinite(t))) {
-            until = windows[ts.indexOf(Math.max(...ts))].resetsAt
-        }
-    }
-    return { blocked: windows.length > 0, reason: windows.length > 0 ? 'limit' : 'ok', windows, until }
+    let j = judgeWindowItems(items)
+    return { blocked: j.blocked, reason: j.blocked ? 'limit' : 'ok', windows: j.windows, until: j.until }
 }
 
 
@@ -174,20 +172,10 @@ function fingerprint(key) {
  * @returns {Promise} 回傳Promise，resolve回傳判定物件(同judgeGoUsage，另帶cached：是否取自快取)
  */
 async function checkGoQuota(cfg, key) {
-    let st = cfg.state || moduleState
+    let st = stateOf(cfg)
     let fp = fingerprint(key)
-    let t = cfg.now()
-    let hit = st.cache.get(fp)
-    if (hit !== undefined) {
-        if (hit.pending) {
-            return { ...(await hit.pending), cached: true }
-        }
-        if (t - hit.t >= 0 && t - hit.t < cfg.cacheMs) {
-            return { ...hit.decision, cached: true }
-        }
-    }
     let usageFn = cfg.usage || ((o) => opencodeGoUsage(o))
-    let pending = (async () => {
+    return cachedQuery(st, fp, cfg, async () => {
         let r = await awaitUserFn(() => usageFn({ key, timeoutMs: cfg.timeoutMs }), cfg.timeoutMs + 2000)
         if (r.state !== 'value') {
             return { blocked: false, reason: 'error', windows: [], until: null, errorType: r.state === 'timeout' ? 'timeout' : 'other', code: null }
@@ -198,12 +186,19 @@ async function checkGoQuota(cfg, key) {
         catch {
             return { blocked: false, reason: 'error', windows: [], until: null, errorType: 'other', code: null } //回應物件不可讀(拋錯之getter等): 不擋
         }
-    })()
-    st.cache.set(fp, { t, pending })
-    let decision = await pending
-    st.cache.set(fp, { t: cfg.now(), decision })
-    return { ...decision, cached: false }
+    })
 }
 
 
-export { resolveQuotaGate, createQuotaGateState, isGoEntry, judgeGoUsage, checkGoQuota }
+/**
+ * 取某設定所用之狀態物件(設定給了state即用之，否則為模組層單一狀態物件；訂閱類門檻subQuotaGate.mjs共用同一快取表)
+ *
+ * @param {Object} cfg 輸入resolveQuotaGate或resolveSubQuotaGate之結果(含state或null)
+ * @returns {Object} 回傳狀態物件
+ */
+function stateOf(cfg) {
+    return cfg.state || moduleState
+}
+
+
+export { resolveQuotaGate, createQuotaGateState, isGoEntry, judgeGoUsage, checkGoQuota, stateOf }
