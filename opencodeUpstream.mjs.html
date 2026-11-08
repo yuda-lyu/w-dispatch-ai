@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>opencodeUpstream.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addErrorDetail">addErrorDetail</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#addUpstream">addUpstream</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyGroupOf">agyGroupOf</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#applyOutputTokenMax">applyOutputTokenMax</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#baseErrorOf">baseErrorOf</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#cachedQuery">cachedQuery</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castOutputTokenMax">castOutputTokenMax</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#checkAgyStdinSupport">checkAgyStdinSupport</a></li><li><a href="global.html#checkGoQuota">checkGoQuota</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#clampUntilMs">clampUntilMs</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#claudeLimitUntilOf">claudeLimitUntilOf</a></li><li><a href="global.html#clearAgyStdinSupportCache">clearAgyStdinSupportCache</a></li><li><a href="global.html#cliSpawnGate">cliSpawnGate</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#composeError">composeError</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createCountCli">createCountCli</a></li><li><a href="global.html#createCpuSampler">createCpuSampler</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createGateState">createGateState</a></li><li><a href="global.html#createQuotaGateState">createQuotaGateState</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createTailCapture">createTailCapture</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultImages">defaultImages</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#descOf">descOf</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#envStrOf">envStrOf</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#errorMessageOf">errorMessageOf</a></li><li><a href="global.html#exeStem">exeStem</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fail">fail</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#findEnvKey">findEnvKey</a></li><li><a href="global.html#findStdinConflictArg">findStdinConflictArg</a></li><li><a href="global.html#fingerprint">fingerprint</a></li><li><a href="global.html#finishOf">finishOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getFormatArg">getFormatArg</a></li><li><a href="global.html#getOpencodeLogPath">getOpencodeLogPath</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#gwOf">gwOf</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isGoEntry">isGoEntry</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#isTransientFailure">isTransientFailure</a></li><li><a href="global.html#itemsOf">itemsOf</a></li><li><a href="global.html#judgeGoUsage">judgeGoUsage</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#judgeWindowItems">judgeWindowItems</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#learnQuotaFromFailure">learnQuotaFromFailure</a></li><li><a href="global.html#ledgerFind">ledgerFind</a></li><li><a href="global.html#ledgerPut">ledgerPut</a></li><li><a href="global.html#lock">lock</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#maskDiag">maskDiag</a></li><li><a href="global.html#maxFor">maxFor</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#norm">norm</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#opencodeGoUsage">opencodeGoUsage</a></li><li><a href="global.html#parseAgyStream">parseAgyStream</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#parseOpencodeEvents">parseOpencodeEvents</a></li><li><a href="global.html#parsePsComm">parsePsComm</a></li><li><a href="global.html#parseTasklistCsv">parseTasklistCsv</a></li><li><a href="global.html#pickUpstream">pickUpstream</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#querySnapshot">querySnapshot</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#readOpencodeUpstream">readOpencodeUpstream</a></li><li><a href="global.html#readTailLines">readTailLines</a></li><li><a href="global.html#readTickets">readTickets</a></li><li><a href="global.html#recheck">recheck</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resetLedgerNotice">resetLedgerNotice</a></li><li><a href="global.html#reshapeAgyResult">reshapeAgyResult</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#resolveQuotaGate">resolveQuotaGate</a></li><li><a href="global.html#resolveSpawnGate">resolveSpawnGate</a></li><li><a href="global.html#resolveSubQuotaGate">resolveSubQuotaGate</a></li><li><a href="global.html#run">run</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#runText">runText</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#sampleRamDefault">sampleRamDefault</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#stateOf">stateOf</a></li><li><a href="global.html#subFamilyOf">subFamilyOf</a></li><li><a href="global.html#subGateDecide">subGateDecide</a></li><li><a href="global.html#tailOf">tailOf</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toMs">toMs</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#toSnapshot">toSnapshot</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#unlock">unlock</a></li><li><a href="global.html#upstreamClassOf">upstreamClassOf</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#valueOf">valueOf</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#wallToUtc">wallToUtc</a></li><li><a href="global.html#windowApplies">windowApplies</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li><li><a href="global.html#withOutputInfo">withOutputInfo</a></li><li><a href="global.html#writeTicket">writeTicket</a></li><li><a href="global.html#zoneWall">zoneWall</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">opencodeUpstream.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import get from 'lodash-es/get.js'
+import isestr from 'wsemi/src/isestr.mjs'
+import { maskDiag, upstreamClassOf } from './failureDiag.mjs'
+
+
+// opencodeUpstream.mjs — opencode失敗時對時擷取其日誌檔中的上游錯誤原因(2026-11-08 da110, Gitea #110)
+//
+// 【為何需要】opencode遇供應商錯誤時, stderr常只有`Unexpected server error. Check server logs for details.`之類通稱字樣(或根本不帶, 例免費層429令run不結束而以逾時回報),
+//   真因(`[overloaded]`、`[prefill_cap_refused]`、`Free usage limit reached`、`Model access is disabled`…)只在opencode日誌檔, 且時戳為UTC、須人工對時。
+//
+// 【日誌位置與格式(2026-11-08本機實查, opencode 1.19.5, Windows)】
+//   路徑: `&lt;XDG_DATA_HOME 或 ~/.local/share>/opencode/log/opencode.log`(Windows亦為使用者目錄下`.local\share`, 與auth.json之資料夾同源, 見dispatchOpencode檔頭;
+//         單一累積檔, 實查6MB／約3萬行起於2026-07-06; 找不到opencode.log時退用該資料夾內最新之*.log, 以涵蓋依啟動時間分檔之版本)。
+//   格式: 每行一筆, 空白分隔之key=value; 字串值以雙引號包起並以反斜線跳脫:
+//     timestamp=2026-11-05T08:51:51.776Z level=ERROR run=0ebec445 message="stream error" providerID=opencode modelID=beam-free session.id=ses_… small=false agent=build mode=primary error.error="AI_APICallError: Free usage limit reached. …"
+//   原因鍵為`error.error`(非建議檔所寫之`error=`); 同一次失敗常見兩筆: agent=build(實際請求)與agent=title(標題小模型的附帶請求, 訊息可為`AI_RetryError: Failed after 3 attempts. Last error: …`);
+//   行序不嚴格依時戳(實查有相差數百毫秒之倒序), 故不假設有序, 逐行依時戳篩選。
+//
+// 【時窗】失敗時刻tFail(讀檔當下)往前往後各60秒; 失敗耗時超過60秒者(例逾時)下界延至該次嘗試的起點(tFail − durationMs), 否則慢失敗之原因行(發生於嘗試之初)會落在時窗之外——
+//   免費層429即是如此(run不結束, 原因行在起點後約1秒, 失敗在逾時才回報)。再加2秒下界寬限(起點為事後由耗時推算)。
+// 【相符與擇一】providerID與modelID須與`-m provider/model`相符(model無provider前綴者無從比對, 不擷取); 多筆相符時優先agent非title者, 其次取時戳最晚者(重試後之最終原因)。
+// 【只在失敗時讀一次、讀檔失敗不拋】僅讀檔尾UPSTREAM_TAIL_BYTES(2MiB)並於記憶體內篩選; 不存在、不可讀、無相符者回null; 任何例外皆吞掉。擷取內容同樣經maskDiag遮罩。
+
+
+//讀檔尾位元組數與擷取原因之最大字元數
+let UPSTREAM_TAIL_BYTES = 2 * 1024 * 1024
+let UPSTREAM_MAX = 300
+
+//時窗: 失敗時刻前後各60秒; 下界寬限2秒
+let WINDOW_MS = 60 * 1000
+let SLACK_MS = 2000
+
+
+/**
+ * 解出opencode日誌檔路徑：opt.file給了非空字串即用之；否則`&lt;XDG_DATA_HOME或~/.local/share>/opencode/log/opencode.log`(XDG_DATA_HOME先取env再取process.env)
+ *
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {String} [opt.file=''] 輸入日誌檔路徑字串，預設''代表依平台推得
+ * @param {Object} [opt.env=null] 輸入子進程環境變數物件(取其XDG_DATA_HOME)，預設null
+ * @returns {String} 回傳日誌檔絕對路徑字串
+ * @example
+ *
+ * import { getOpencodeLogPath } from './src/opencodeUpstream.mjs'
+ *
+ * console.log(getOpencodeLogPath({ file: 'x/y.log' }).endsWith('y.log'))
+ * // => true
+ *
+ */
+function getOpencodeLogPath(opt = {}) {
+    let file = get(opt, 'file', '')
+    if (isestr(file) &amp;&amp; file.trim() !== '') {
+        return path.resolve(file)
+    }
+    let xdg = get(opt, 'env.XDG_DATA_HOME', '')
+    if (!isestr(xdg) || xdg === '') {
+        xdg = isestr(process.env.XDG_DATA_HOME) ? process.env.XDG_DATA_HOME : ''
+    }
+    let dataHome = xdg !== '' ? xdg : path.join(os.homedir(), '.local', 'share')
+    return path.join(dataHome, 'opencode', 'log', 'opencode.log')
+}
+
+
+/**
+ * 取日誌行中某鍵之值(雙引號字串解跳脫，否則取至下一空白)
+ *
+ * @param {String} line 輸入日誌行
+ * @param {String} key 輸入鍵名(如`error.error`)
+ * @returns {String} 回傳值字串，無此鍵為空字串
+ */
+function valueOf(line, key) {
+    let k = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&amp;')
+    let m = new RegExp(`(?:^|\\s)${k}=(?:"((?:[^"\\\\]|\\\\.)*)"|(\\S+))`).exec(line)
+    if (!m) {
+        return ''
+    }
+    if (m[1] !== undefined) {
+        try {
+            return JSON.parse(`"${m[1]}"`)
+        }
+        catch {
+            return m[1].replace(/\\(["\\])/g, '$1').replace(/\\n/g, '\n')
+        }
+    }
+    return m[2]
+}
+
+
+/**
+ * 由日誌行陣列取時窗內providerID／modelID相符之ERROR行的上游原因(純函數，不讀檔)
+ *
+ * @param {Array} lines 輸入日誌行字串陣列(不必有序)
+ * @param {Object} q 輸入查詢物件
+ * @param {String} q.provider 輸入providerID
+ * @param {String} q.modelID 輸入modelID
+ * @param {Number} q.fromMs 輸入時窗下界(epoch毫秒，含)
+ * @param {Number} q.toMs 輸入時窗上界(epoch毫秒，含)
+ * @returns {Object} 回傳物件{ text, timestamp, agent }(text為原因原文)；無相符者回傳null
+ * @example
+ *
+ * import { pickUpstream } from './src/opencodeUpstream.mjs'
+ *
+ * let line = 'timestamp=2026-11-05T08:51:51.776Z level=ERROR run=a message="stream error" providerID=opencode modelID=beam-free agent=build error.error="AI_APICallError: [overloaded]"'
+ * console.log(pickUpstream([line], { provider: 'opencode', modelID: 'beam-free', fromMs: Date.parse('2026-11-05T08:51:00Z'), toMs: Date.parse('2026-11-05T08:52:00Z') }).text)
+ * // => 'AI_APICallError: [overloaded]'
+ *
+ */
+function pickUpstream(lines, q) {
+    let best = null
+    for (let raw of lines) {
+        if (!isestr(raw) || !raw.includes('level=ERROR')) {
+            continue
+        }
+        let line = raw.replace(/\r$/, '')
+        let mt = /^timestamp=(\S+)\s+level=ERROR\b/.exec(line)
+        if (!mt) {
+            continue
+        }
+        let t = Date.parse(mt[1])
+        if (!Number.isFinite(t) || t &lt; q.fromMs || t > q.toMs) {
+            continue
+        }
+        if (valueOf(line, 'providerID') !== q.provider || valueOf(line, 'modelID') !== q.modelID) {
+            continue
+        }
+        let text = valueOf(line, 'error.error') || valueOf(line, 'error')
+        if (text === '') {
+            let msg = valueOf(line, 'message')
+            text = (msg !== 'stream error') ? msg : ''
+        }
+        if (text.trim() === '') {
+            continue
+        }
+        let agent = valueOf(line, 'agent')
+        let cand = { text, timestamp: mt[1], agent, t }
+        let better = best === null ||
+            ((best.agent === 'title') &amp;&amp; (cand.agent !== 'title')) ||
+            ((best.agent === 'title') === (cand.agent === 'title') &amp;&amp; cand.t > best.t)
+        if (better) {
+            best = cand
+        }
+    }
+    return best === null ? null : { text: best.text, timestamp: best.timestamp, agent: best.agent }
+}
+
+
+/**
+ * 讀檔尾(至多maxBytes位元組)並切成行(檔案大於maxBytes時丟棄開頭的不完整行)
+ *
+ * @param {String} file 輸入檔案路徑
+ * @param {Number} maxBytes 輸入最大位元組數
+ * @returns {Promise} 回傳Promise，resolve回傳行字串陣列；檔案不存在或不可讀時reject
+ */
+async function readTailLines(file, maxBytes) {
+    let fh = await fs.promises.open(file, 'r')
+    try {
+        let st = await fh.stat()
+        let len = Math.min(st.size, maxBytes)
+        let pos = st.size - len
+        let buf = Buffer.alloc(len)
+        await fh.read(buf, 0, len, pos)
+        let lines = buf.toString('utf8').split('\n')
+        if (pos > 0) {
+            lines.shift()
+        }
+        return lines
+    }
+    finally {
+        await fh.close()
+    }
+}
+
+
+/**
+ * 失敗後擷取opencode日誌中的上游原因：讀日誌檔尾一次，取失敗時窗內providerID／modelID相符之ERROR行的原因；找不到、讀檔失敗、無法比對皆回傳null，永不拋錯
+ *
+ * @param {Object} q 輸入查詢物件
+ * @param {String} q.model 輸入`-m`之模型字串，須為`&lt;providerID>/&lt;modelID>`形式(無前綴者無從比對，回傳null)
+ * @param {Number} q.tFailMs 輸入失敗時刻(epoch毫秒)
+ * @param {Number} q.durationMs 輸入該次嘗試耗時毫秒
+ * @param {String} [q.file=''] 輸入日誌檔路徑，預設''代表依平台推得
+ * @param {Object} [q.env=null] 輸入子進程環境變數物件(取XDG_DATA_HOME)
+ * @param {Array} [q.secrets=[]] 輸入已知機密值字串陣列(擷取內容遮罩用)
+ * @returns {Promise} 回傳Promise，resolve回傳物件{ upstream(遮罩並折為單行、至多300字元之原因字串), class(簡短分類，可為空字串), timestamp, file }；無則null；不會reject
+ * @example
+ * //need opencode.log of a failed run
+ *
+ * import { readOpencodeUpstream } from './src/opencodeUpstream.mjs'
+ *
+ * let r = await readOpencodeUpstream({ model: 'opencode-go/deepseek-v4-pro', tFailMs: Date.now(), durationMs: 1500 })
+ * console.log(r === null || typeof r.upstream === 'string')
+ * // => true
+ *
+ */
+async function readOpencodeUpstream(q) {
+    try {
+        let model = get(q, 'model', '')
+        if (!isestr(model)) {
+            return null
+        }
+        let i = model.indexOf('/')
+        if (i &lt;= 0 || i >= model.length - 1) {
+            return null
+        }
+        let provider = model.slice(0, i)
+        let modelID = model.slice(i + 1)
+        let tFail = get(q, 'tFailMs', Date.now())
+        let dur = Math.max(Number(get(q, 'durationMs', 0)) || 0, 0)
+        let fromMs = Math.min(tFail - WINDOW_MS, tFail - dur) - SLACK_MS
+        let toMs = tFail + WINDOW_MS
+        let file = getOpencodeLogPath({ file: get(q, 'file', ''), env: get(q, 'env', null) })
+        let lines = null
+        try {
+            lines = await readTailLines(file, UPSTREAM_TAIL_BYTES)
+        }
+        catch {
+            lines = null
+        }
+
+        //預設路徑找不到opencode.log時, 退用同資料夾內最新之*.log(依啟動時間分檔之版本); 呼叫端明給路徑者不退用
+        if (lines === null &amp;&amp; !(isestr(get(q, 'file', '')) &amp;&amp; q.file.trim() !== '')) {
+            let dir = path.dirname(file)
+            let names = await fs.promises.readdir(dir)
+            let best = null
+            for (let n of names.filter((v) => v.endsWith('.log'))) {
+                let st = await fs.promises.stat(path.join(dir, n))
+                if (best === null || st.mtimeMs > best.mtimeMs) {
+                    best = { name: n, mtimeMs: st.mtimeMs }
+                }
+            }
+            if (best !== null) {
+                file = path.join(dir, best.name)
+                lines = await readTailLines(file, UPSTREAM_TAIL_BYTES)
+            }
+        }
+        if (lines === null) {
+            return null
+        }
+        let p = pickUpstream(lines, { provider, modelID, fromMs, toMs })
+        if (p === null) {
+            return null
+        }
+        let secrets = get(q, 'secrets', [])
+        let flat = maskDiag(p.text, secrets).replace(/\s+/g, ' ').trim()
+        let upstream = flat.length > UPSTREAM_MAX ? `${flat.slice(0, UPSTREAM_MAX - 1)}…` : flat
+        if (upstream === '') {
+            return null
+        }
+        return { upstream, class: upstreamClassOf(upstream), timestamp: p.timestamp, file }
+    }
+    catch {
+        return null
+    }
+}
+
+
+export { UPSTREAM_TAIL_BYTES, UPSTREAM_MAX, getOpencodeLogPath, pickUpstream, readOpencodeUpstream }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Nov 08 2026 22:11:26 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
