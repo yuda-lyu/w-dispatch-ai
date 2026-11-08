@@ -62,7 +62,7 @@ let OWN_KEYS = ['exe', 'model', 'sandbox', 'extraArgs', 'input']
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(codex預設不限，守門為no-op、零成本)，false關閉，物件可明給maxCli(數codex.exe)、ramUsedMax、cpuMax等逐次開啟，等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；失敗(離開碼非零、訊號結束、逾時)時error為`Exit code N: <stderr尾段>`(至多300字元，已遮蔽金鑰權杖；stderr空時Exit code退用stdout尾段)並另帶errorDetail({ exitCode(數字或null), stderrTail, stdoutTail(僅stdout非空) })；成功時另帶finish(終止原因簡值，codex輸出不揭露故恆為'unknown')與outputChars(stdout字元數)，見runExecCli.mjs與failureDiag.mjs檔頭；本函數不會reject
  * @example
  * //need codex cli in system PATH
  *

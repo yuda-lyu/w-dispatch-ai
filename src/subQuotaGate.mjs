@@ -13,6 +13,7 @@ import { judgeWindowItems, cachedQuery } from './quotaJudge.mjs'
 import { ledgerFind, ledgerPut, toMs, clampUntilMs } from './quotaLedger.mjs'
 import claudeLimitUntilOf from './claudeLimitUntil.mjs'
 import { awaitUserFn, callHookSync, readCallerObj } from './callUserFn.mjs'
+import { baseErrorOf } from './failureDiag.mjs'
 
 
 // subQuotaGate.mjs — 訂閱類條目(claude無金鑰者、codex、antigravity)之用量門檻(內部模組, 由dispatchAiFallback於選到該條目、呼叫轉接器前使用; Gitea #93; 帳本R-SPAWNGATE-6)
@@ -487,7 +488,8 @@ function learnQuotaFromFailure(sq, state, saveState, r, quotaUntilOf) {
             }
         }
         if (!Number.isFinite(untilMs) && sq.kind === 'claude') {
-            let text = [get(r, 'error', null), get(r, 'stderr', null), get(r, 'stdout', null)].filter(isestr).join('\n')
+            //error取原始部分(baseErrorOf): CLI失敗之error可能已補上`: <stderr尾段>`(2026-11-08 da110), 該尾段是新增資訊, 不另當額度證據(stderr／stdout欄位照舊)
+            let text = [baseErrorOf(get(r, 'error', null)), get(r, 'stderr', null), get(r, 'stdout', null)].filter(isestr).join('\n')
             untilMs = toMs(claudeLimitUntilOf(text, nowMs))
         }
         if (!Number.isFinite(untilMs) || untilMs <= nowMs) {

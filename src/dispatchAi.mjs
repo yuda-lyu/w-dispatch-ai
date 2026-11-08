@@ -2,6 +2,7 @@ import keys from 'lodash-es/keys.js'
 import includes from 'lodash-es/includes.js'
 import adapters from './adapters.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import { withOutputInfo } from './failureDiag.mjs'
 
 
 /**
@@ -56,8 +57,9 @@ async function dispatchAi(kind, prompt, opt = {}) {
     //fn
     let fn = adapters[kind]
 
-    //dispatch, prompt與opt之檢核由各轉接器自行負責
-    return fn(prompt, opt)
+    //dispatch, prompt與opt之檢核由各轉接器自行負責;
+    //成功結果補finish／outputChars(2026-11-08 da110): CLI類轉接器已於runExecCli補齊(此處原樣通過), REST類在此依finishReason與stdout補(已有者不覆寫, 失敗結果不動)
+    return withOutputInfo(await fn(prompt, opt))
 }
 
 

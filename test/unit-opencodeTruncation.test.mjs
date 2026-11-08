@@ -5,6 +5,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import dispatchOpencode from '../src/dispatchOpencode.mjs'
 import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
+import { baseErrorOf } from '../src/failureDiag.mjs'
 import { OUTPUT_TOKEN_MAX_ENV, DEFAULT_OUTPUT_TOKEN_MAX } from '../src/outputTokenMax.mjs'
 import createFakeOpencodeEvents from './tools/fakeOpencodeEventsForTest.mjs'
 
@@ -264,7 +265,7 @@ describe('dispatchOpencode之輸出上限注入與截斷偵測', function() {
             let off = await run('length-then-error')
             let on = await run('length-then-error', { detectTruncation: true })
             let r = [on.ok, on.code, on.errorType, on.error, on.truncated, on.finishReason, on.stdout, on.stderr.includes('Error: boom after length')]
-            let rr = [false, 1, 'exec', 'Exit code 1', undefined, undefined, off.stdout, true]
+            let rr = [false, 1, 'exec', 'Exit code 1: Error: boom after length', undefined, undefined, off.stdout, true] //da110: error帶stderr尾段(json路徑為還原後之`Error: 訊息`)
             assert.strict.deepEqual(r, rr)
 
             //自給--format json(原始事件)之路徑亦同: 失敗結果不帶truncated／finishReason
@@ -320,10 +321,12 @@ describe('dispatchOpencode之輸出上限注入與截斷偵測', function() {
         it('離開碼、errorType同預設路徑, 錯誤訊息還原於stderr, stdout為空', async function() {
             let off = await run('error')
             let on = await run('error', { detectTruncation: true })
-            let r = [on.ok, on.code, on.errorType, on.error, on.stdout, on.stderr.includes('Error: boom from fake'), on.truncated]
-            let rr = [off.ok, off.code, off.errorType, off.error, '', true, undefined]
+            //da110: error帶stderr尾段——json路徑為還原後之`Error: 訊息`(無預設格式之`> build · 模型`標頭), 預設路徑尾段則含該標頭; 原始部分(baseErrorOf)與離開碼、errorType兩路相同
+            let r = [on.ok, on.code, on.errorType, baseErrorOf(on.error), on.stdout, on.stderr.includes('Error: boom from fake'), on.truncated]
+            let rr = [off.ok, off.code, off.errorType, baseErrorOf(off.error), '', true, undefined]
             assert.strict.deepEqual(r, rr)
             assert.strict.deepEqual(off.stderr.includes('Error: boom from fake'), true)
+            assert.strict.deepEqual([on.error, off.error], ['Exit code 1: Error: boom from fake', 'Exit code 1: > build · fake/m Error: boom from fake'])
         })
 
         it('事件流長於500字元而失敗(execCli失敗時stdout只留前500字元): 錯誤訊息仍還原於stderr, stdout與預設路徑同形(裁500、標明總長)', async function() {

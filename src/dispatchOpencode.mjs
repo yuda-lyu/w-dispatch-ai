@@ -13,6 +13,8 @@ import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import parseOpencodeEvents from './parseOpencodeEvents.mjs'
 import { applyOutputTokenMax } from './outputTokenMax.mjs'
+import { addUpstream, finishOf } from './failureDiag.mjs'
+import { readOpencodeUpstream } from './opencodeUpstream.mjs'
 
 
 // dispatchOpencode.mjs — 以opencode CLI呼叫AI模型
@@ -114,6 +116,12 @@ import { applyOutputTokenMax } from './outputTokenMax.mjs'
 //   opt.acceptTruncated:true可放行length且有可見輸出之結果(標truncated:true)。未開detectTruncation者行為與修前逐位元相同(預設格式、不判截斷)。
 //   呼叫端自給`--format json`(extraArgs)者視為要原始事件: stdout不改寫, 但仍判截斷並加欄位。
 //
+// 【失敗原因帶回與日誌對時擷取(opt.opencodeLog, 2026-11-08 da110, Gitea #110)】失敗(離開碼非零、逾時)時error帶stderr尾段並加errorDetail(共用邏輯在runExecCli.mjs／failureDiag.mjs);
+//   opencode另在失敗後讀其日誌檔一次, 取失敗時刻±60秒內providerID／modelID相符之ERROR行的原因附入errorDetail.upstream並把簡短分類放進error文字(實查日誌格式與位置見opencodeUpstream.mjs檔頭)。
+//   本機實查(opencode 1.19.5): 不存在之model令run離開碼1, stderr為帶ANSI色碼之`Error: {pretty JSON UnknownError「Unexpected server error. Check server logs for details.」, ref}`——通稱字樣, 真因只在日誌;
+//   detectTruncation(--format json)時錯誤改為stdout之error事件, stderr空, 本轉接器還原為`Error: 訊息`後交runExecCli取尾段(reshapeResult以diagStderr／diagStdout傳遞, runExecCli取用後移除)。
+//   另: 成功結果之finish取自事件流最後一步之終止原因(僅detectTruncation為true時可得, 否則由runExecCli補'unknown')。
+//
 // 【第三方provider須另給config(2026-08-09於本機實測確認)】
 //   opencode僅內建自家provider，第三方(例如agnes-ai)未定義於設定檔時，
 //   只注入金鑰仍無法使用：實測`opencode models`不列出該provider之模型，
@@ -129,7 +137,7 @@ let DEFAULT_AGENT = 'build'
 
 
 //本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli(acceptTruncated由runExecCli讀取, 見其檔頭; reshapeResult為本轉接器內部傳給runExecCli之接縫, 呼叫端給的一律剔除)
-let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'config', 'extraArgs', 'input', 'env', 'outputTokenMax', 'detectTruncation', 'reshapeResult']
+let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'config', 'extraArgs', 'input', 'env', 'outputTokenMax', 'detectTruncation', 'reshapeResult', 'opencodeLog', 'diagSecrets']
 
 
 //accumulate上限(字元), 偵測截斷時累積子進程stdout全文以供解析, 超出部分不再累積
@@ -188,7 +196,8 @@ function getFormatArg(args) {
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0；另有不佔此次數之暫時性錯誤重試(失敗訊息含`database is locked`、非逾時且耗時<15秒者多重試一次，每次呼叫至多一次，attempts照實累計)
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(opencode預設啟用：機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等，每10秒再查，等逾10分鐘或計數取樣失敗即放行；且只守exe為真的opencode)，false關閉，true取預設且不受exe比對限制，物件可覆寫maxCli、ramUsedMax、cpuMax、minGapMs(放行最小間隔，預設1500毫秒，false關閉)、pollMs、gateWaitMaxMs等；等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；detectTruncation為true且最後一步被輸出上限截斷時另帶truncated(true)、finishReason('length')、tokens(最後一步之token用量物件{ total, input, output, reasoning, cache })，未截斷者不加此三欄；本函數不會reject
+ * @param {String|Boolean} [opt.opencodeLog=undefined] 輸入opencode日誌檔路徑字串(覆寫預設)或false(不讀)，失敗(離開碼非零、訊號結束、逾時)時才讀一次(檔尾至多2MiB)，取失敗時刻前後各60秒內providerID／modelID與model(須為`provider/model`形式)相符之level=ERROR行的原因，遮蔽後附入errorDetail.upstream並把簡短分類放進error文字(如`Exit code 1 [overloaded]: …`)；找不到、檔案不存在或不可讀皆略過、不影響成敗、不拋錯；預設undefined代表依平台推得`<XDG_DATA_HOME(opt.env優先於process.env)或~/.local/share>/opencode/log/opencode.log`(找不到時退用同資料夾最新之*.log)，見opencodeUpstream.mjs檔頭
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；detectTruncation為true且最後一步被輸出上限截斷時另帶truncated(true)、finishReason('length')、tokens(最後一步之token用量物件{ total, input, output, reasoning, cache })，未截斷者不加此三欄；失敗(離開碼非零、訊號結束、逾時)時error為`Exit code N[ [分類]]: <stderr尾段>`(尾段至多300字元，已遮蔽金鑰權杖；stderr空時Exit code退用stdout尾段)並另帶errorDetail({ exitCode(數字或null), stderrTail, stdoutTail(僅stdout非空), upstream(僅日誌擷取到時) })；成功時另帶finish(終止原因簡值：detectTruncation為true時取最後一步之終止原因，如'stop'、'length'，否則'unknown')與outputChars(stdout字元數)；incomplete(截斷)失敗結果不加errorDetail、finish、outputChars；本函數不會reject
  * @example
  * //need opencode cli in system PATH
  *
@@ -363,28 +372,62 @@ async function dispatchOpencode(prompt, opt = {}) {
             }
             let ok = get(r, 'ok', false) === true
             let extra = (ok && p.truncated) ? { truncated: true, finishReason: p.finishReason, tokens: p.tokens } : {}
+
+            //成功結果之終止原因(最後一步之reason; 事件流才取得到): finish由runExecCli補outputChars, 已有finish者不覆寫(見failureDiag.mjs)
+            let fin = ok ? { finish: finishOf(p.finishReason) } : {}
             if (!rewrite) {
-                return { ...r, ...extra }
+
+                //呼叫端自給--format json(要原始事件): stdout不動; 失敗時錯誤事件還原之`Error: 訊息`仍作為診斷尾段來源(diagStderr, 由runExecCli取用後移除)
+                if (ok) {
+                    return { ...r, ...extra, ...fin }
+                }
+                return p.stderr !== '' ? { ...r, diagStderr: `${get(r, 'stderr', '') || ''}${p.stderr}` } : r
             }
             if (ok) {
-                return { ...r, stdout: p.stdout, ...extra }
+                return { ...r, stdout: p.stdout, ...extra, ...fin }
             }
 
-            //失敗: 還原stdout(裁500同execCli)與stderr(原stderr後接錯誤事件還原之`Error: 訊息`, 裁1000同execCli之離開碼失敗)
-            let se = `${get(r, 'stderr', '') || ''}${p.stderr}`
-            return { ...r, stdout: strTruncate(p.stdout, 500, optTruncate), stderr: strTruncate(se, 1000, optTruncate) }
+            //失敗: 還原stdout(裁500同execCli)與stderr(原stderr後接錯誤事件還原之`Error: 訊息`, 裁1000同execCli之離開碼失敗);
+            //未裁切之還原全文另以diagStderr／diagStdout交runExecCli取診斷尾段(裁切後之欄位只留前段, 錯誤行常在末端; 取用後自結果移除);
+            //無錯誤事件可還原時不給diagStderr(由runExecCli取擷取到之原始stderr尾端)
+            let seFull = `${get(r, 'stderr', '') || ''}${p.stderr}`
+            return {
+                ...r,
+                stdout: strTruncate(p.stdout, 500, optTruncate),
+                stderr: strTruncate(seFull, 1000, optTruncate),
+                ...(p.stderr !== '' ? { diagStderr: seFull } : {}),
+                diagStdout: p.stdout,
+            }
         }
     }
 
     //execCli(經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上機器可讀之errorType, 見runExecCli.mjs), prompt一律走stdin
     //spawnGate(使用端給之守門設定, 原樣留在optCli)與spawnGateKind交runExecCli於每次spawn前守門(見cliSpawnGate.mjs; opencode預設啟用)
-    return runExecCli(exe, args, {
+    //diagSecrets: 本次注入之金鑰, 失敗診斷尾段(errorDetail、error文字)據以精確遮蔽(見failureDiag.mjs)
+    let r = await runExecCli(exe, args, {
         ...optCli,
         input: prompt,
         env,
         timeoutMs,
         spawnGateKind: 'opencode',
+        diagSecrets: isestr(key) ? [key] : [],
     })
+
+    //失敗(exec或逾時, 即runExecCli已加errorDetail者)時對時擷取opencode日誌中的上游原因(見opencodeUpstream.mjs): 只讀一次、讀檔失敗或無相符不影響結果、永不拋錯;
+    //opencodeLog為false關閉, 字串為日誌檔路徑(覆寫預設), 未給依平台推得
+    let logOpt = get(opt, 'opencodeLog', null)
+    if (r.ok !== true && isobj(r.errorDetail) && logOpt !== false) {
+        let up = await readOpencodeUpstream({
+            model,
+            tFailMs: Date.now(),
+            durationMs: r.durationMs,
+            file: isestr(logOpt) ? logOpt : '',
+            env,
+            secrets: isestr(key) ? [key] : [],
+        })
+        r = addUpstream(r, up)
+    }
+    return r
 }
 
 

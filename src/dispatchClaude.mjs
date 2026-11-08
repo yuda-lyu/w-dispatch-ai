@@ -215,6 +215,17 @@ function redactResult(r, key) {
     if (typeof out.error === 'string') {
         out.error = redactApiKeyText(out.error, secrets)
     }
+
+    //errorDetail(da110: stderr／stdout尾段): runExecCli已遮罩, 此處再套同規則作最後防線
+    if (out.errorDetail && typeof out.errorDetail === 'object') {
+        let d = { ...out.errorDetail }
+        for (let k of ['stderrTail', 'stdoutTail', 'upstream']) {
+            if (typeof d[k] === 'string') {
+                d[k] = redactApiKeyText(d[k], secrets)
+            }
+        }
+        out.errorDetail = d
+    }
     return out
 }
 
@@ -329,7 +340,7 @@ async function addFailureKind(out, raw, ckKey, tap, cc) {
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(claude預設不限，守門為no-op、零成本，因等候模型回應時claude.exe幾乎不占CPU)，false關閉，物件可明給maxCli(數claude.exe)、ramUsedMax、cpuMax等逐次開啟，等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；API金鑰在場(opt.key，或opt.env.ANTHROPIC_API_KEY)且已進入執行階段之失敗結果另帶failureKind(細分類：'no-credit'沒額度｜'context-too-long'脈絡過長｜'rate-limit'限流｜'overloaded'過載｜'key-invalid'金鑰無效｜'no-permission'無權限｜'network'網路(逾時、連不上)｜'env-error'呼叫方式或環境錯誤(CLI稱沒額度但REST同一把金鑰成功)｜'other'其他，判準、字樣來源與未實測者見failureKind.mjs檔頭)、failureDetail(命中之失敗文字或判定說明，已遮蔽金鑰，≤約400字元)與crossCheck(僅CLI字樣判為沒額度時：{ done, restKind, restStatus }，done為是否已做REST交叉確認)；成功結果與訂閱路徑(未給金鑰)之結果不帶這些欄位，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；API金鑰在場(opt.key，或opt.env.ANTHROPIC_API_KEY)且已進入執行階段之失敗結果另帶failureKind(細分類：'no-credit'沒額度｜'context-too-long'脈絡過長｜'rate-limit'限流｜'overloaded'過載｜'key-invalid'金鑰無效｜'no-permission'無權限｜'network'網路(逾時、連不上)｜'env-error'呼叫方式或環境錯誤(CLI稱沒額度但REST同一把金鑰成功)｜'other'其他，判準、字樣來源與未實測者見failureKind.mjs檔頭)、failureDetail(命中之失敗文字或判定說明，已遮蔽金鑰，≤約400字元)與crossCheck(僅CLI字樣判為沒額度時：{ done, restKind, restStatus }，done為是否已做REST交叉確認)；成功結果與訂閱路徑(未給金鑰)之結果不帶這些欄位；失敗(離開碼非零、訊號結束、逾時)時error為`Exit code N: <尾段>`(尾段至多300字元，已遮蔽金鑰權杖；claude把失敗訊息印在stdout而stderr空，故stderr空時Exit code之尾段取自stdout)並另帶errorDetail({ exitCode(數字或null), stderrTail, stdoutTail(僅stdout非空) })；成功時另帶finish(claude輸出不揭露終止原因故恆為'unknown')與outputChars(stdout字元數)，見runExecCli.mjs與failureDiag.mjs檔頭；本函數不會reject
  * @example
  * //need claude cli in system PATH
  *
@@ -473,11 +484,13 @@ async function dispatchClaude(prompt, opt = {}) {
 
     //execCli(經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上機器可讀之errorType, 見runExecCli.mjs), prompt一律走stdin
     //spawnGate(使用端給之守門設定, 原樣留在optCli)與spawnGateKind交runExecCli於每次spawn前守門(見cliSpawnGate.mjs; claude預設不限)
+    //diagSecrets: 本次注入之金鑰(opt.key或opt.env.ANTHROPIC_API_KEY), 失敗診斷尾段(errorDetail、error文字)據以精確遮蔽(另有sk-ant-樣式遮蔽, 見failureDiag.mjs)
     let r = await runExecCli(exe, args, {
         ...optCli,
         input: prompt,
         timeoutMs,
         spawnGateKind: 'claude',
+        diagSecrets: [hasKey ? key : null, ckKey].filter((v) => isestr(v)),
     })
 
     //補送串流遮蔽器保留之尾端; 回調拋錯不得使本函數reject(其錯誤屬呼叫端回調, 這裡的補送不另外外拋)

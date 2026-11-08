@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>failureDiag.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addErrorDetail">addErrorDetail</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#addUpstream">addUpstream</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyGroupOf">agyGroupOf</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#applyOutputTokenMax">applyOutputTokenMax</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#baseErrorOf">baseErrorOf</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#cachedQuery">cachedQuery</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castOutputTokenMax">castOutputTokenMax</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#checkAgyStdinSupport">checkAgyStdinSupport</a></li><li><a href="global.html#checkGoQuota">checkGoQuota</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#clampUntilMs">clampUntilMs</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#claudeLimitUntilOf">claudeLimitUntilOf</a></li><li><a href="global.html#clearAgyStdinSupportCache">clearAgyStdinSupportCache</a></li><li><a href="global.html#cliSpawnGate">cliSpawnGate</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#composeError">composeError</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createCountCli">createCountCli</a></li><li><a href="global.html#createCpuSampler">createCpuSampler</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createGateState">createGateState</a></li><li><a href="global.html#createQuotaGateState">createQuotaGateState</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createTailCapture">createTailCapture</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultImages">defaultImages</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#descOf">descOf</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#envStrOf">envStrOf</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#errorMessageOf">errorMessageOf</a></li><li><a href="global.html#exeStem">exeStem</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fail">fail</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#findEnvKey">findEnvKey</a></li><li><a href="global.html#findStdinConflictArg">findStdinConflictArg</a></li><li><a href="global.html#fingerprint">fingerprint</a></li><li><a href="global.html#finishOf">finishOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getFormatArg">getFormatArg</a></li><li><a href="global.html#getOpencodeLogPath">getOpencodeLogPath</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#gwOf">gwOf</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isGoEntry">isGoEntry</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#isTransientFailure">isTransientFailure</a></li><li><a href="global.html#itemsOf">itemsOf</a></li><li><a href="global.html#judgeGoUsage">judgeGoUsage</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#judgeWindowItems">judgeWindowItems</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#learnQuotaFromFailure">learnQuotaFromFailure</a></li><li><a href="global.html#ledgerFind">ledgerFind</a></li><li><a href="global.html#ledgerPut">ledgerPut</a></li><li><a href="global.html#lock">lock</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#maskDiag">maskDiag</a></li><li><a href="global.html#maxFor">maxFor</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#norm">norm</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#opencodeGoUsage">opencodeGoUsage</a></li><li><a href="global.html#parseAgyStream">parseAgyStream</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#parseOpencodeEvents">parseOpencodeEvents</a></li><li><a href="global.html#parsePsComm">parsePsComm</a></li><li><a href="global.html#parseTasklistCsv">parseTasklistCsv</a></li><li><a href="global.html#pickUpstream">pickUpstream</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#querySnapshot">querySnapshot</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#readOpencodeUpstream">readOpencodeUpstream</a></li><li><a href="global.html#readTailLines">readTailLines</a></li><li><a href="global.html#readTickets">readTickets</a></li><li><a href="global.html#recheck">recheck</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resetLedgerNotice">resetLedgerNotice</a></li><li><a href="global.html#reshapeAgyResult">reshapeAgyResult</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#resolveQuotaGate">resolveQuotaGate</a></li><li><a href="global.html#resolveSpawnGate">resolveSpawnGate</a></li><li><a href="global.html#resolveSubQuotaGate">resolveSubQuotaGate</a></li><li><a href="global.html#run">run</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#runText">runText</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#sampleRamDefault">sampleRamDefault</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#stateOf">stateOf</a></li><li><a href="global.html#subFamilyOf">subFamilyOf</a></li><li><a href="global.html#subGateDecide">subGateDecide</a></li><li><a href="global.html#tailOf">tailOf</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toMs">toMs</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#toSnapshot">toSnapshot</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#unlock">unlock</a></li><li><a href="global.html#upstreamClassOf">upstreamClassOf</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#valueOf">valueOf</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#wallToUtc">wallToUtc</a></li><li><a href="global.html#windowApplies">windowApplies</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li><li><a href="global.html#withOutputInfo">withOutputInfo</a></li><li><a href="global.html#writeTicket">writeTicket</a></li><li><a href="global.html#zoneWall">zoneWall</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">failureDiag.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import get from 'lodash-es/get.js'
+import isestr from 'wsemi/src/isestr.mjs'
+import isobj from 'wsemi/src/isobj.mjs'
+import maskDiagText from 'wsemi/src/maskDiagText.mjs'
+import { API_KEY_PATTERN } from './redactText.mjs'
+
+
+// failureDiag.mjs — CLI失敗結果之診斷資訊(errorDetail)、error文字補原因、成功結果之finish與outputChars(2026-11-08 da110, Gitea #110)
+//
+// 【為何需要】CLI轉接器失敗時, 上層(管線紀錄)原本只拿到`Exit code 1`或`TIMEOUT after 300s`, 真因要人去CLI日誌對時才找得到。
+//   本檔提供:
+//   ①失敗結果加`errorDetail: { exitCode, stderrTail, stdoutTail? }`(opencode另可有upstream, 見opencodeUpstream.mjs), 並把error文字寫成`Exit code N: &lt;尾段>`;
+//   ②成功結果加`finish`(終止原因, 取不到為'unknown')與`outputChars`(輸出字元數)。
+//
+// 【實查(2026-11-08, 本機opencode 1.19.5、claude、codex、agy)】各CLI於「本機即失敗」時的輸出形態不同, 故尾段來源不只stderr:
+//   opencode: stderr帶ANSI色碼之`Error: {…pretty JSON…}`(例UnknownError「Unexpected server error. Check server logs for details.」+ ref), stdout空;
+//             加`--format json`時錯誤改為stdout之type error事件、stderr空(dispatchOpencode之reshapeResult還原為`Error: 訊息`, 經diagStderr提示傳入)。
+//   claude:   失敗訊息(例`API Error: Connection refused …`、`Credit balance is too low`)印在**stdout**, 離開碼1; stderr通常空, 但給API金鑰(ANTHROPIC_API_KEY)時
+//             stderr會有無關警告(`⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY … takes precedence over your claude.ai login`, 2026-11-08實跑)——
+//             故`Exit code N`之error文字對claude改取stdout尾段優先(runExecCli依spawnGateKind傳prefer: 'stdout'), 其他CLI取stderr尾段、其空時才退用stdout(逾時與訊號結束不退用); errorDetail兩者皆帶。
+//   codex:    參數錯誤時stderr為clap之`error: invalid value …`(離開碼2)。
+//   agy:      參數錯誤時第一行為錯誤(`flags provided but not defined: …`)、其後接整份Usage(約3.4KB)——尾段落在Usage末端而非第一行, 屬已知限制(轉接器自身之固定旗標不會觸發, 僅extraArgs誤給時發生)。
+//
+// 【尾段與長度】尾段取最後DIAG_TAIL_MAX(300)字元(本套件既有慣例: failureKind之detail 200、額度查詢之snip 300; 取300令一則pretty JSON錯誤可完整保留),
+//   先去ANSI色碼、CRLF正規化、行內空白折疊、略過空白行後再取尾; error文字內換行折為單一空白。完整輸出不在此保存(結果之stdout/stderr欄位維持execCli原樣: 失敗時stdout 500、stderr 1000字元)。
+//
+// 【遮罩(診斷輸出與遮罩規格, dspec〈診斷輸出與遮罩〉D1單一實作)】不另寫遮罩: 全部交wsemi之maskDiagText(呼叫端給的機密值、網址帳密、password／token／secret／authorization／api-key鍵值對、Bearer憑證),
+//   並以opt.patterns宣告本套件之金鑰樣式(DIAG_PATTERNS: sk-ant-〔沿用redactText.mjs之API_KEY_PATTERN, 單一來源〕、sk-／oc_sk_／AIza／ghp_／JWT等, 由maskDiagText執行);
+//   一律以'***'取代(與共用語料之期望一致, 測試以語料之wire案重跑); 遮蔽先於截尾(跨尾段邊界之金鑰不會殘留前段); 遮蔽失敗回'***'(fail-closed)。
+//
+// 【不改變既有失敗分類】error文字加了原因後, 既有以error文字判定之處不得因此改判:
+//   errorType於加原因之前已依原error決定(runExecCli先attachErrorType); isKeyIndependentFail(error含ENOENT)與learnQuotaFromFailure(claude額度字樣)改讀baseErrorOf(r.error)(原始error);
+//   failureKind(classifyCliFailure)僅讀errorType、error是否TIMEOUT開頭與stdout／stderr欄位, 皆不受影響。呼叫端自給之coolDetect／quotaUntilOf收到完整結果, 其字樣判定請讀stderr欄位(見README)。
+
+
+//尾段最大字元數
+let DIAG_TAIL_MAX = 300
+
+//輸出擷取視窗(字元): 子進程輸出只保留此長度之尾端供取尾段(記憶體上限)
+let DIAG_KEEP = 4096
+
+//本套件宣告之金鑰樣式, 交wsemi maskDiagText以opt.patterns執行(re自動加g旗標)
+//sk-ant-(Anthropic金鑰, 沿用redactText.mjs之樣式單一來源)、sk-／oc_sk_(OpenAI相容與OpenCode金鑰)、AIza(Google API金鑰)、ghp_等(GitHub權杖)、JWT(eyJ…三段)
+let DIAG_PATTERNS = [
+    { re: new RegExp(API_KEY_PATTERN.source) },
+    { re: /\b(?:sk|oc_sk|pk|rk)[-_][A-Za-z0-9_-]{12,}/ },
+    { re: /\bAIza[0-9A-Za-z_-]{30,}/ },
+    { re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/ },
+    { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
+]
+
+//ANSI控制序列(刻意比對控制字元ESC)
+// eslint-disable-next-line no-control-regex
+let RE_ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g
+
+//execCli原生error三種形狀: `Exit code N`、`Signal: X`、`TIMEOUT after Ns`(含`(子進程未能結束)`); 其後可接本檔加的` [分類]`與`: 尾段`
+let RE_NATIVE_ERROR = /^(Exit code -?\d+|Signal: [A-Za-z0-9_]+|TIMEOUT after [\d.]+s(?:\([^)]*\))?)(?: \[[^\]\n]*\])?(?:: [\s\S]*)?$/
+
+//上游原因分類(依序比對, 先中先用); 方括號詞(如`[overloaded]`)優先於此表
+let UPSTREAM_CLASSES = [
+    [/Free usage limit/i, 'Free usage limit'],
+    [/Model access is disabled/i, 'Model access is disabled'],
+    [/Model is disabled/i, 'Model is disabled'],
+    [/Model is unavailable/i, 'Model is unavailable'],
+    [/active OpenCode Go subscription is required/i, 'Go subscription required'],
+    [/No payment method/i, 'No payment method'],
+    [/Invalid API key/i, 'Invalid API key'],
+    [/Global regions|trains on request data|Privacy settings/i, 'privacy setting'],
+    [/Model not found|ProviderModelNotFound/i, 'Model not found'],
+    [/Rate limit|too many requests/i, 'rate limit'],
+    [/overloaded/i, 'overloaded'],
+    [/context[ _-]?(?:length|window)|maximum context|too long/i, 'context too long'],
+]
+
+//方括號詞中視為雜訊者(遮罩字樣、JS物件字串化等)
+let BRACKET_IGNORE = ['redacted', 'object', 'done']
+
+
+/**
+ * 遮蔽診斷文字中的機密值(交wsemi之maskDiagText並宣告本套件之金鑰樣式，不另寫遮罩；一律以'***'取代，失敗回'***')
+ *
+ * @param {*} text 輸入文字，非字串者以空字串處理
+ * @param {Array} [secrets=[]] 輸入呼叫端已知之機密值字串陣列(如本次注入之金鑰)，非字串項略過
+ * @returns {String} 回傳遮蔽後文字
+ * @example
+ *
+ * import { maskDiag } from './src/failureDiag.mjs'
+ *
+ * console.log(maskDiag('bad key sk-test-FAKEKEY1234567890abcdef, token=abc123456', []))
+ * // => 'bad key ***, token=***'
+ *
+ */
+function maskDiag(text, secrets = []) {
+    try {
+        let s = isestr(text) ? text : ''
+        let list = (Array.isArray(secrets) ? secrets : []).filter((v) => isestr(v))
+        return maskDiagText(s, list, { patterns: DIAG_PATTERNS })
+    }
+    catch {
+        return '***'
+    }
+}
+
+
+/**
+ * 取診斷尾段：去ANSI色碼、正規化換行與空白、略過空白行、遮蔽機密值，再取最後max字元(被截去開頭時以…接頭)
+ *
+ * @param {*} text 輸入子進程輸出文字，非字串者以空字串處理
+ * @param {Object} [opt={}] 輸入設定物件
+ * @param {Number} [opt.max=300] 輸入尾段最大字元數
+ * @param {Array} [opt.secrets=[]] 輸入呼叫端已知之機密值字串陣列
+ * @returns {String} 回傳尾段字串，無內容為空字串
+ * @example
+ *
+ * import { tailOf } from './src/failureDiag.mjs'
+ *
+ * console.log(tailOf('\u001b[91mError: \u001b[0mboom\r\n\r\n   at x  '))
+ * // => 'Error: boom\n at x'
+ *
+ */
+function tailOf(text, opt = {}) {
+    try {
+        let max = get(opt, 'max', DIAG_TAIL_MAX)
+        let src = isestr(text) ? text.slice(-DIAG_KEEP) : ''
+        let lines = src
+            .replace(RE_ANSI, '')
+            .replace(/\r\n?/g, '\n')
+            .split('\n')
+            .map((v) => v.replace(/[ \t]+/g, ' ').trim())
+            .filter((v) => v !== '')
+        let s = maskDiag(lines.join('\n'), get(opt, 'secrets', []))
+        if (s.length &lt;= max) {
+            return s
+        }
+        let cut = s.slice(-(max - 1))
+        if (/^[\udc00-\udfff]/.test(cut)) {
+            cut = cut.slice(1) //不切在代理對中間
+        }
+        return `…${cut}`
+    }
+    catch {
+        return ''
+    }
+}
+
+
+/**
+ * 取error文字之原始部分：execCli原生三種形狀(`Exit code N`、`Signal: X`、`TIMEOUT after Ns`)去掉本檔加上的分類與尾段，其餘文字原樣回傳
+ *
+ * 供以error文字判定之處(isKeyIndependentFail、learnQuotaFromFailure、getErrorType)使用，令加了原因之error文字不改變既有分類結果
+ *
+ * @param {*} error 輸入error文字
+ * @returns {*} 回傳原始error文字；非原生形狀者原樣回傳
+ * @example
+ *
+ * import { baseErrorOf } from './src/failureDiag.mjs'
+ *
+ * console.log(baseErrorOf('Exit code 1 [overloaded]: Error: ENOENT something'))
+ * // => 'Exit code 1'
+ *
+ * console.log(baseErrorOf('FETCH_ERROR: ENOENT'))
+ * // => 'FETCH_ERROR: ENOENT'
+ *
+ */
+function baseErrorOf(error) {
+    if (!isestr(error)) {
+        return error
+    }
+    let m = RE_NATIVE_ERROR.exec(error)
+    return m ? m[1] : error
+}
+
+
+/**
+ * 由上游錯誤原文取簡短分類：方括號詞(如`[overloaded]`、`[prefill_cap_refused]`)優先，其次比對已知字樣表，皆無為空字串
+ *
+ * @param {*} text 輸入上游錯誤原文
+ * @returns {String} 回傳分類字串(不含方括號)，無則空字串
+ * @example
+ *
+ * import { upstreamClassOf } from './src/failureDiag.mjs'
+ *
+ * console.log(upstreamClassOf('AI_APICallError: Upstream request failed: [overloaded]'))
+ * // => 'overloaded'
+ *
+ * console.log(upstreamClassOf('Free usage limit reached. Free models work in OpenCode'))
+ * // => 'Free usage limit'
+ *
+ */
+function upstreamClassOf(text) {
+    if (!isestr(text)) {
+        return ''
+    }
+    for (let m of text.matchAll(/\[([A-Za-z][\w-]{1,40})\]/g)) {
+        if (!BRACKET_IGNORE.includes(m[1].toLowerCase())) {
+            return m[1]
+        }
+    }
+    for (let [re, label] of UPSTREAM_CLASSES) {
+        if (re.test(text)) {
+            return label
+        }
+    }
+    return ''
+}
+
+
+/**
+ * 組出加了原因之error文字：`&lt;原始>[ [分類]][: &lt;尾段>]`，尾段內換行折為單一空白
+ *
+ * @param {String} base 輸入原始error文字(`Exit code 1`等)
+ * @param {String} cls 輸入簡短分類，空字串不加
+ * @param {String} tail 輸入尾段，空字串不加
+ * @returns {String} 回傳error文字
+ * @example
+ *
+ * import { composeError } from './src/failureDiag.mjs'
+ *
+ * console.log(composeError('Exit code 1', 'overloaded', 'Error: x\ny'))
+ * // => 'Exit code 1 [overloaded]: Error: x y'
+ *
+ */
+function composeError(base, cls, tail) {
+    let t = isestr(tail) ? tail.replace(/\s*\n\s*/g, ' ').trim() : ''
+    return `${base}${isestr(cls) &amp;&amp; cls !== '' ? ` [${cls}]` : ''}${t !== '' ? `: ${t}` : ''}`
+}
+
+
+/**
+ * 失敗結果加診斷資訊：errorDetail與(execCli原生error形狀者)加了原因之error文字；不動stdout、stderr、errorType與其他欄位
+ *
+ * 僅處理errorType為'exec'或'timeout'之失敗(離開碼非零、訊號結束、逾時)；spawn、params、validation、incomplete、aborted與成功結果原樣回傳。
+ * 尾段來源優先序: hints(轉接器還原之完整文字) > 擷取到之子進程輸出尾端 > 結果之stdout／stderr欄位。
+ * error文字用stderr尾段；stderr為空且為`Exit code N`(非逾時、非訊號)時退用stdout尾段(claude把失敗訊息印在stdout)。
+ *
+ * @param {Object} r 輸入失敗結果物件(須已有errorType)
+ * @param {Object} [src={}] 輸入尾段來源物件
+ * @param {String} [src.stderr] 輸入stderr完整文字或尾端(優先於結果之stderr欄位)
+ * @param {String} [src.stdout] 輸入stdout完整文字或尾端(優先於結果之stdout欄位)
+ * @param {Array} [src.secrets] 輸入呼叫端已知之機密值字串陣列
+ * @param {String} [src.prefer='stderr'] 輸入error文字尾段優先取哪個輸出('stderr'或'stdout')，'stdout'僅對`Exit code N`有作用(claude把失敗訊息印在stdout，stderr可能只有無關警告)，預設'stderr'
+ * @returns {Object} 回傳加上errorDetail後之結果物件(淺拷貝)；不適用者回傳原物件
+ * @example
+ *
+ * import { addErrorDetail } from './src/failureDiag.mjs'
+ *
+ * let r = addErrorDetail({ ok: false, code: 1, error: 'Exit code 1', errorType: 'exec', stdout: '', stderr: 'Error: boom' }, {})
+ * console.log(r.error, r.errorDetail)
+ * // => 'Exit code 1: Error: boom' { exitCode: 1, stderrTail: 'Error: boom' }
+ *
+ */
+function addErrorDetail(r, src = {}) {
+    if (!isobj(r) || r.ok === true) {
+        return r
+    }
+    let et = get(r, 'errorType', '')
+    if (et !== 'exec' &amp;&amp; et !== 'timeout') {
+        return r
+    }
+    let secrets = get(src, 'secrets', [])
+    let pick = (a, b) => (isestr(a) &amp;&amp; a !== '') ? a : (isestr(b) ? b : '')
+    let stderrTail = tailOf(pick(get(src, 'stderr', ''), r.stderr), { secrets })
+    let stdoutTail = tailOf(pick(get(src, 'stdout', ''), r.stdout), { secrets })
+    let errorDetail = {
+        exitCode: typeof r.code === 'number' ? r.code : null,
+        stderrTail,
+        ...(stdoutTail !== '' ? { stdoutTail } : {}),
+    }
+    let out = { ...r, errorDetail }
+
+    //error文字僅在execCli原生形狀時加原因(agy／opencode等轉接器自組之error已含診斷, 原樣保留)
+    //尾段來源: 預設stderr(空且為Exit code時退用stdout); prefer為'stdout'者(claude: 失敗訊息在stdout, stderr可能只有無關警告)且為Exit code時stdout優先(空才退用stderr)
+    let base = get(r, 'error', '')
+    if (isestr(base) &amp;&amp; baseErrorOf(base) === base &amp;&amp; RE_NATIVE_ERROR.test(base)) {
+        let isExit = /^Exit code /.test(base)
+        let tail = stderrTail
+        if (isExit &amp;&amp; get(src, 'prefer', 'stderr') === 'stdout') {
+            tail = stdoutTail !== '' ? stdoutTail : stderrTail
+        }
+        else if (tail === '' &amp;&amp; isExit) {
+            tail = stdoutTail
+        }
+        out.error = composeError(base, '', tail)
+    }
+    return out
+}
+
+
+/**
+ * 失敗結果加上日誌擷取之上游原因：errorDetail.upstream，與(execCli原生error形狀者)把簡短分類放入error文字；須已經addErrorDetail(有errorDetail)，否則原樣回傳
+ *
+ * @param {Object} r 輸入失敗結果物件
+ * @param {Object} up 輸入readOpencodeUpstream之回傳物件{ upstream, class }；null原樣回傳r
+ * @returns {Object} 回傳加欄位後之結果物件(淺拷貝)；不適用者回傳原物件
+ * @example
+ *
+ * import { addUpstream } from './src/failureDiag.mjs'
+ *
+ * let r = { ok: false, error: 'Exit code 1: Error: x', errorType: 'exec', errorDetail: { exitCode: 1, stderrTail: 'Error: x' } }
+ * let r2 = addUpstream(r, { upstream: 'Upstream request failed: [overloaded]', class: 'overloaded' })
+ * console.log(r2.error, r2.errorDetail.upstream)
+ * // => 'Exit code 1 [overloaded]: Error: x' 'Upstream request failed: [overloaded]'
+ *
+ */
+function addUpstream(r, up) {
+    if (!isobj(up) || !isobj(r) || r.ok === true || !isobj(r.errorDetail)) {
+        return r
+    }
+    let out = { ...r, errorDetail: { ...r.errorDetail, upstream: get(up, 'upstream', '') } }
+    let err = get(r, 'error', '')
+    if (isestr(err) &amp;&amp; RE_NATIVE_ERROR.test(err)) {
+
+        //重組: 原始 + [分類] + 原尾段(stderr尾段或其退用之stdout尾段, 由原error文字取回)
+        let base = baseErrorOf(err)
+        let tail = err.slice(base.length).replace(/^(?: \[[^\]\n]*\])?(?:: )?/, '')
+        out.error = composeError(base, get(up, 'class', ''), tail)
+    }
+    return out
+}
+
+
+/**
+ * 取終止原因之簡短值：stop-like(stop、end_turn、stop_sequence、completed)為'stop'，max_tokens為'length'，其餘原值(小寫)，空值為'unknown'
+ *
+ * @param {*} v 輸入終止原因
+ * @returns {String} 回傳'stop'、'length'、其他原值或'unknown'
+ * @example
+ *
+ * import { finishOf } from './src/failureDiag.mjs'
+ *
+ * console.log(finishOf('end_turn'), finishOf('length'), finishOf(''))
+ * // => 'stop' 'length' 'unknown'
+ *
+ */
+function finishOf(v) {
+    if (!isestr(v) || v.trim() === '') {
+        return 'unknown'
+    }
+    let s = v.trim().toLowerCase()
+    if (['stop', 'end_turn', 'stop_sequence', 'completed'].includes(s)) {
+        return 'stop'
+    }
+    if (s === 'max_tokens') {
+        return 'length'
+    }
+    return s
+}
+
+
+/**
+ * 成功結果加finish與outputChars(已有者不覆寫；失敗結果與非物件原樣回傳)
+ *
+ * finish取自結果之finish或finishReason(經finishOf正規化)，取不到為'unknown'；outputChars為stdout字元數
+ *
+ * @param {Object} r 輸入結果物件
+ * @returns {Object} 回傳加欄位後之結果物件(淺拷貝)；不適用者回傳原物件
+ * @example
+ *
+ * import { withOutputInfo } from './src/failureDiag.mjs'
+ *
+ * console.log(withOutputInfo({ ok: true, stdout: 'abc' }))
+ * // => { ok: true, stdout: 'abc', finish: 'unknown', outputChars: 3 }
+ *
+ */
+function withOutputInfo(r) {
+    if (!isobj(r) || r.ok !== true) {
+        return r
+    }
+    let has = (k) => Object.prototype.hasOwnProperty.call(r, k)
+    if (has('finish') &amp;&amp; has('outputChars')) {
+        return r
+    }
+    let out = { ...r }
+    if (!has('finish')) {
+        out.finish = finishOf(isestr(r.finishReason) ? r.finishReason : '')
+    }
+    if (!has('outputChars')) {
+        out.outputChars = isestr(r.stdout) ? r.stdout.length : 0
+    }
+    return out
+}
+
+
+/**
+ * 建立子進程輸出尾端擷取器：逐塊餵入stdout／stderr，只保留各自最後DIAG_KEEP字元；每次嘗試開始(spawn)時重置
+ *
+ * @returns {Object} 回傳物件，內含pushOut(chunk)、pushErr(chunk)、reset()、out()、err()
+ * @example
+ *
+ * import { createTailCapture } from './src/failureDiag.mjs'
+ *
+ * let c = createTailCapture()
+ * c.pushErr('a')
+ * c.pushErr('b')
+ * console.log(c.err())
+ * // => 'ab'
+ *
+ */
+function createTailCapture() {
+    let o = ''
+    let e = ''
+    let keep = (s) => (s.length > DIAG_KEEP ? s.slice(s.length - DIAG_KEEP) : s)
+    return {
+        pushOut: (chunk) => {
+            if (typeof chunk === 'string') {
+                o = keep(o + chunk)
+            }
+        },
+        pushErr: (chunk) => {
+            if (typeof chunk === 'string') {
+                e = keep(e + chunk)
+            }
+        },
+        reset: () => {
+            o = ''
+            e = ''
+        },
+        out: () => o,
+        err: () => e,
+    }
+}
+
+
+export { DIAG_TAIL_MAX, DIAG_KEEP, DIAG_PATTERNS, maskDiag, tailOf, baseErrorOf, upstreamClassOf, composeError, addErrorDetail, addUpstream, finishOf, withOutputInfo, createTailCapture }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Nov 08 2026 22:11:26 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

@@ -211,7 +211,7 @@ describe('dispatchAntigravity', function() {
     it('離開碼非0時回傳失敗(如model與effort衝突時agy回exit 1)', async function() {
         let t = await dispatchAntigravity('abc', { exe: fake.exe, extraArgs: ['--fake-exit=1', '--fake-stderr=conflicts with --effort'] })
         let r = [t.ok, t.code, t.error, t.stderr]
-        let rr = [false, 1, 'Exit code 1', 'conflicts with --effort']
+        let rr = [false, 1, 'Exit code 1: conflicts with --effort', 'conflicts with --effort'] //da110: 非零離開之error帶stderr尾段(`Exit code N: <尾段>`)
         assert.strict.deepEqual(r, rr)
     })
 

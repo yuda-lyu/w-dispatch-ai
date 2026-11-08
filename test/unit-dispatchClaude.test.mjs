@@ -1,5 +1,6 @@
 import assert from 'assert'
 import dispatchClaude from '../src/dispatchClaude.mjs'
+import { baseErrorOf } from '../src/failureDiag.mjs'
 import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
 import spawnFailCases, { envUnreadableOpt } from './tools/spawnFailCasesForTest.mjs'
 
@@ -112,8 +113,9 @@ describe('dispatchClaude', function() {
 
     it('離開碼非0時回傳失敗', async function() {
         let t = await dispatchClaude('abc', { exe: fake.exe, extraArgs: ['--fake-exit=1'] })
-        let r = [t.ok, t.code, t.error]
-        let rr = [false, 1, 'Exit code 1']
+        //da110: 非零離開之error帶尾段(此假CLI的stderr空、把args等印在stdout, 故尾段取自stdout); 原始部分(baseErrorOf)與離開碼、errorType不變
+        let r = [t.ok, t.code, baseErrorOf(t.error), t.errorType, t.errorDetail.exitCode]
+        let rr = [false, 1, 'Exit code 1', 'exec', 1]
         assert.strict.deepEqual(r, rr)
     })
 

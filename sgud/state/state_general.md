@@ -19,4 +19,5 @@
 ## 三、已知待辦
 
 - `sgud/exp/experience.md` 已於 2026-11-03(da65)依全域設定 §14 整理:舊經驗抽出為 `experience_20261103.md`(逐字搬移,節號與標題不變),主檔約 14KB(加 da65 一節後約 18KB).
+- 2026-11-08(da110):`sgud/exp/experience.md` 加 da110 一節後逾門檻(約 34KB),已把 2026-10-23～11-05 之四節逐字抽出至 `experience_20261108.md`(約 18KB),主檔約 17KB;上列三檔仍未動.
 - **sgud 檔案大小**(2026-11-07 盤點,全域 §14 約 30KB 門檻):`sgud/rule/rulebook_spawngate.md`(約 35KB)、`sgud/rule/rulebook_opencodego.md`(約 34KB,本輪加入 ke339 後)、`sgud/exp/experience_20261103.md`(約 31.5KB)已逾門檻;第 325 項僅要求整理 `state.md`／`experience.md`,上列三檔未動,是否依類型再拆待主控安排.

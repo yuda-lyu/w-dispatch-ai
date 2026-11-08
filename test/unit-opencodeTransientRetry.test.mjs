@@ -175,7 +175,7 @@ describe('opencode暫時性錯誤(database is locked)重試一次(R-SPAWNGATE-5)
             let b = argsOf('other')
             let r1 = await dispatchOpencode('abc', { exe: fake.exe, spawnGate: false, extraArgs: a.extraArgs, transientRetry: FAST })
             let r2 = await dispatchOpencode('abc', { exe: fake.exe, spawnGate: false, extraArgs: b.extraArgs, transientRetry: FAST })
-            assert.strict.deepEqual([r1.ok, r1.attempts, r1.errorType, r1.error, await countOf(a.counter)], [false, 2, 'exec', 'Exit code 1', 2])
+            assert.strict.deepEqual([r1.ok, r1.attempts, r1.errorType, r1.error, await countOf(a.counter)], [false, 2, 'exec', 'Exit code 1: Error: Unexpected error database is locked', 2]) //da110: error帶stderr尾段
             assert.strict.deepEqual(Object.keys(r1).sort(), Object.keys(r2).sort())
             assert.strict.deepEqual(/database is locked/.test(r1.stderr), true)
         })

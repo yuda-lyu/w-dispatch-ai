@@ -1,6 +1,7 @@
 import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
+import { baseErrorOf } from './failureDiag.mjs'
 
 
 // getErrorType.mjs — 由失敗結果推導機器可讀之errorType
@@ -120,6 +121,9 @@ function getErrorType(r) {
     if (!isestr(error)) {
         return 'exec'
     }
+
+    //2026-11-08 da110: execCli原生error形狀可能已被補上`: <stderr尾段>`(failureDiag.mjs), 分類只看原始部分, 令尾段字樣(如ENOENT)不改變判定
+    error = baseErrorOf(error)
     if (error.indexOf('TIMEOUT') === 0) {
         return 'timeout'
     }

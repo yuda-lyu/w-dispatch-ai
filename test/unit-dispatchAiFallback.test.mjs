@@ -1,5 +1,6 @@
 import assert from 'assert'
 import dispatchAiFallback from '../src/dispatchAiFallback.mjs'
+import { baseErrorOf } from '../src/failureDiag.mjs'
 import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
 import fakeServerForApiTest from './tools/fakeServerForApiTest.mjs'
 
@@ -276,7 +277,7 @@ describe('dispatchAiFallback', function() {
         let r = [
             t.ok,
             t.code,
-            t.error,
+            baseErrorOf(t.error), //da110: error帶stderr／stdout尾段(`Exit code N: <尾段>`), 原始部分不變
             t.providerId,
             t.tried.map((x) => [x.providerId, x.outcome]),
         ]

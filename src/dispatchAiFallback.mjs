@@ -16,6 +16,7 @@ import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
 import { callHookSync, readCallerObj, errMsg, asText } from './callUserFn.mjs'
+import { baseErrorOf } from './failureDiag.mjs'
 
 
 // dispatchAiFallback.mjs — 多供應商自動遞補層
@@ -454,7 +455,9 @@ function isOfficialAnthropicEntry(attemptOpt) {
  */
 function isKeyIndependentFail(r) {
 
-    let error = get(r, 'error', '')
+    //以error文字判定之處只看原始部分(baseErrorOf): CLI失敗之error可能已補上`: <stderr尾段>`(2026-11-08 da110, 見failureDiag.mjs),
+    //尾段字樣(如ENOENT)是新增資訊, 不得令原本逐把換金鑰之失敗改判為整組跳過
+    let error = baseErrorOf(get(r, 'error', ''))
     if (!isestr(error)) {
         error = ''
     }

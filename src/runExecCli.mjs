@@ -1,6 +1,8 @@
 import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isenum from 'wsemi/src/isenum.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import delay from 'wsemi/src/delay.mjs'
@@ -15,6 +17,7 @@ import castPintOr from './castPintOr.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { judgeTruncated } from './checkTruncation.mjs'
 import { awaitUserFn, callHookSync, readCallerObj, validateNote } from './callUserFn.mjs'
+import { addErrorDetail, withOutputInfo, createTailCapture } from './failureDiag.mjs'
 
 
 // runExecCli.mjs — CLI類轉接器呼叫wsemi之execCli之單一入口(四家轉接器共用, 規則只寫一處)
@@ -66,6 +69,15 @@ import { awaitUserFn, callHookSync, readCallerObj, validateNote } from './callUs
 //   ⑤opt.transientRetry({ delayMs, fastMs })為測試用注入(非預期之值逐鍵改用預設, K3), 不轉傳execCli; 一般呼叫端不必給;
 //   ⑥觀察回調: 決定重試時(等延遲之前)經opt.onTrace(與execCli同一回調, 凍結事件、同步、拋錯忽略、未給時不組事件)發出 'transient-retry' { n(已嘗試次數), ms(重試延遲), durationMs(該次失敗耗時) },
 //      令測試與診斷能以事件為同步點(dspec〈計時器相關函數之觀察回調與測試〉); 事件不含輸出內文。
+//
+// 【失敗診斷與成功欄位(2026-11-08 da110, Gitea #110; 規則與實查見failureDiag.mjs檔頭)】本層於每個最終結果(withGate)統一補:
+//   ①失敗(errorType 'exec'或'timeout', 即非零離開、訊號結束、逾時)加errorDetail{ exitCode, stderrTail, stdoutTail? }, 且execCli原生error形狀(`Exit code N`、`Signal: X`、`TIMEOUT after Ns`)
+//     寫成`<原始>: <尾段>`(stderr空且為Exit code時退用stdout尾段——claude把失敗訊息印在stdout); stdout／stderr／errorType等既有欄位不動, errorType於補原因之前已決定;
+//     spawn、params、validation、incomplete、aborted不加(它們的error已自足或與子進程輸出無關)。
+//   ②成功加finish(終止原因, 取不到為'unknown')與outputChars(stdout字元數), 已有者不覆寫(reshapeResult可先給finish)。
+//   尾段來源: 本層包onStdout／onStderr／onTrace擷取每次嘗試(spawn事件重置)輸出之最後4096字元(execCli失敗結果之stderr欄位只留前1000字元、逾時前500字元, 真正的尾端不在其中);
+//   呼叫端自給之回調照常呼叫(非函數者視同未給, 同execCli), 回調內容與時機不變。機密值遮罩: opt.diagSecrets(字串陣列, 轉接器傳入本次注入之金鑰)＋樣式遮罩, 見failureDiag.mjs。
+//   reshapeResult可於結果帶diagStderr／diagStdout(轉接器還原之完整文字, 優先於擷取), 本層取用後自結果移除。
 //
 // 【不reject】wsemi>=1.9.15之execCli對spawn同步錯誤回結果物件(code null、pid undefined、attempts 1),
 //   本函數不另包try/catch(四家一致, 見getErrorType.mjs之isSpawnFail)。
@@ -225,8 +237,35 @@ async function runExecCli(exe, args, opt = {}) {
         }
         return { aborted: get(g, 'aborted', false) === true, tmo: ran ? capByDeadline() : timeoutMs }
     }
+    //輸出尾端擷取與機密值名單(失敗診斷用, 見檔頭【失敗診斷與成功欄位】): 擷取器於每次spawn重置, 故取到的是最後一次嘗試之輸出
+    let cap = createTailCapture()
+    let diagSecrets = (Array.isArray(get(opt, 'diagSecrets', null)) ? opt.diagSecrets : []).filter((v) => isestr(v))
+
+    //finalize: 最終結果統一補欄位——取走reshapeResult帶來之diagStderr／diagStdout提示(不論成敗皆自結果移除); 失敗加errorDetail與原因, 成功加finish與outputChars
+    let finalize = (r) => {
+        let hasHint = Object.prototype.hasOwnProperty.call(r, 'diagStderr') || Object.prototype.hasOwnProperty.call(r, 'diagStdout')
+        let hintErr = hasHint ? r.diagStderr : undefined
+        let hintOut = hasHint ? r.diagStdout : undefined
+        let rr = r
+        if (hasHint) {
+            rr = { ...r }
+            delete rr.diagStderr
+            delete rr.diagStdout
+        }
+        if (get(rr, 'ok', false) === true) {
+            return withOutputInfo(rr)
+        }
+        return addErrorDetail(rr, {
+            stderr: typeof hintErr === 'string' ? hintErr : cap.err(), //提示為空字串者(轉接器還原後確實為空)不退用原始擷取(如json事件流), 由addErrorDetail退回結果欄位
+            stdout: typeof hintOut === 'string' ? hintOut : cap.out(),
+            secrets: diagSecrets,
+            prefer: sgKind === 'claude' ? 'stdout' : 'stderr', //claude把失敗訊息印在stdout(stderr可能只有無關警告), 見failureDiag.mjs檔頭
+        })
+    }
+
     //守門等待之註記: 只在實際等過或fail-open時才加欄位(未等待者結果形狀不變)
-    let withGate = (r) => {
+    let withGate = (r0) => {
+        let r = finalize(r0)
         if (gateWaitedMs > 0 || gateFailOpen) {
             return { ...r, gateWaitedMs, ...(gateFailOpen ? { gateFailOpen: true } : {}) }
         }
@@ -312,10 +351,12 @@ async function runExecCli(exe, args, opt = {}) {
         if (d.accept) {
             return { r, fail: null }
         }
+        let failBase = { ...r }
+        delete failBase.finish //reshapeResult為成功路徑先給之finish不帶入incomplete失敗結果(截斷失敗之形狀不變, 終止原因已在finishReason／truncated)
         return {
             r,
             fail: {
-                ...r,
+                ...failBase,
                 ok: false,
                 stdout: strTruncate(get(r, 'stdout', '') || '', 500, optTruncate),
                 error: d.error,
@@ -332,6 +373,27 @@ async function runExecCli(exe, args, opt = {}) {
     delete base.reshapeResult
     delete base.acceptTruncated
     delete base.transientRetry
+    delete base.diagSecrets
+
+    //擷取回調: 先記入擷取器再呼叫呼叫端自給之回調(回傳值與拋錯原樣交execCli處理); 非函數者視同未給(同execCli判型)
+    for (let [name, push] of [['onStdout', cap.pushOut], ['onStderr', cap.pushErr]]) {
+        let userFn = get(base, name, null)
+        base[name] = (s) => {
+            push(s)
+            if (isfun(userFn)) {
+                return userFn(s)
+            }
+        }
+    }
+    let userTrace = get(base, 'onTrace', null)
+    base.onTrace = (ev) => {
+        if (get(ev, 'type', '') === 'spawn') {
+            cap.reset() //新一次嘗試(含execCli內部重試)開始, 前次輸出不混入尾段
+        }
+        if (isfun(userTrace)) {
+            return userTrace(ev)
+        }
+    }
     if (validator === null) {
         let g0 = await enterGate()
         if (g0.aborted) {

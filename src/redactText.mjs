@@ -197,4 +197,4 @@ function createStreamRedactor(secrets, pattern = false) {
 
 
 export default redactText
-export { secretHeaderValues, maskApiKeys, redactApiKeyText, createStreamRedactor }
+export { secretHeaderValues, maskApiKeys, redactApiKeyText, createStreamRedactor, API_KEY_PATTERN }
