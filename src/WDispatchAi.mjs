@@ -31,6 +31,7 @@ import getQuotaAntigravity from './quota/getQuotaAntigravity.mjs'
 import probeAnthropicKeys from './probeAnthropicKeys.mjs'
 import filterOpencodeFree from './filterOpencodeFree.mjs'
 import opencodeGoUsage from './opencodeGoUsage.mjs'
+import forgetQuota from './forgetQuota.mjs'
 
 
 // WDispatchAi.mjs — AI供應商分派層
@@ -48,7 +49,7 @@ let KINDS = keys(adapters)
 /**
  * AI供應商分派
  *
- * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、dispatchApiOpenaiResponses、dispatchApiAnthropic(Anthropic Messages API，以Console API金鑰計費)、dispatchApiTypesafeSystemone(TypeSafe jev之型別化決策API，非文字生成)之async函數，probeAnthropicKeys(對每把Anthropic金鑰送極小請求，回報此刻能否呼叫與每分鐘限額標頭，無查餘額端點)，filterOpencodeFree(以`opencode models`之輸出過濾目錄之opencode免費條目，回報目前確實供應與已下架者，下游組遞補鏈或評比名單前對一次)，opencodeGoUsage(以Go訂閱之工作區金鑰查5小時／週／月三視窗之用量百分比與重置時刻，端點為實測所得非官方文件所載，回原值不換算金額)，providers(預設providers定義檔)與resolveProviders(envVar展開器)、resolveCatalogue(目錄展開：合併安裝方自帶條目、逾時三層取值、env／envFile、pick、exes後交resolveProviders)，以及readEnvFile(讀.env不污染process.env)、budgetFor(遞補鏈時間預算推導)、createAiCaller(原始遞補呼叫器：回dispatchAiFallback原始結果、不解析不加前綴，與工作流並存)、createFileStore(store檔案持久化)、createUsageCounter(逐日用量計帳)、logAiOutcome／createAiEventLogger／OUTCOME_TEXT(把呼叫結果與冷卻事件渲染成日誌)、salvageTruncatedArray(截斷陣列搶救)、parseJsonArray／parseIndexList／makeArrayCoverageValidator(嚴格解析與涵蓋率驗證，與寬鬆／搶救版並存)、NO_SIDE_EFFECT(防副作用prompt前綴)等工具，以及getQuotaClaude、getQuotaCodex、getQuotaAntigravity(查詢各訂閱制CLI本機登入帳號之額度窗口，統一結構，可比對指定email)
+ * @returns {Object} 回傳物件，其內含KINDS(可用供應商種類字串陣列)，dispatchAiWkf之工作流工廠函數，dispatchAi、dispatchAiFallback、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、dispatchApiOpenaiResponses、dispatchApiAnthropic(Anthropic Messages API，以Console API金鑰計費)、dispatchApiTypesafeSystemone(TypeSafe jev之型別化決策API，非文字生成)之async函數，probeAnthropicKeys(對每把Anthropic金鑰送極小請求，回報此刻能否呼叫與每分鐘限額標頭，無查餘額端點)，filterOpencodeFree(以`opencode models`之輸出過濾目錄之opencode免費條目，回報目前確實供應與已下架者，下游組遞補鏈或評比名單前對一次)，opencodeGoUsage(以Go訂閱之工作區金鑰查5小時／週／月三視窗之用量百分比與重置時刻，端點為實測所得非官方文件所載，回原值不換算金額)，providers(預設providers定義檔)與resolveProviders(envVar展開器)、resolveCatalogue(目錄展開：合併安裝方自帶條目、逾時三層取值、env／envFile、pick、exes後交resolveProviders)，以及readEnvFile(讀.env不污染process.env)、budgetFor(遞補鏈時間預算推導)、createAiCaller(原始遞補呼叫器：回dispatchAiFallback原始結果、不解析不加前綴，與工作流並存)、createFileStore(store檔案持久化)、createUsageCounter(逐日用量計帳)、logAiOutcome／createAiEventLogger／OUTCOME_TEXT(把呼叫結果與冷卻事件渲染成日誌)、salvageTruncatedArray(截斷陣列搶救)、parseJsonArray／parseIndexList／makeArrayCoverageValidator(嚴格解析與涵蓋率驗證，與寬鬆／搶救版並存)、NO_SIDE_EFFECT(防副作用prompt前綴)等工具，以及getQuotaClaude、getQuotaCodex、getQuotaAntigravity(查詢各訂閱制CLI本機登入帳號之額度窗口，統一結構，可比對指定email)，forgetQuota(換訂閱帳號後明示清除store.quota內該家族之額度帳，使該家族條目立即重新判定；不動游標與冷卻，接受state物件或store{get,set}；state或familyKey無效時同步throw，清不掉時回傳[])
  * @example
  *
  * 詳見dispatchAi、dispatchAiFallback、dispatchAiWkf、dispatchOpencode、dispatchClaude、dispatchCodex、dispatchAntigravity、dispatchApiOpenaiCompat、dispatchApiOpenaiResponses、dispatchApiAnthropic、dispatchApiTypesafeSystemone、resolveProviders、resolveCatalogue、createAiCaller、logAiOutcome、parseJsonArray、parseIndexList、makeArrayCoverageValidator、filterOpencodeFree、opencodeGoUsage、getQuotaClaude、getQuotaCodex、getQuotaAntigravity範例
@@ -89,6 +90,7 @@ let WDispatchAi = {
     getQuotaClaude,
     getQuotaCodex,
     getQuotaAntigravity,
+    forgetQuota,
 }
 
 

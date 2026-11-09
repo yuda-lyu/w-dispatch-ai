@@ -68,6 +68,7 @@ describe('WDispatchAi', function() {
             'getQuotaClaude',
             'getQuotaCodex',
             'getQuotaAntigravity',
+            'forgetQuota', //2026-11-09新增(da116, Gitea #116): 換訂閱帳號後明示清除額度帳
         ]
         assert.strict.deepEqual(r, rr)
     })
@@ -87,7 +88,7 @@ describe('WDispatchAi', function() {
             'object', //providers
             ...fn(9), //resolveProviders ~ createAiEventLogger
             'object', //OUTCOME_TEXT
-            ...fn(7), //salvageTruncatedArray ~ getQuotaAntigravity
+            ...fn(8), //salvageTruncatedArray ~ forgetQuota
         ]
         assert.strict.deepEqual(r, rr)
     })

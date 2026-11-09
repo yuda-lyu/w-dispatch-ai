@@ -285,7 +285,8 @@ function logAiOutcome(opt) {
  *
  * 特點：
  * 回傳(ev)=>void，ev.type為'cooled'時以WARN記一行(供應商冷卻：降至鏈尾；scope為'key'之金鑰冷卻：降至組內最後)；
- * ev.type為'quota-skip'且source為'ledger'(訂閱類條目因store.quota記載額度用盡至某時刻而被略過)時以WARN記一行「額度帳：<id> 至 <until> 略過」，每行程每條目(同一重置時刻)只記一次；其餘事件忽略；
+ * ev.type為'quota-skip'且source為'ledger'(訂閱類條目因store.quota記載額度用盡至某時刻而被略過)時以WARN記一行「額度帳：<id> 至 <until> 略過」，每行程每條目(同一重置時刻)只記一次；
+ * ev.type為'quota-ledger-void'(Gitea #116：額度帳經帳號比對或定期重探而作廢)時以WARN記一行「額度帳：<id> 之帳因登入帳號改變（舊 → 新）而作廢」或「…之帳經重探確認用量已低於門檻而作廢」(帳號只有雜湊前8碼)，每次作廢記一行；其餘事件忽略；
  * 記錄器之規則同logAiOutcome(成員呼叫形式、兩種介面、整行遮蔽、自身失敗吞掉)；log缺或非物件即throw
  *
  * @param {Object} opt 輸入設定物件
@@ -317,6 +318,19 @@ function createAiEventLogger(opt) {
             if (!ledgerNoticed.has(k)) {
                 ledgerNoticed.add(k)
                 emitLine(log, 'warn', `${pre}額度帳：${pid} 至 ${until === null || until === undefined ? '?' : until} 略過（額度用盡，重置前不派；quotaGate: false 可關閉）`)
+            }
+            return
+        }
+        //額度帳作廢(quota-ledger-void, Gitea #116): 帳經帳號比對或定期重探而作廢, 該次判定改走用量讀者; 帳作廢後即不存在, 每次作廢記一行(無洗版疑慮);
+        //帳號欄只有雜湊前8碼(事件本身不含email), 缺漏記'?'
+        if (get(ev, 'type', null) === 'quota-ledger-void') {
+            let pid = get(ev, 'providerId', '?')
+            let tagOf = (v) => (typeof v === 'string' && v !== '' ? v : '?')
+            if (get(ev, 'reason', null) === 'account-changed') {
+                emitLine(log, 'warn', `${pre}額度帳：${pid} 之帳因登入帳號改變（${tagOf(get(ev, 'accountFrom', null))} → ${tagOf(get(ev, 'accountTo', null))}）而作廢，改查用量讀者`)
+            }
+            else {
+                emitLine(log, 'warn', `${pre}額度帳：${pid} 之帳經重探確認用量已低於門檻而作廢，改查用量讀者`)
             }
             return
         }

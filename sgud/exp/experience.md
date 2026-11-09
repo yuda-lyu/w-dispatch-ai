@@ -51,3 +51,16 @@
 - **變異驗證**(法:複製 `src` 與兩個新測試檔到 `./tmp/da110/mut/<id>/`,單點改動後跑,見 `tmp/da110/mutate.mjs`,不入庫):16 個變異首輪 15 殺 1 活——活下來的是「時窗上界不 +60 秒」(測試直接餵 `pickUpstream` 的 `toMs`,繞過了 `readOpencodeUpstream` 組窗邏輯),補「+30／−50 秒內取得、+90／−90 秒外不取」邊界案後全殺.教訓:測純函數時,組參數的上一層函數要有自己的邊界案.
 - **修前紅**:新案對未接線之現況碼 35 過／39 敗(`runExecCli` 等未改);全套接線後只剩 6 案舊斷言須更新(見上).
 - **待驗**:codex／agy／claude 之 JSON 輸出模式是否可得 `finish`(現恆 `unknown`);agy 失敗之真實額度字樣在尾段是否夠用(`AGY_ERROR`／`Individual quota reached` 在 stderr 末端,依既有紀錄,未於本案重現).
+
+## 額度帳之帳號識別、定期重探與明示清帳(2026-11-09 da116,Gitea #116;帳本 `rulebook_quotagate.md` R-SPAWNGATE-7)
+
+- **帳是快取,快取要有「失效條件」而不只有「到期時刻」**:ke340 之帳只認 `until`,其前提是「讀者回應不會變」;使用端換訂閱帳號即推翻此前提(3 天內新額度用不到、流量全落遞補)。凡以「某時刻前不再查」為目的之持久化快取,都該問:什麼外部事件會令它失效(換帳號、升級方案、補額度),並給一條「低成本偵測」之路(帳號識別比對、定期以事實來源重探)及一條「明示清除」之路(`forgetQuota`)。
+- **節流起點要持久化,行程內快取擋不住跨行程**:家族快取(`cachedQuery`)只在同行程內擋重複查詢;排程環境每個行程全新,若「有帳就探」,每個新行程第一次判定都打一次讀者(agy 約 10 秒、逾時 60 秒)。故節流起點(`rechecked`,無則 `at`)寫在帳項目上、隨 store 持久化,間隔以帳為準;重探仍經 `querySnapshot`(同行程不多打)。**失敗亦記 `rechecked`**,否則壞掉之讀者會被每次派工重打。
+- **只在有正面證據時解帳**:讀者失敗、取不到帳號、適用視窗為空、percent 缺漏／非數字、門檻被關閉(`claudeMax: false`)皆「無證據」,維持帳;解帳須「帳號確實不同」或「對本條目之適用視窗有有效 percent 且全未達門檻」。fail-open 的方向是**不擋**,但「解帳」是放行方向,證據不足時維持原判才不會讓壞掉之讀者把帳全清掉。
+- **新欄位加在快照層而不改 `toSnapshot`**:`account` 由 `querySnapshot` 於成功時補入(`accountIdOf`),`toSnapshot` 形狀不變,既有三條 `deepEqual` 斷言(`ok/errorType/windows` 之完整形狀)一字不改。帳項目之新欄(`account`／`rechecked`／`family`)皆可選,`ledgerFind` 之 hit 補預設值,舊格式免遷移。
+- **帳內存雜湊而非 email 本文**:主控定事件與訊息字面不含帳號完整值,帳亦同(狀態檔常被附進日誌或備份);sha256(去空白、小寫)前 16 碼足以比對,事件只帶前 8 碼。既有測試 `/sk-|token|email/i.test(store.text())` 對 `account` 欄安全(十六進位不含 `sk-`)。
+- **測試設計**:①每個案例以**全新 sq(全新快取)＋同一個 `state` 物件**模擬「下一個行程」,才測得到持久化之節流;②時間全由注入之 `now` 控制,邊界取 `interval − 1ms`／`interval`;③「帳號改變作廢」三家各一案、`limit-text` 帳與家族帳並存一案(家族帳作廢後條目帳仍判定);④**踩到之測試錯誤**:以 `claudeMax: false` 配「帶 windows 之帳」測「門檻關閉不解帳」不成立——`ledgerFind` 之既有重判先因門檻關閉略過該帳、改走讀者(R-SPAWNGATE-6 既有行為),要測門檻關閉之無證據情形須用無 windows 之 `entry:` 帳;⑤R5 舊格式案原只斷言 `blocked/source`,變異 M19(時鐘回撥不視為到期)存活之風險,補斷言「重探恰一次」(讀者呼叫計數)。
+- **變異驗證**(法:複製 `src` 與六個測試檔到 `./tmp/da116/mut/`,單點改動後跑,見 `tmp/da116/mutate.mjs`,不入庫;單次約 15 秒,36 個共約 10 分鐘,須排 `quiet-run --lock` 並給足 `--timeout`;`mutate.mjs` 可由環境變數 `ONLY=M07,M35` 只重跑指定變異):41 個變異 40 killed／1 等價(帳本 R-SPAWNGATE-7)。首輪存活 3 個:M07(短視窗亦重探)——短視窗案之時間點未超過 6 小時間隔,mutant 與原碼同樣不重探,須造「入帳已逾間隔、until 尚餘 ≤6 小時」之案才分得出「以 until−now 而非入帳時間判長視窗」;M35(`recheckEveryMs` 不可調)——只測預設與無效值回預設,沒測有效自訂值;兩者補測後 killed。M16(作廢後不沿用快照)判為等價——同 sq 之 `querySnapshot` 有家族快取,不會多打一次,只改 `cached` 旗標。教訓:**對「預設值＋非預期值取預設」型選項,必須另有「有效自訂值確實生效」之案**,否則「選項被寫死」之變異活得下來。
+- **失敗通道要對照〈輸入參數之檢測機制〉§5.1**:首版 `forgetQuota` 沿用本套件「永不拋錯、fail-open」之習慣,無效參數靜默回 `[]`;讀 dspec 後改為「同步且有副作用之入口,無效一般參數同步 throw、先於副作用」(`createFileStore` 對缺漏設定於組裝期 throw 為本套件先例),「參數有效但清不掉」才如實回 `[]`。fail-open 屬派工熱路徑(讀者、帳),**明示之管理動作傳錯參數靜默成功會讓使用端以為已清帳**。`callHookSync` 之狀態字為 `'value'`／`'threw'`／`'async'`(非 `'error'`),判斷 set 失敗用 `=== 'threw'`。
+- **套件無命令列入口**:建議 4 提「CLI 子命令」,但 `package.json` 無 `bin`、`src` 無 argv 入口;新增 `bin` 屬打包面變更(`package.json`／`toolg`),不在修正輪授權內,以可 import 之 `forgetQuota`(接受 state 或 store)代替,列待裁示。
+- **真實換帳號未實測**:本輪禁止呼叫真實用量 API;讀者回應之 `email` 欄位形狀依 `getQuota*` 既有單元測試與 ke340 本機實跑記錄(claude 讀 `~/.claude.json` 之 `oauthAccount.emailAddress`、codex 取 app-server `account/read`、agy 取 `--log-file` 內 `applyAuthResult: email=`),端到端待使用端發布後觀察。

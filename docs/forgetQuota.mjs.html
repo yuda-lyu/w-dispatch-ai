@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>forgetQuota.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#accountIdOf">accountIdOf</a></li><li><a href="global.html#accountTagOf">accountTagOf</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addErrorDetail">addErrorDetail</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#addUpstream">addUpstream</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyGroupOf">agyGroupOf</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#applyOutputTokenMax">applyOutputTokenMax</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#baseErrorOf">baseErrorOf</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#cachedQuery">cachedQuery</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#castOutputTokenMax">castOutputTokenMax</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#checkAgyStdinSupport">checkAgyStdinSupport</a></li><li><a href="global.html#checkGoQuota">checkGoQuota</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#clampUntilMs">clampUntilMs</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#claudeLimitUntilOf">claudeLimitUntilOf</a></li><li><a href="global.html#clearAgyStdinSupportCache">clearAgyStdinSupportCache</a></li><li><a href="global.html#cliSpawnGate">cliSpawnGate</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#composeError">composeError</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createCountCli">createCountCli</a></li><li><a href="global.html#createCpuSampler">createCpuSampler</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createGateState">createGateState</a></li><li><a href="global.html#createQuotaGateState">createQuotaGateState</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createTailCapture">createTailCapture</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultImages">defaultImages</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#descOf">descOf</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#envStrOf">envStrOf</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#errorMessageOf">errorMessageOf</a></li><li><a href="global.html#exeStem">exeStem</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fail">fail</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#findEnvKey">findEnvKey</a></li><li><a href="global.html#findStdinConflictArg">findStdinConflictArg</a></li><li><a href="global.html#fingerprint">fingerprint</a></li><li><a href="global.html#finishOf">finishOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#forgetQuota">forgetQuota</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getFormatArg">getFormatArg</a></li><li><a href="global.html#getOpencodeLogPath">getOpencodeLogPath</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#gwOf">gwOf</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isGoEntry">isGoEntry</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#isTransientFailure">isTransientFailure</a></li><li><a href="global.html#itemsOf">itemsOf</a></li><li><a href="global.html#judgeGoUsage">judgeGoUsage</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#judgeWindowItems">judgeWindowItems</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#learnQuotaFromFailure">learnQuotaFromFailure</a></li><li><a href="global.html#ledgerDrop">ledgerDrop</a></li><li><a href="global.html#ledgerFind">ledgerFind</a></li><li><a href="global.html#ledgerForget">ledgerForget</a></li><li><a href="global.html#ledgerMark">ledgerMark</a></li><li><a href="global.html#ledgerPut">ledgerPut</a></li><li><a href="global.html#lock">lock</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#maskDiag">maskDiag</a></li><li><a href="global.html#maxFor">maxFor</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#norm">norm</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#opencodeGoUsage">opencodeGoUsage</a></li><li><a href="global.html#parseAgyStream">parseAgyStream</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#parseOpencodeEvents">parseOpencodeEvents</a></li><li><a href="global.html#parsePsComm">parsePsComm</a></li><li><a href="global.html#parseTasklistCsv">parseTasklistCsv</a></li><li><a href="global.html#pickUpstream">pickUpstream</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#querySnapshot">querySnapshot</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#readOpencodeUpstream">readOpencodeUpstream</a></li><li><a href="global.html#readTailLines">readTailLines</a></li><li><a href="global.html#readTickets">readTickets</a></li><li><a href="global.html#recheck">recheck</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resetLedgerNotice">resetLedgerNotice</a></li><li><a href="global.html#reshapeAgyResult">reshapeAgyResult</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#resolveQuotaGate">resolveQuotaGate</a></li><li><a href="global.html#resolveSpawnGate">resolveSpawnGate</a></li><li><a href="global.html#resolveSubQuotaGate">resolveSubQuotaGate</a></li><li><a href="global.html#run">run</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#runText">runText</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#sampleRamDefault">sampleRamDefault</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#stateOf">stateOf</a></li><li><a href="global.html#subFamilyOf">subFamilyOf</a></li><li><a href="global.html#subGateDecide">subGateDecide</a></li><li><a href="global.html#tailOf">tailOf</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toMs">toMs</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#toSnapshot">toSnapshot</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#unlock">unlock</a></li><li><a href="global.html#upstreamClassOf">upstreamClassOf</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#valueOf">valueOf</a></li><li><a href="global.html#verifyLedgerHit">verifyLedgerHit</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#wallToUtc">wallToUtc</a></li><li><a href="global.html#windowApplies">windowApplies</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li><li><a href="global.html#withOutputInfo">withOutputInfo</a></li><li><a href="global.html#writeTicket">writeTicket</a></li><li><a href="global.html#zoneWall">zoneWall</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">forgetQuota.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import isobj from 'wsemi/src/isobj.mjs'
+import isfun from 'wsemi/src/isfun.mjs'
+import isestr from 'wsemi/src/isestr.mjs'
+import { callHookSync } from './callUserFn.mjs'
+import { ledgerForget } from './quotaLedger.mjs'
+
+
+// forgetQuota.mjs — 明示清除額度帳(Gitea #116 建議4)
+//
+// 【為何需要】額度帳(state.quota)記載「某家族(或某條目)至某時刻額度用盡」, 於重置前直接略過、不派。使用端換了訂閱帳號後,
+//   新帳號之額度本是閒置的, 但舊帳號之帳仍在: 套件會於下一次帳號比對或定期重探(見subQuotaGate.mjs; 預設有帳號識別者每30分鐘、
+//   無帳號識別而長視窗者每6小時)時自行作廢, 使用端若不想等, 以本函數明示清帳, 下一次派工即改查用量讀者。
+//   (套件本身不提供命令列入口, 使用端以一行呼叫本函數即可, 見下方範例。)
+//
+// 【失敗通道】本函數為「同步且有副作用」之對外入口: 一般參數(state、familyKey)必給且須有效, 無效即同步throw Error、先於任何副作用
+//   (輸入參數之檢測機制 K2、§5.1; 與createFileStore於組裝期對缺漏設定throw同一取向——傳錯參數卻靜默回[]會讓使用端以為已清帳)。
+//   參數有效但「清不掉」(state凍結、store.get拋錯或回傳非物件、store.set拋錯)不是輸入錯誤: 如實回傳實際清除之鍵(通常為[]), 不throw。
+
+
+/**
+ * 明示清除額度帳：換訂閱帳號後供使用端立即讓該家族之條目重新判定(改查用量讀者)，而不等帳號比對或定期重探
+ *
+ * 只動額度帳(state.quota)，不動游標(cursors)、冷卻(cooling)與其他欄位。
+ * familyKey為家族名('claude'、'codex'、'antigravity')時涵蓋該家族全部帳：讀者家族鍵(含claude之`claude@&lt;雜湊>`設定目錄鍵、antigravity之各`antigravity:&lt;群組>`鍵)
+ * 與帶family欄為該家族之entry帳(CLI文字入帳；2026-11-09前入帳之舊entry帳無family欄，不被家族名涵蓋，以`entry:&lt;條目id>`精確鍵或'*'清除)；
+ * 為'*'時清全部帳；為其他字串時只清該精確鍵(如`entry:claude:sonnet`、`antigravity:Gemini Models`)。
+ * 第一個參數可為state物件，或store(含get、set兩個同步函數；經store.get讀出、清除後有清除才store.set寫回一次，與dispatchAiFallback之store契約相同，如createFileStore之回傳)。
+ * 本函數不清行程內之讀者快取(該快取只存用量讀者之回應，不是帳)。
+ * state非物件或不可讀、familyKey非有效字串時同步throw Error(先於任何副作用)；參數有效但清不掉(state凍結、store.get拋錯或回傳非物件、store.set拋錯)時不throw，回傳實際清除之鍵(通常為[])
+ *
+ * @param {Object} state 輸入遞補層狀態物件(含quota欄)或store{get,set}
+ * @param {String} familyKey 輸入家族名('claude'、'codex'、'antigravity')、精確帳鍵或'*'(全部)，須為非空字串
+ * @returns {Array} 回傳確實被清除之帳鍵陣列(無此帳、清不掉皆回傳[])
+ * @example
+ *
+ * import createFileStore from './src/wkf/createFileStore.mjs'
+ * import forgetQuota from './src/forgetQuota.mjs'
+ *
+ * //換了Claude訂閱帳號後, 清除該家族之額度帳(狀態檔須為dispatchAiFallback使用之同一檔)
+ * let store = createFileStore({ dir: './state' })
+ * let removed = forgetQuota(store, 'claude')
+ * console.log(removed)
+ * // => [ 'claude' ]
+ *
+ */
+function forgetQuota(state, familyKey) {
+
+    //一般參數檢測(先於任何副作用)
+    if (!isestr(familyKey)) {
+        throw new Error('forgetQuota: invalid familyKey: must be a non-empty string')
+    }
+    let kind = callHookSync(() => ({ obj: isobj(state), store: isobj(state) &amp;&amp; isfun(state.get) &amp;&amp; isfun(state.set) }))
+    if (kind.state !== 'value' || kind.value.obj !== true) {
+        throw new Error('forgetQuota: invalid state: must be a state object or a store with get and set')
+    }
+
+    //state物件: 直接清(凍結等清不掉者ledgerForget回[]、不throw)
+    if (kind.value.store !== true) {
+        return ledgerForget(state, familyKey)
+    }
+
+    //store: get為同步契約(拋錯、回傳Promise或非物件皆清不掉, 回[]); 有清除才set, set拋錯視為未寫回(回[])
+    let g = callHookSync(() => state.get())
+    if (g.state !== 'value' || !isobj(g.value)) {
+        return []
+    }
+    let removed = ledgerForget(g.value, familyKey)
+    if (removed.length > 0) {
+        let s = callHookSync(() => state.set(g.value)) //回傳Promise者其rejection被承接而靜默(同步契約)
+        if (s.state === 'threw') {
+            return []
+        }
+    }
+    return removed
+}
+
+
+export default forgetQuota
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Mon Nov 09 2026 18:05:17 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>

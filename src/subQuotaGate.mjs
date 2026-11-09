@@ -10,7 +10,7 @@ import getQuotaAntigravity from './quota/getQuotaAntigravity.mjs'
 import { KIND_CLI, exeStem } from './cliSpawnGate.mjs'
 import { stateOf } from './goQuotaGate.mjs'
 import { judgeWindowItems, cachedQuery } from './quotaJudge.mjs'
-import { ledgerFind, ledgerPut, toMs, clampUntilMs } from './quotaLedger.mjs'
+import { ledgerFind, ledgerPut, ledgerDrop, ledgerMark, toMs, clampUntilMs } from './quotaLedger.mjs'
 import claudeLimitUntilOf from './claudeLimitUntil.mjs'
 import { awaitUserFn, callHookSync, readCallerObj } from './callUserFn.mjs'
 import { baseErrorOf } from './failureDiag.mjs'
@@ -24,6 +24,19 @@ import { baseErrorOf } from './failureDiag.mjs'
 //      任一視窗usedPercent為有效數字且≥門檻(預設95)即略過不派(事件source 'usage-api'), 並於重置時刻可解析時入帳(跨行程不再查詢直到重置);
 //   ③條目失敗後(afterFailure): 結果文字命中Claude Code官方額度訊息且帶重置時刻、或呼叫端注入之opt.quotaUntilOf回傳時刻 → 以entry:<id>入帳(事件source 'limit-text')。
 //   為何不等撞額度才知道: 撞額度後的重試是空耗(Claude數秒、agy／codex可達逾時), 且滿額期間每輪每席皆重試; 用量讀者是唯讀的(OAuth usage API／codex app-server／agy -p "/usage")。
+//
+// 【帳號識別與定期重探(2026-11-09 Gitea #116)】帳(①)命中即略過、不查讀者, 使用端換訂閱帳號後新帳號之額度會被舊帳擋到重置時刻(最長8天), 故:
+//   a. 入帳時記account(讀者回應之email, 其次account.email、字串account、accountId; 去空白、轉小寫後sha256取前16碼十六進位, 無則null; 不存email本文);
+//   b. 讀帳命中後, 依下列「節流判準」到期才以讀者重探(沿用家族快取querySnapshot, 並行共用), 重探結果——
+//      帳號改變(帳有account、讀者回應有account、兩者不同) → 作廢該帳(reason 'account-changed');
+//      否則對本條目之適用視窗已有明確證據低於門檻(有效percent、門檻啟用、不擋) → 作廢(reason 'recheck-below');
+//      否則維持(只更新rechecked); 作廢後同一次判定直接沿用已取得之讀者快照走②(不再多打一次);
+//   c. 節流判準(不使每次派工都打讀者): 以帳項目之rechecked(無則at)為起點, 持久化於帳(跨行程有效):
+//      有account者每accountCheckMs(預設30分鐘)重探一次; 無account而until−now>6小時之長視窗帳(舊格式、CLI文字入帳)每recheckEveryMs(預設6小時)重探一次; 兩者皆適用取較小者;
+//      無account且until−now≤6小時者不重探(快到期); rechecked無法解析或在未來(時鐘回撥)視為到期;
+//   d. 讀者失敗(逾時、拋錯、ok為false、windows缺漏)、取不到帳號、無明確用量證據者一律不作廢、維持帳(失敗不擋亦不解擋); 重探失敗亦記rechecked(下一個間隔才再試, 免對壞掉之讀者每次派工都打);
+//   e. 帳號識別為null之舊項目不比對帳號, 維持舊行為, 只靠c之定期重探; 偵測帳號改變之延遲上限為accountCheckMs, 使用端不想等可呼叫forgetQuota明示清帳(forgetQuota.mjs)。
+//   作廢時回傳之判定物件帶ledgerVoided([{ key, reason, until, source, accountFrom, accountTo }], accountFrom／accountTo為account雜湊前8碼或null, 不含email), 由dispatchAiFallback發quota-ledger-void事件。
 //
 // 【判定與Go共用】視窗判定與快取用quotaJudge.mjs之judgeWindowItems／cachedQuery(同一份實作), 本檔只把讀者回應轉成視窗項。
 //
@@ -40,7 +53,8 @@ import { baseErrorOf } from './failureDiag.mjs'
 //
 // 【選項】沿用quotaGate物件: claudeMax／codexMax／antigravityMax(0~100之數字或false關閉該家, 預設各95)、windowMax(物件, 視窗label → 0~100之數字或false, 覆蓋該家門檻)、
 //   cacheMs(claude／codex讀者家族快取, 預設60000)、timeoutMs(claude／codex讀者逾時, 預設15000)、antigravityCacheMs(預設300000; agy的/usage實測10～60秒, 不宜每呼叫查)、
-//   antigravityTimeoutMs(預設60000)、readers({ claude, codex, antigravity }皆為(opt)=>Promise之讀者函數, 預設為三家既有讀者; 測試或自訂來源注入)、now、state(同Go)。
+//   antigravityTimeoutMs(預設60000)、accountCheckMs(有帳號識別之帳之重探間隔, 預設1800000)、recheckEveryMs(無帳號識別之長視窗帳之重探間隔, 預設21600000)、
+//   readers({ claude, codex, antigravity }皆為(opt)=>Promise之讀者函數, 預設為三家既有讀者; 測試或自訂來源注入)、now、state(同Go)。
 
 
 //預設值
@@ -49,6 +63,9 @@ let DEFAULT_CACHE_MS = 60000
 let DEFAULT_AGY_CACHE_MS = 300000
 let DEFAULT_TIMEOUT_MS = 15000
 let DEFAULT_AGY_TIMEOUT_MS = 60000
+let DEFAULT_ACCOUNT_CHECK_MS = 1800000 //有帳號識別之帳, 每30分鐘比對一次帳號(以讀者重探)
+let DEFAULT_RECHECK_EVERY_MS = 21600000 //無帳號識別之長視窗帳, 每6小時重探一次
+let LONG_WINDOW_MS = 21600000 //長視窗: until − now 超過6小時
 
 //家族顯示名
 let LABELS = { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' }
@@ -256,6 +273,8 @@ function resolveSubQuotaGate(raw, attemptOpt, nk, id, idExplicit) {
         max: maxOf(isAgy ? o.antigravityMax : o[`${family}Max`]),
         windowMax,
         cacheMs: isAgy ? ms(o.antigravityCacheMs, DEFAULT_AGY_CACHE_MS) : ms(o.cacheMs, DEFAULT_CACHE_MS),
+        accountCheckMs: ms(o.accountCheckMs, DEFAULT_ACCOUNT_CHECK_MS),
+        recheckEveryMs: ms(o.recheckEveryMs, DEFAULT_RECHECK_EVERY_MS),
         timeoutMs,
         reader,
         readerOpt,
@@ -296,6 +315,40 @@ function toSnapshot(r) {
     catch {
         return { ok: false, windows: [], errorType: 'other' } //回應物件不可讀(拋錯之getter等): 不擋
     }
+}
+
+
+/**
+ * 由讀者回應取帳號識別(永不拋錯)：依序取email、account.email、字串account、accountId之第一個非空字串，去空白、轉小寫後以sha256取前16碼十六進位；
+ * 不存email本文(帳與事件皆只用此雜湊或其前8碼)；無則回傳null
+ *
+ * @param {*} r 輸入讀者回應(toQuotaResult之形狀)
+ * @returns {String|null} 回傳16碼十六進位帳號識別，無法取得回傳null
+ */
+function accountIdOf(r) {
+    try {
+        for (let k of ['email', 'account.email', 'account', 'accountId']) {
+            let v = get(r, k, null)
+            if (isestr(v) && v.trim() !== '') {
+                return crypto.createHash('sha256').update(v.trim().toLowerCase()).digest('hex').slice(0, 16)
+            }
+        }
+    }
+    catch {
+        //回應物件不可讀(拋錯之getter等): 視為取不到帳號
+    }
+    return null
+}
+
+
+/**
+ * 帳號識別之事件用短形式(前8碼；非字串回傳null)
+ *
+ * @param {*} id 輸入帳號識別
+ * @returns {String|null} 回傳前8碼或null
+ */
+function accountTagOf(id) {
+    return isestr(id) ? id.slice(0, 8) : null
 }
 
 
@@ -383,7 +436,7 @@ function recheck(sq, windows, nowMs) {
  * 查詢並快取讀者回應(永不reject；失敗亦快取同長度)
  *
  * @param {Object} sq 輸入resolveSubQuotaGate之結果
- * @returns {Promise} 回傳Promise，resolve回傳快照(同toSnapshot，另帶cached)
+ * @returns {Promise} 回傳Promise，resolve回傳快照(同toSnapshot，成功時另帶account〔帳號識別或null，見accountIdOf〕，另帶cached)
  */
 async function querySnapshot(sq) {
     return cachedQuery(stateOf(sq), sq.cacheKey, sq, async () => {
@@ -391,52 +444,151 @@ async function querySnapshot(sq) {
         if (r.state !== 'value') {
             return { ok: false, windows: [], errorType: r.state === 'timeout' ? 'timeout' : 'other' }
         }
-        return toSnapshot(r.value)
+        let s = toSnapshot(r.value)
+        return s.ok ? { ...s, account: accountIdOf(r.value) } : s
     })
+}
+
+
+/**
+ * 帳命中後之帳號比對與定期重探(永不reject；節流判準見檔頭【帳號識別與定期重探】)
+ *
+ * 到期才呼叫讀者(沿用家族快取querySnapshot)：帳號改變或對本條目已有明確證據低於門檻 → 作廢該帳；其餘(含讀者失敗)維持並記rechecked
+ *
+ * @param {Object} sq 輸入resolveSubQuotaGate之結果(非null)
+ * @param {Object} state 輸入遞補層狀態物件(取其quota)
+ * @param {Function} saveState 輸入狀態寫回函數
+ * @param {Object} hit 輸入ledgerFind命中之帳{ key, until, source, account, at, rechecked }
+ * @param {Number} nowMs 輸入現在毫秒
+ * @returns {Promise} 回傳Promise，resolve回傳{ keep: true }(維持，不需重探或重探後仍有效)，或{ keep: false, snap(重探取得之讀者快照), event(作廢資訊，帳已被他呼叫先刪或不可寫時為null) }
+ */
+async function verifyLedgerHit(sq, state, saveState, hit, nowMs) {
+    //重探間隔: 有帳號識別者依accountCheckMs; 無帳號識別而長視窗者依recheckEveryMs; 兩者皆適用取較小者; 皆不適用者不重探
+    let intervals = []
+    if (hit.account !== null) {
+        intervals.push(sq.accountCheckMs)
+    }
+    if (toMs(hit.until) - nowMs > LONG_WINDOW_MS) {
+        intervals.push(sq.recheckEveryMs)
+    }
+    if (intervals.length === 0) {
+        return { keep: true }
+    }
+
+    //到期判定: 以rechecked(無法解析則at)為起點; 起點無法解析或在未來(時鐘回撥)視為到期
+    let base = toMs(hit.rechecked)
+    if (!Number.isFinite(base)) {
+        base = toMs(hit.at)
+    }
+    let age = nowMs - base
+    if (Number.isFinite(age) && age >= 0 && age < Math.min(...intervals)) {
+        return { keep: true }
+    }
+
+    //重探(家族快取、並行共用); 讀者失敗不作廢, 亦記rechecked(下一個間隔才再試)
+    let mark = () => {
+        if (ledgerMark(state, hit.key, nowMs)) {
+            saveState()
+        }
+    }
+    let snap = await querySnapshot(sq)
+    if (snap.ok !== true) {
+        mark()
+        return { keep: true }
+    }
+
+    //判定: 帳號改變優先; 其次對本條目已有明確證據(有效percent且門檻啟用)全未達門檻
+    let cur = isestr(snap.account) ? snap.account : null
+    let reason = null
+    if (hit.account !== null && cur !== null && cur !== hit.account) {
+        reason = 'account-changed'
+    }
+    else {
+        let items = itemsOf(sq, snap.windows)
+        let evidence = items.some((it) => it.max !== null && it.percent !== null && it.percent !== undefined && isenum(it.percent))
+        if (evidence && !judgeWindowItems(items).blocked) {
+            reason = 'recheck-below'
+        }
+    }
+    if (reason === null) {
+        mark()
+        return { keep: true }
+    }
+    let dropped = ledgerDrop(state, hit.key)
+    if (dropped) {
+        saveState()
+    }
+    return {
+        keep: false,
+        snap,
+        event: dropped ? { key: hit.key, reason, until: hit.until, source: hit.source, accountFrom: accountTagOf(hit.account), accountTo: accountTagOf(cur) } : null,
+    }
 }
 
 
 /**
  * 判定某訂閱類條目此刻是否該略過(含額度帳與用量讀者；永不reject；失敗不擋)
  *
- * 流程: 先查帳(命中且now<until → blocked, source 'ledger', 不查讀者)；否則查讀者(家族快取)→視窗判定→blocked且until可解析即入帳；
- * 帳有清除過期項時呼叫saveState
+ * 流程: 先查帳(命中且now<until → 依節流判準到期才以讀者比對帳號／重探〔見檔頭【帳號識別與定期重探】〕，仍有效則blocked, source 'ledger'，不到期不查讀者；
+ * 帳號改變或重探時用量已低於門檻即作廢該帳，改走②)；否則查讀者(家族快取)→視窗判定→blocked且until可解析即入帳(含account)；帳有清除、作廢、標記時呼叫saveState
  *
  * @param {Object} sq 輸入resolveSubQuotaGate之結果(非null)
  * @param {Object} state 輸入遞補層狀態物件(取其quota)
  * @param {Function} saveState 輸入狀態寫回函數
- * @returns {Promise} 回傳Promise，resolve回傳判定物件，內含blocked、reason('limit'、'ok'、'error')、source('ledger'或'usage-api'，僅blocked)、windows、until(ISO或null)、cached、error(blocked時之略過訊息)、errorType與code(reason為error時)
+ * @returns {Promise} 回傳Promise，resolve回傳判定物件，內含blocked、reason('limit'、'ok'、'error')、source('ledger'或'usage-api'，僅blocked)、windows、until(ISO或null)、cached、error(blocked時之略過訊息)、errorType與code(reason為error時)、ledgerVoided(僅本次有帳被作廢時才有：[{ key, reason('account-changed'或'recheck-below'), until, source, accountFrom, accountTo }]，帳號欄為雜湊前8碼或null，不含email)
  */
 async function subGateDecide(sq, state, saveState) {
     let nowMs = sq.now()
+    let voided = []
+    let snap = null //帳重探後作廢者已取得之讀者快照, 直接沿用於②(不再多查)
+    let extra = () => (voided.length > 0 ? { ledgerVoided: voided } : {})
 
-    //①額度帳
-    let f = ledgerFind(state, [sq.familyKey, sq.entryKey], nowMs, (windows, t) => recheck(sq, windows, t))
-    if (f.dirty) {
-        saveState()
-    }
-    if (f.hit !== null) {
-        let ws = f.hit.windows.map((w) => ({ name: isestr(w.name) ? w.name : '', percent: typeof w.percent === 'number' ? w.percent : null, resetsAt: isestr(w.resetsAt) ? w.resetsAt : null, limited: false }))
-        let why = ws.length > 0 ? `: ${descOf(ws)}` : ''
-        return {
-            blocked: true,
-            reason: 'limit',
-            source: 'ledger',
-            windows: ws,
-            until: f.hit.until,
-            cached: true,
-            error: `QUOTA_COOLDOWN: ${sq.label} subscription quota recorded as exhausted until ${f.hit.until} (${f.hit.source || 'ledger'}${why}); entry skipped`,
+    //①額度帳(鍵序: 家族帳、條目帳; 帳經重探作廢者改看下一筆, 最多兩筆)
+    for (let i = 0; i < 2; i++) {
+        let f = ledgerFind(state, [sq.familyKey, sq.entryKey], nowMs, (windows, t) => recheck(sq, windows, t))
+        if (f.dirty) {
+            saveState()
+        }
+        if (f.hit === null) {
+            break
+        }
+        let v = { keep: true }
+        try {
+            v = await verifyLedgerHit(sq, state, saveState, f.hit, nowMs)
+        }
+        catch {
+            v = { keep: true } //verifyLedgerHit不reject, 此為最後防線: 失敗維持帳(失敗不擋亦不解擋)
+        }
+        if (v.keep) {
+            let ws = f.hit.windows.map((w) => ({ name: isestr(w.name) ? w.name : '', percent: typeof w.percent === 'number' ? w.percent : null, resetsAt: isestr(w.resetsAt) ? w.resetsAt : null, limited: false }))
+            let why = ws.length > 0 ? `: ${descOf(ws)}` : ''
+            return {
+                blocked: true,
+                reason: 'limit',
+                source: 'ledger',
+                windows: ws,
+                until: f.hit.until,
+                cached: true,
+                error: `QUOTA_COOLDOWN: ${sq.label} subscription quota recorded as exhausted until ${f.hit.until} (${f.hit.source || 'ledger'}${why}); entry skipped`,
+                ...extra(),
+            }
+        }
+        snap = v.snap
+        if (v.event !== null) {
+            voided.push(v.event)
         }
     }
 
     //②用量讀者(家族快取、並行共用)
-    let snap = await querySnapshot(sq)
+    if (snap === null) {
+        snap = await querySnapshot(sq)
+    }
     if (snap.ok !== true) {
-        return { blocked: false, reason: 'error', windows: [], until: null, errorType: snap.errorType, code: null, cached: snap.cached }
+        return { blocked: false, reason: 'error', windows: [], until: null, errorType: snap.errorType, code: null, cached: snap.cached, ...extra() }
     }
     let j = judgeWindowItems(itemsOf(sq, snap.windows))
     if (!j.blocked) {
-        return { blocked: false, reason: 'ok', windows: [], until: null, cached: snap.cached }
+        return { blocked: false, reason: 'ok', windows: [], until: null, cached: snap.cached, ...extra() }
     }
 
     //blocked: until可解析即入帳(截斷於8天)
@@ -446,7 +598,7 @@ async function subGateDecide(sq, state, saveState) {
         until = new Date(u).toISOString()
         let scopeOf = new Map(snap.windows.map((x) => [x.label !== '' ? x.label : x.scope, x.scope]))
         let wins = j.windows.map((w) => ({ name: w.name, percent: w.percent, resetsAt: w.resetsAt, scope: scopeOf.get(w.name) ?? '' }))
-        if (ledgerPut(state, sq.familyKey, { until, at: new Date(nowMs).toISOString(), source: 'usage-api', windows: wins })) {
+        if (ledgerPut(state, sq.familyKey, { until, at: new Date(nowMs).toISOString(), source: 'usage-api', windows: wins, account: isestr(snap.account) ? snap.account : null })) {
             saveState()
         }
     }
@@ -458,6 +610,7 @@ async function subGateDecide(sq, state, saveState) {
         until,
         cached: snap.cached,
         error: `QUOTA_COOLDOWN: ${sq.label} subscription usage at or above the limit (${descOf(j.windows)}${until !== null ? `; resets at ${until}` : ''}); entry skipped`,
+        ...extra(),
     }
 }
 
@@ -496,7 +649,8 @@ function learnQuotaFromFailure(sq, state, saveState, r, quotaUntilOf) {
             return null
         }
         let until = new Date(clampUntilMs(untilMs, nowMs)).toISOString()
-        if (!ledgerPut(state, sq.entryKey, { until, at: new Date(nowMs).toISOString(), source: 'limit-text' })) {
+        //account為null: 此路徑只知CLI文字, 不查讀者(不加一次用量查詢於失敗路徑), 無從得知帳號; family供forgetQuota依家族清除; 依長視窗定期重探(檔頭【帳號識別與定期重探】)
+        if (!ledgerPut(state, sq.entryKey, { until, at: new Date(nowMs).toISOString(), source: 'limit-text', account: null, family: sq.family })) {
             return null
         }
         saveState()
@@ -508,4 +662,4 @@ function learnQuotaFromFailure(sq, state, saveState, r, quotaUntilOf) {
 }
 
 
-export { resolveSubQuotaGate, subGateDecide, learnQuotaFromFailure, agyGroupOf, itemsOf, toSnapshot }
+export { resolveSubQuotaGate, subGateDecide, learnQuotaFromFailure, agyGroupOf, itemsOf, toSnapshot, accountIdOf }
