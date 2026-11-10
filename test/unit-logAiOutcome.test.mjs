@@ -80,9 +80,26 @@ let full = () => ({
 
 describe('OUTCOME_TEXT', function() {
 
-    it('next-key譯為換金鑰、skip-group譯為整組跳過（凍結）', function() {
-        assert.strict.deepEqual({ ...OUTCOME_TEXT }, { 'next-key': '換金鑰', 'skip-group': '整組跳過' })
+    it('next-key譯為換金鑰、skip-group譯為整組跳過、budget-cut譯為預算封頂（凍結）', function() {
+        //budget-cut為2026-11-11 da402 DA-11新增(封頂逾時之tried項)
+        assert.strict.deepEqual({ ...OUTCOME_TEXT }, { 'next-key': '換金鑰', 'skip-group': '整組跳過', 'budget-cut': '預算封頂' })
         assert.strict.equal(Object.isFrozen(OUTCOME_TEXT), true)
+    })
+
+    //設計DA-11: logAiOutcome對含budget-cut之tried輸出「預算封頂」字樣(修前未收錄而原樣顯示鍵名)
+    it('含budget-cut之遞補歷程渲染為「預算封頂」(不原樣顯示鍵名)', function() {
+        let lg = mkLog()
+        logAiOutcome({
+            result: {
+                ok: false,
+                error: 'budget exhausted',
+                errorType: 'budget',
+                tried: [{ providerId: 'p:a', keyIndex: null, outcome: 'budget-cut', errorType: 'timeout', error: 'TIMEOUT after 1.5s', durationMs: 1500, appliedTimeoutMs: 1500, entryTimeoutMs: 3000 }],
+            },
+            log: lg,
+        })
+        let warn = lg.lines.filter((l) => l[1].startsWith('AI 遞補歷程')).map((l) => l[1])
+        assert.strict.deepEqual([warn.length, warn.join('').includes('預算封頂'), warn.join('').includes('budget-cut')], [1, true, false])
     })
 
 })

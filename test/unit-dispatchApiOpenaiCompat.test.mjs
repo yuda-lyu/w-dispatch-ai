@@ -467,13 +467,14 @@ describe('dispatchApiOpenaiCompat', function() {
         let r = [
             r1.providerId,
             r1.tried.map((x) => [x.providerId, x.error || null]),
-            typeof stored.cooling['cd-api-429'],
+            //冷卻紀錄為{ at, n, reason }(2026-11-11 da402 DA-4, 帳本R-COOL-2; 修前為時間戳數字)
+            [typeof stored.cooling['cd-api-429'].at, stored.cooling['cd-api-429'].n, stored.cooling['cd-api-429'].reason],
             r2.tried.map((x) => x.providerId), //429者已降尾, echo先上即成功
         ]
         let rr = [
             'cd-api-echo',
             [['cd-api-429', 'HTTP 429'], ['cd-api-echo', null]],
-            'number',
+            ['number', 1, 'rate-limit'],
             ['cd-api-echo'],
         ]
         assert.strict.deepEqual(r, rr)

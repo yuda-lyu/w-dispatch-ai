@@ -35,11 +35,13 @@ import { maskApiKeys } from '../redactText.mjs'
 
 
 /**
- * outcome對人話: 遞補歷程中非ok之outcome譯成中文，未收錄者(如budget-out、skip-key、context-too-long)原樣顯示
+ * outcome對人話: 遞補歷程中非ok之outcome譯成中文，未收錄者(如budget-out、skip-key、context-too-long)原樣顯示；
+ * budget-cut(2026-11-11 da402 DA-11)為嘗試之逾時被呼叫端預算封頂(預算用盡，非條目故障)
  */
 let OUTCOME_TEXT = Object.freeze({
     'next-key': '換金鑰',
     'skip-group': '整組跳過',
+    'budget-cut': '預算封頂',
 })
 
 

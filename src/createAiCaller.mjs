@@ -5,6 +5,7 @@ import isbol from 'wsemi/src/isbol.mjs'
 import dispatchAiFallback from './dispatchAiFallback.mjs'
 import resolveCatalogue from './resolveCatalogue.mjs'
 import castPintOr from './castPintOr.mjs'
+import castBudgetMs from './castBudgetMs.mjs'
 import { callHookSync } from './callUserFn.mjs'
 
 
@@ -29,9 +30,11 @@ import { callHookSync } from './callUserFn.mjs'
 //   missing不進error, 由providersMissing欄位與logAiOutcome之ERROR行表達(原契約如此)。
 //
 // 【逐次預算只收緊、不放寬】budgetMs為建構參數(整輪遞補之上限), callAI另收逐次opt.budgetMs, 供呼叫端以「剩餘時間」封頂單次呼叫而免為逐次預算另建caller;
-//   逐次值有效(正整數)時, 本次budgetMs＝min(建構值(未給或非法視為不限), 逐次值), 即逐次值只能收緊建構預算、不得放寬;
-//   逐次值未給／null／非法視為未給(與timeoutMs之castPintOr同法), 沿用建構值; dispatchAiFallback之budgetMs／minAttemptMs語意不變
+//   兩者種類不同(2026-11-11 主控裁示D11甲, 帳本R-CALLER-1-6改寫): 建構值為「設定值」——非正整數依K3視為未給(不限);
+//   逐次值為「執行期之剩餘時間」(castBudgetMs)——有限數或數字字串有效, ≤0為已無時間(本次不送出、回budget exhausted)、小數向下取整, +Infinity／未給／null／非數值視為未給而沿用建構值;
+//   有效時本次budgetMs＝min(建構值(不限則忽略), 逐次值), 即逐次值只能收緊建構預算、不得放寬; dispatchAiFallback之minAttemptMs語意不變
 //   (逐次預算小於minAttemptMs時依其既有規則回budget exhausted, 是否「不開工」由呼叫端自行先判)。逐次值只作用於該次呼叫, 不改建構期設定。
+//   (修前逐次值0、負、小數皆視為未給而沿用建構值, 剩0秒之呼叫端仍照跑整條鏈; 見README〈Breaking changes〉)
 
 
 /**
@@ -55,9 +58,13 @@ import { callHookSync } from './callUserFn.mjs'
  * @param {Object} [opt.providerTimeouts=null] 輸入逐id逾時毫秒物件(逾時三層最優先層)，預設null
  * @param {Number} [opt.timeoutMs=null] 輸入全域逾時毫秒正整數(逾時三層最後備援，寫入各條目)，預設null
  * @param {Number} [opt.maxRetries=null] 輸入同家重試次數，原樣交dispatchAiFallback，預設null代表其預設
- * @param {Number} [opt.budgetMs=null] 輸入整輪遞補時間上限毫秒正整數(建構期預算，callAI另可逐次收緊，見callAI之budgetMs)，預設null代表不限
+ * @param {Number} [opt.budgetMs=null] 輸入整輪遞補時間上限毫秒正整數(建構期預算，屬設定值：非正整數視為未給；callAI另可逐次收緊，見callAI之budgetMs)，預設null代表不限
  * @param {Number} [opt.minAttemptMs=null] 輸入單次嘗試最低剩餘預算毫秒，預設null代表其預設
  * @param {Number} [opt.cooldownMs=null] 輸入供應商冷卻視窗毫秒，預設null代表不啟用
+ * @param {Number} [opt.cooldownGrowth=null] 輸入冷卻加長倍率(≥1)，原樣交dispatchAiFallback(見其opt.cooldownGrowth)，預設null代表1(視窗恆為cooldownMs)
+ * @param {Number} [opt.cooldownMaxMs=null] 輸入冷卻加長之上限毫秒，原樣交dispatchAiFallback，預設null代表24小時
+ * @param {Number} [opt.coolAfterFails=null] 輸入持久連敗門檻正整數，原樣交dispatchAiFallback(見其opt.coolAfterFails)，預設null代表不計數
+ * @param {Function} [opt.envDown=null] 輸入環境歸因函數async()=>Boolean(如本機斷網)，原樣交dispatchAiFallback(見其opt.envDown)，預設null
  * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，預設null
  * @param {String} [opt.cwd=null] 輸入CLI類條目之工作目錄字串，預設null
  * @param {Object} [opt.store=null] 輸入狀態持久化物件{get,set}，建議createFileStore({ dir })令游標與冷卻跨行程保留，預設null代表行程內記憶體
@@ -66,7 +73,7 @@ import { callHookSync } from './callUserFn.mjs'
  * @param {Function} [opt.quotaUntilOf=undefined] 輸入訂閱類條目失敗後由失敗結果判定額度重置時刻之同步函數(r)=>Date|ISO字串|毫秒數|null，原樣交dispatchAiFallback(見其opt.quotaUntilOf)，預設undefined
  * @param {Function} [opt.onUsage=null] 輸入用量回調(providerId)=>void，於try事件呼叫，預設null
  * @param {Function} [opt.onEvent=null] 輸入事件回調(ev)=>void，每個遞補事件皆轉呼叫，預設null
- * @returns {Object} 回傳物件，內含callAI(async函數(prompt, { timeoutMs, budgetMs, validate, acceptTruncated, onEvent })，回dispatchAiFallback原始結果並另掛providersSkipped與providersMissing；逐次budgetMs為正整數時本次整輪預算取min(建構budgetMs，逐次budgetMs)，只收緊不放寬，未給、null或非法視為未給而沿用建構值)、providers(解析後條目陣列，含金鑰勿寫入日誌)、skipped(缺金鑰而停用之字串陣列，形如'id（ENVVAR 無金鑰）')、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之提示物件)
+ * @returns {Object} 回傳物件，內含callAI(async函數(prompt, { timeoutMs, budgetMs, validate, acceptTruncated, onEvent })，回dispatchAiFallback原始結果並另掛providersSkipped與providersMissing；逐次budgetMs為執行期之剩餘時間(有限數或數字字串有效，≤0為已無時間而本次回budget exhausted、小數向下取整)，有效時本次整輪預算取min(建構budgetMs，逐次budgetMs)，只收緊不放寬，+Infinity、未給、null或非數值視為未給而沿用建構值)、providers(解析後條目陣列，含金鑰勿寫入日誌)、skipped(缺金鑰而停用之字串陣列，形如'id（ENVVAR 無金鑰）')、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之提示物件)
  * @example
  * //need .env with AGNES_KEYS; claude cli in system PATH
  *
@@ -122,13 +129,23 @@ function createAiCaller(opt = {}) {
     let missing = resolved.missing
     let hints = resolved.hints
 
-    //建構期設定, 只收有給(非undefined與null)者原樣交dispatchAiFallback, 其檢核與預設由其負責
+    //建構期設定, 只收有給(非undefined與null)者原樣交dispatchAiFallback, 其檢核與預設由其負責;
+    //冷卻加長、持久連敗與環境歸因(cooldownGrowth、cooldownMaxMs、coolAfterFails、envDown; 2026-11-11 da402 DA-8)同此
     let base = {}
-    for (let k of ['maxRetries', 'budgetMs', 'minAttemptMs', 'cooldownMs', 'coolDetect', 'cwd', 'store', 'spawnGate', 'quotaGate', 'quotaUntilOf']) {
+    for (let k of ['maxRetries', 'budgetMs', 'minAttemptMs', 'cooldownMs', 'cooldownGrowth', 'cooldownMaxMs', 'coolAfterFails', 'envDown', 'coolDetect', 'cwd', 'store', 'spawnGate', 'quotaGate', 'quotaUntilOf']) {
         let v = get(opt, k, null)
         if (v !== null && v !== undefined) {
             base[k] = v
         }
+    }
+
+    //建構budgetMs為「設定值」(主控裁示D11甲): 非正整數依K3視為未給(不限), 不交dispatchAiFallback(其budgetMs為執行期剩餘時間, 0或負即已無時間)
+    let budgetMsBase = castPintOr(get(base, 'budgetMs', null), null)
+    if (budgetMsBase === null) {
+        delete base.budgetMs
+    }
+    else {
+        base.budgetMs = budgetMsBase
     }
     let onUsage = get(opt, 'onUsage', null)
     let onEventB = get(opt, 'onEvent', null)
@@ -159,10 +176,10 @@ function createAiCaller(opt = {}) {
             callOpt.timeoutMs = timeoutMs
         }
 
-        //budgetMs, 逐次值有效時與建構值(無效視為不限, 同dispatchAiFallback)取小, 只收緊不放寬; 無效視為未給; callOpt為本次副本, 不改base
-        let budgetMs = castPintOr(get(co, 'budgetMs', null), null)
+        //budgetMs, 逐次值為「執行期之剩餘時間」(castBudgetMs, 主控裁示D11甲): 有限數或數字字串有效, ≤0為已無時間(本次不送出、budget exhausted)、小數向下取整;
+        //+Infinity、未給、非數值視為未給而沿用建構值; 有效時與建構值(非正整數視為不限)取小, 只收緊不放寬; callOpt為本次副本, 不改base
+        let budgetMs = castBudgetMs(get(co, 'budgetMs', null))
         if (budgetMs !== null) {
-            let budgetMsBase = castPintOr(get(base, 'budgetMs', null), null)
             callOpt.budgetMs = (budgetMsBase === null) ? budgetMs : Math.min(budgetMsBase, budgetMs)
         }
         let validate = get(co, 'validate', null)

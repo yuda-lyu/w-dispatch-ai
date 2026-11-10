@@ -313,13 +313,15 @@ describe('dispatchAiFallback', function() {
             budgetMs: 4000,
             minAttemptMs: 100,
         })
+        //被預算封頂之逾時記為budget-cut、最終回budget(2026-11-11 da402 DA-1, 帳本R-COOL-1; 修前為skip-group、最終error為TIMEOUT); 逾時字樣與耗時留在tried
         let r = [
             t.ok,
+            t.errorType,
             t.tried[0].outcome,
-            t.error.indexOf('TIMEOUT') === 0,
-            t.durationMs < 9000, //遠小於fake-sleep之10000, 證明timeout被封頂
+            t.tried[0].error.indexOf('TIMEOUT') === 0,
+            t.tried[0].durationMs < 9000, //遠小於fake-sleep之10000, 證明timeout被封頂
         ]
-        let rr = [false, 'skip-group', true, true]
+        let rr = [false, 'budget', 'budget-cut', true, true]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -340,11 +342,11 @@ describe('dispatchAiFallback', function() {
         let r = [
             r1.providerId,
             r1.tried.map((x) => x.providerId),
-            typeof stored.cooling['cd-hang'],
+            stored.cooling['cd-hang'].reason, //紀錄為{ at, n, reason }(2026-11-11 da402 DA-4)
             r2.providerId,
             r2.tried.map((x) => x.providerId), //只有cd-ok, 未浪費一次逾時
         ]
-        let rr = ['cd-ok', ['cd-hang', 'cd-ok'], 'number', 'cd-ok', ['cd-ok']]
+        let rr = ['cd-ok', ['cd-hang', 'cd-ok'], 'timeout', 'cd-ok', ['cd-ok']]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -595,11 +597,11 @@ describe('dispatchAiFallback', function() {
         let r2 = await dispatchAiFallback('abc', { providers: [pLimited, pOk], store, cooldownMs: 300000, coolDetect })
         let r = [
             r1.providerId,
-            typeof stored.cooling['cdx-a'],
+            stored.cooling['cdx-a'].reason, //紀錄為{ at, n, reason }, coolDetect之觸發reason為detect(2026-11-11 da402 DA-4)
             r2.providerId,
             r2.tried.map((x) => x.providerId), //次輪cdx-a降尾, 完全未被嘗試
         ]
-        let rr = ['cdx-b', 'number', 'cdx-b', ['cdx-b']]
+        let rr = ['cdx-b', 'detect', 'cdx-b', ['cdx-b']]
         assert.strict.deepEqual(r, rr)
     })
 

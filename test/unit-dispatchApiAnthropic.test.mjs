@@ -545,8 +545,9 @@ describe('dispatchApiAnthropic', function() {
                 cooldownMs: 60000,
                 onEvent: (ev) => events.push(ev),
             })
-            let o = [r.ok, r.code, r.errorType, r.tried.map((t) => t.outcome), events.filter((e) => e.type === 'cooled').length]
-            let oo = [false, 429, 'http', ['next-key', 'next-key'], 2]
+            //同一次呼叫同一條目至多一則cooled事件(2026-11-11 da402 DA-5, 帳本R-COOL-2; 修前兩把各發一則)
+            let o = [r.ok, r.code, r.errorType, r.tried.map((t) => t.outcome), events.filter((e) => e.type === 'cooled').map((e) => [e.reason, e.n])]
+            let oo = [false, 429, 'http', ['next-key', 'next-key'], [['rate-limit', 1]]]
             assert.strict.deepEqual(o, oo)
         })
 

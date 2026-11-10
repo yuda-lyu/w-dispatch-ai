@@ -259,7 +259,8 @@ describe('cliSpawnGate之接點: 四個CLI轉接器(R-SPAWNGATE-1)', function() 
                 minAttemptMs: 700,
             })
             let wall = Date.now() - t0
-            assert.strict.deepEqual([r.ok, r.errorType, r.tried[0].gateFailOpen, r.tried[0].outcome], [false, 'timeout', true, 'skip-group'])
+            //spawn之逾時被遞補層期限封頂(條目預設逾時遠大於預算) → budget-cut、回budget(2026-11-11 da402 DA-1, 帳本R-COOL-1; 修前為skip-group、timeout)
+            assert.strict.deepEqual([r.ok, r.errorType, r.tried[0].gateFailOpen, r.tried[0].outcome], [false, 'budget', true, 'budget-cut'])
             assert.strict.deepEqual(timeline.indexOf('gate:fail-open') < timeline.indexOf('cli:spawn'), true)
             assert.strict.deepEqual(wall < 7000, true)
         })

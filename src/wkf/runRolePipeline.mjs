@@ -5,6 +5,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import callAiWithFallback from './callAiWithFallback.mjs'
 import castPintOr from '../castPintOr.mjs'
+import castBudgetMs from '../castBudgetMs.mjs'
 import dfTimeoutMs from '../dfTimeoutMs.mjs'
 import { awaitUserFn, readCallerObj, asText } from '../callUserFn.mjs'
 
@@ -123,7 +124,7 @@ async function runRolePipeline(opt = {}) {
         //prompt函式可為async(帳本R-USERFN-1): 等待上限為該階段timeoutMs與budgetMs取小, 其耗時自budgetMs扣除後交下層(階段≤budgetMs),
         //拋錯、reject以'stage[id].prompt threw: 訊息'、逾時以'stage[id].prompt did not settle within Ns'回報
         let stageOpt = { ...callOpt, ...overrides }
-        let stageBudget = castPintOr(get(stageOpt, 'budgetMs', null), null)
+        let stageBudget = castBudgetMs(get(stageOpt, 'budgetMs', null)) //執行期之剩餘時間(主控裁示D11甲): ≤0為已無時間、小數向下取整, 未給或非數值為不限
         let stageTo = castPintOr(get(stageOpt, 'timeoutMs', null), dfTimeoutMs)
         let tp = Date.now()
         let pr = await awaitUserFn(() => promptFn({ input, prev, results, index: i }), stageBudget === null ? stageTo : Math.min(stageTo, stageBudget))
@@ -137,7 +138,7 @@ async function runRolePipeline(opt = {}) {
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
         }
         if (stageBudget !== null) {
-            stageOpt.budgetMs = Math.max(stageBudget - (Date.now() - tp), 1)
+            stageOpt.budgetMs = Math.max(stageBudget - (Date.now() - tp), 0) //扣prompt等待後之剩餘; 0即已無時間, 遞補層不送出、回budget exhausted(修前夾至≥1以避開「0＝不限」)
         }
         let r = await callAiWithFallback(prompt, { ...stageOpt, providers, spec: { use: get(stage, 'use', ''), fallback: get(stage, 'fallback', null) }, check: get(stage, 'check', null) })
         details[id] = r

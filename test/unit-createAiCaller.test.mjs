@@ -405,7 +405,7 @@ describe('createAiCaller', function() {
             })
             let r = await c.callAI('go')
             assert.strict.equal(r.ok, false)
-            assert.strict.equal(typeof store.peek().cooling['t:cd1'], 'number')
+            assert.strict.equal(store.peek().cooling['t:cd1'].reason, 'rate-limit') //紀錄為{ at, n, reason }(2026-11-11 da402 DA-4)
             assert.strict.equal(lines.length, 1)
             assert.strict.equal(lines[0].startsWith('AI 供應商進入冷卻 → t:cd1（'), true)
         })
@@ -418,7 +418,7 @@ describe('createAiCaller', function() {
             let s1 = memStore()
             let c1 = createAiCaller({ extraProviders: [ent('t:cdt1', 'err-500')], pick: ['t:cdt1'], store: s1, cooldownMs: 60000, coolDetect: () => true })
             await c1.callAI('go')
-            assert.strict.equal(typeof s1.peek().cooling['t:cdt1'], 'number')
+            assert.strict.equal(s1.peek().cooling['t:cdt1'].reason, 'detect') //紀錄為{ at, n, reason }(2026-11-11 da402 DA-4)
             let s2 = memStore()
             let c2 = createAiCaller({ extraProviders: [ent('t:cdt2', 'err-500')], pick: ['t:cdt2'], store: s2, coolDetect: () => true })
             await c2.callAI('go')
@@ -502,15 +502,25 @@ describe('createAiCaller', function() {
             assert.strict.equal(isNear(q.remainingMs, 120000), true, `remainingMs=${q.remainingMs}`)
         })
 
-        // 建議檔§1.4案3／主控裁定: 未給／null／非法視為未給 → 建構值
-        it('逐次budgetMs未給、null或非法（非正整數）: 視為未給，仍為建構值', async function() {
-            let bad = [undefined, null, 0, -1, -120000, 1.5, 'abc', '', NaN, {}, [], true, false]
+        // 建議檔§1.4案3／主控裁定(2026-11-11 D11甲改裁, 帳本R-CALLER-1-6改寫): 逐次值為執行期之剩餘時間——
+        // 未給／null／+Infinity／非數值視為未給 → 建構值; 0與負為已無時間 → 0; 小數向下取整(1.5 → 1)
+        it('逐次budgetMs未給、null、+Infinity或非數值: 視為未給，仍為建構值', async function() {
+            let bad = [undefined, null, Infinity, 'abc', '', NaN, {}, [], true, false]
             for (let v of bad) {
                 let p = await probeBudget({ budgetMs: 120000 }, { budgetMs: v })
                 assert.strict.equal(isNear(p.remainingMs, 120000), true, `budgetMs=${String(v)} remainingMs=${p.remainingMs}`)
             }
             let none = await probeBudget({ budgetMs: 120000 }, {})
             assert.strict.equal(isNear(none.remainingMs, 120000), true, `remainingMs=${none.remainingMs}`)
+        })
+
+        it('逐次budgetMs為0、負或0～1之小數: 已無時間 → 本次budget-out、不送出(修前視為未給而沿用建構值)；1.5取整為1', async function() {
+            for (let v of [0, -1, -120000, 0.5, '0', '-3']) {
+                let p = await probeBudget({ budgetMs: 120000 }, { budgetMs: v })
+                assert.strict.deepEqual([p.r.errorType, p.budgetOuts, p.sent, p.remainingMs <= 0], ['budget', 1, 0, true], `budgetMs=${String(v)} remainingMs=${p.remainingMs}`)
+            }
+            let q = await probeBudget({ budgetMs: 120000 }, { budgetMs: 1.5 })
+            assert.strict.deepEqual([q.budgetOuts, q.sent, q.remainingMs <= 1], [1, 0, true], `remainingMs=${q.remainingMs}`)
         })
 
         // 建議檔§1.4案4／主控裁定: 建構未給、逐次給 → 逐次值
@@ -527,8 +537,11 @@ describe('createAiCaller', function() {
         it('建構與逐次budgetMs皆未給或非法: 不限預算（無budget-out事件、請求照常送出）', async function() {
             let p = await probeBudget({}, {})
             assert.strict.deepEqual([p.r.ok, p.remainingMs, p.budgetOuts, p.sent], [true, null, 0, 1])
-            let q = await probeBudget({ budgetMs: 'abc' }, { budgetMs: 0 })
+            let q = await probeBudget({ budgetMs: 'abc' }, { budgetMs: 'abc' })
             assert.strict.deepEqual([q.r.ok, q.remainingMs, q.budgetOuts, q.sent], [true, null, 0, 1])
+            //建構值0為設定值(非正整數視為未給, 不限), 逐次未給 → 不限(D11甲: 設定值不得被當成已無時間)
+            let z = await probeBudget({ budgetMs: 0 }, {})
+            assert.strict.deepEqual([z.r.ok, z.remainingMs, z.budgetOuts, z.sent], [true, null, 0, 1])
         })
 
         // 逐次值只作用於該次呼叫: 建構期base不得被改寫
@@ -572,7 +585,8 @@ describe('createAiCaller', function() {
 
             //未依逐次值收緊時: 建構60000、條目預設逾時遠大於10秒，第一家於10秒後回'too late'而ok為true
             assert.strict.deepEqual([r.ok, r.errorType, r.error], [false, 'budget', 'budget exhausted'])
-            assert.strict.deepEqual(r.tried.map((t) => [t.providerId, t.outcome, t.errorType]), [['t:ib1', 'skip-group', 'timeout'], ['t:ib2', 'budget-out', undefined]])
+            //第一家被逐次預算封頂(條目逾時遠大於1000、差額≥minAttemptMs、整鏈已用盡) → budget-cut即回(2026-11-11 da402 DA-1, 帳本R-COOL-1; 修前為skip-group後budget-out)
+            assert.strict.deepEqual(r.tried.map((t) => [t.providerId, t.outcome, t.errorType]), [['t:ib1', 'budget-cut', 'timeout']])
             assert.strict.deepEqual(ev.filter((e) => e.type === 'try').map((e) => e.providerId), ['t:ib1']) //只嘗試一家
             assert.strict.deepEqual([reqOfKey('t:ib1').length, reqOfKey('t:ib2').length], [1, 0]) //替身端點亦只見第一家之請求
             assert.strict.equal(elapsed < 8000, true, `elapsed=${elapsed}`) //遠小於替身'slow'路由之10秒回應

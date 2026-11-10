@@ -7,6 +7,7 @@ import ispint from 'wsemi/src/ispint.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import callAiWithFallback from './callAiWithFallback.mjs'
 import castPintOr from '../castPintOr.mjs'
+import castBudgetMs from '../castBudgetMs.mjs'
 import dfTimeoutMs from '../dfTimeoutMs.mjs'
 import { awaitUserFn, readCallerObj, asText } from '../callUserFn.mjs'
 
@@ -171,7 +172,7 @@ async function runFanout(opt = {}) {
     //整合prompt函式可為async(帳本R-USERFN-1); 自訂與預設模板同走awaitUserFn(預設模板以JSON.stringify序列化呼叫端parse之產物亦可能拋錯, 如BigInt);
     //等待上限為整合名額之timeoutMs與budgetMs取小, 其耗時自budgetMs扣除後交下層(整合段≤budgetMs), 逾時以'integrate prompt did not settle within Ns'回報
     let intOpt = { ...callOpt, ...intOverrides }
-    let intBudget = castPintOr(get(intOpt, 'budgetMs', null), null)
+    let intBudget = castBudgetMs(get(intOpt, 'budgetMs', null)) //執行期之剩餘時間(主控裁示D11甲): ≤0為已無時間、小數向下取整, 未給或非數值為不限
     let intTo = castPintOr(get(intOpt, 'timeoutMs', null), dfTimeoutMs)
     let tp = Date.now()
     let pr = await awaitUserFn(() => (isfun(intPromptFn) ? intPromptFn(candidates) : defaultIntegratePrompt(candidates, opt)), intBudget === null ? intTo : Math.min(intTo, intBudget))
@@ -183,7 +184,7 @@ async function runFanout(opt = {}) {
         return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: 'integrate failed: prompt must be a non-empty string' }
     }
     if (intBudget !== null) {
-        intOpt.budgetMs = Math.max(intBudget - (Date.now() - tp), 1)
+        intOpt.budgetMs = Math.max(intBudget - (Date.now() - tp), 0) //扣prompt等待後之剩餘; 0即已無時間, 遞補層不送出、回budget exhausted(修前夾至≥1以避開「0＝不限」)
     }
     let rInt = await callAiWithFallback(intPrompt, { ...intOpt, providers, spec: { use, fallback }, check: isfun(checkInt) ? checkInt : check })
 

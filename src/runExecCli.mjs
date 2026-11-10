@@ -18,6 +18,7 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { judgeTruncated } from './checkTruncation.mjs'
 import { awaitUserFn, callHookSync, readCallerObj, validateNote } from './callUserFn.mjs'
 import { addErrorDetail, withOutputInfo, createTailCapture } from './failureDiag.mjs'
+import { readAttemptHints, retryFits, capByHints, createCutTracker } from './attemptDeadline.mjs'
 
 
 // runExecCli.mjs — CLI類轉接器呼叫wsemi之execCli之單一入口(四家轉接器共用, 規則只寫一處)
@@ -40,7 +41,15 @@ import { addErrorDetail, withOutputInfo, createTailCapture } from './failureDiag
 //   ④截斷500之optTruncate(:33-36)
 //   已知差異(2026-10-16外審): 驗證失敗後重呼execCli時, 其後「非驗證之失敗」之重試間隔由execCli以其本次呼叫內之次數計(自1起算),
 //   故「驗證不過→非零離開→…」之混合序列中, 後段間隔短於整輪以已嘗試次數計之公式(attempts與成敗判定不受影響);
-//   要完全一致須由本層逐次呼叫execCli(maxRetries 0)並複製其不重試判準, 屬另案。
+//   要完全一致須由本層逐次呼叫execCli(maxRetries 0)並複製其不重試判準——遞補層有期限時已由本層接管(見下【期限約束重試】), 無期限時仍為上述已知差異。
+//
+// 【期限約束重試(2026-11-11 da402／di402; 帳本R-COOL-4)】遞補層有期限(budgetMs)時經內部鍵attemptHints傳{ deadlineAt, minAttemptMs, entryTimeoutMs }(見attemptDeadline.mjs):
+//   ①本層接管重試: 交execCli之maxRetries為0, 由本層逐次呼叫並沿用execCli之不重試判準(以其觀察事件done之reason: 'spawn'／'enoent'／'code2'不重試, 'exhausted'可重試)
+//     與間隔公式(retryDelayMs×已嘗試次數, 上限15000ms)——修前無驗證路徑之重試在wsemi execCli內部而不看期限(探測P7: budgetMs 1500、牆鐘3327、3次請求), 本層接管而不擴充wsemi;
+//   ②每次重試之逾時以期限封頂, 「剩餘 − 退避 < minAttemptMs」即不再重試(驗證重試亦同); 無驗證路徑之重試不重新守門(同修前execCli內部重試之已知限制);
+//   ③封頂之標記: 最後一次嘗試以逾時結束(TIMEOUT開頭或validate timed out)且其逾時由遞補層期限決定(< entryTimeoutMs, 且非呼叫端自給之spawnGate.deadlineAt早於遞補層期限所致)、
+//     先前之重試沒有以足額逾時者, 結果加cutByDeadline與appliedTimeoutMs, 由遞補層裁定是否為budget-cut(見dispatchAiFallback檔頭【封頂逾時】)。
+//   未給attemptHints(直呼轉接器、遞補層無期限)者與修前逐位元相同。
 //
 // 【env不可讀】呼叫端env物件不可讀(拋錯之getter、已撤銷之Proxy)者, 於啟動前以params回報(四家同; opencode於自身組env時同判);
 //   可讀者以物化之淺層副本交execCli(只讀一次; 自有可列舉屬性, 同wsemi之buildSpawnEnv)。
@@ -214,7 +223,22 @@ async function runExecCli(exe, args, opt = {}) {
         return timeoutMs
     }
 
-    //enterGate: 回傳{ aborted, tmo }(tmo為該次spawn之timeoutMs)
+    //遞補層之期限提示(內部鍵attemptHints, 見attemptDeadline.mjs與檔頭【期限約束重試】): 有期限時重試受期限約束, 最後一次逾時由期限決定者標記cutByDeadline
+    let hints = readAttemptHints(opt)
+    let cut = createCutTracker(hints)
+
+    //callerBelowDa: 呼叫端自給之spawnGate.deadlineAt早於遞補層期限(此時守門後之封頂由呼叫端期限決定, 不得標記為遞補層封頂)
+    let callerBelowDa = () => {
+        try {
+            let c = get(sg, 'deadlineAt', null)
+            return hints !== null && c !== null && c !== undefined && isenum(c, { gt: 0 }) && Number(c) < hints.deadlineAt
+        }
+        catch {
+            return false
+        }
+    }
+
+    //enterGate: 回傳{ aborted, tmo, callerBound }(tmo為該次spawn之timeoutMs; callerBound為守門後之封頂由呼叫端自給期限決定)
     let enterGate = async () => {
         let g = null
         try {
@@ -235,7 +259,7 @@ async function runExecCli(exe, args, opt = {}) {
             gateWaitedMs += get(g, 'waitedMs', 0)
             gateFailOpen = gateFailOpen || get(g, 'failOpen', false) === true
         }
-        return { aborted: get(g, 'aborted', false) === true, tmo: ran ? capByDeadline() : timeoutMs }
+        return { aborted: get(g, 'aborted', false) === true, tmo: ran ? capByDeadline() : timeoutMs, callerBound: ran && callerBelowDa() }
     }
     //輸出尾端擷取與機密值名單(失敗診斷用, 見檔頭【失敗診斷與成功欄位】): 擷取器於每次spawn重置, 故取到的是最後一次嘗試之輸出
     let cap = createTailCapture()
@@ -300,6 +324,10 @@ async function runExecCli(exe, args, opt = {}) {
     }
     //budgetOk: 有deadlineAt(遞補層之budgetMs)時, 重試後剩餘預算(扣掉重試延遲)須仍夠一次最低嘗試(minAttemptMs); 無deadlineAt不限
     let budgetOk = () => {
+        //遞補層之期限提示(attemptHints)恆受約束: 「剩餘 − 重試延遲 < minAttemptMs」即不重試(守門關閉時無spawnGateHints, 修前因而不看期限——外審terra F01)
+        if (!retryFits(hints, trDelayMs)) {
+            return false
+        }
         try {
             let da = get(sg, 'deadlineAt', null)
             if (da === null || da === undefined) {
@@ -374,6 +402,15 @@ async function runExecCli(exe, args, opt = {}) {
     delete base.acceptTruncated
     delete base.transientRetry
     delete base.diagSecrets
+    delete base.attemptHints
+
+    //maxRetries、retryDelayMs, 無效回退與execCli相同之預設(0、5000)
+    let maxRetries = get(opt, 'maxRetries', null)
+    maxRetries = isp0int(maxRetries) ? cint(maxRetries) : 0
+    let retryDelayMs = castPintOr(get(opt, 'retryDelayMs', null), 5000)
+
+    //lastDone: execCli之觀察事件done之reason(本層接管重試時沿用其不重試判準: 'spawn'無法啟動、'enoent'命令不存在、'code2'離開碼2皆不重試, 'exhausted'可重試); 每次呼叫execCli前重置
+    let lastDone = null
 
     //擷取回調: 先記入擷取器再呼叫呼叫端自給之回調(回傳值與拋錯原樣交execCli處理); 非函數者視同未給(同execCli判型)
     for (let [name, push] of [['onStdout', cap.pushOut], ['onStderr', cap.pushErr]]) {
@@ -386,21 +423,87 @@ async function runExecCli(exe, args, opt = {}) {
         }
     }
     let userTrace = get(base, 'onTrace', null)
+
+    //接管重試(無驗證路徑, 見檔頭【期限約束重試】)時, 呼叫端之觀察回調所見之事件序列與execCli自身之重試迴圈相同(外審terra F13):
+    //attempt之n為累計次數、重試前補發retry { n, ms }、各次之done暫存不轉、結束時以累計次數補發一則done
+    let traceTakeover = false
+    let traceBase = 0
+    let heldDone = null
+    let emitUser = (ev) => {
+        if (isfun(userTrace)) {
+            callHookSync(() => userTrace(Object.freeze(ev))) //補發之事件: 拋錯與回傳值皆忽略(同execCli之觀察回調契約)
+        }
+    }
     base.onTrace = (ev) => {
-        if (get(ev, 'type', '') === 'spawn') {
+        let t = get(ev, 'type', '')
+        if (t === 'spawn') {
             cap.reset() //新一次嘗試(含execCli內部重試)開始, 前次輸出不混入尾段
         }
-        if (isfun(userTrace)) {
-            return userTrace(ev)
+        if (t === 'done') {
+            lastDone = get(ev, 'reason', null)
         }
+        if (!isfun(userTrace)) {
+            return
+        }
+        if (traceTakeover && t === 'attempt') {
+            return userTrace(Object.freeze({ ...ev, n: traceBase + get(ev, 'n', 1) }))
+        }
+        if (traceTakeover && t === 'done') {
+            heldDone = ev
+            return
+        }
+        return userTrace(ev)
     }
     if (validator === null) {
         let g0 = await enterGate()
         if (g0.aborted) {
             return getErrorResult('ABORTED', 'aborted')
         }
-        let s0 = await shape(await execCli(exe, args, { ...base, timeoutMs: g0.tmo }))
-        let r0 = s0.fail !== null ? s0.fail : s0.r
+        let s0 = null
+        let r0 = null
+        if (hints === null || maxRetries === 0) {
+
+            //無期限(或不重試): 同修前, 非驗證之失敗與其重試由execCli自理
+            s0 = await shape(await execCli(exe, args, { ...base, timeoutMs: g0.tmo }))
+            r0 = s0.fail !== null ? s0.fail : s0.r
+            cut.note(g0.tmo, r0, g0.callerBound)
+        }
+        else {
+
+            //有期限且maxRetries>0: 本層接管重試(execCli之maxRetries 0, 沿用其不重試判準與間隔公式), 每次重試之逾時以期限封頂、「剩餘 − 退避 < minAttemptMs」即不再重試;
+            //重試不重新守門(同修前execCli內部重試之已知限制)
+            let usedA = 0
+            let tmo = g0.tmo
+            let cb = g0.callerBound
+            traceTakeover = true
+            traceBase = 0
+            heldDone = null
+            for (;;) {
+                lastDone = null
+                s0 = await shape(await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: 0 }))
+                r0 = s0.fail !== null ? s0.fail : s0.r
+                usedA += get(r0, 'attempts', 1)
+                traceBase = usedA
+                cut.note(tmo, r0, cb)
+                if (r0.ok === true || s0.fail !== null || lastDone !== 'exhausted' || usedA > maxRetries) {
+                    break
+                }
+                let d = Math.min(retryDelayMs * usedA, MAX_RETRY_DELAY_MS)
+                if (!retryFits(hints, d)) {
+                    break
+                }
+                emitUser({ type: 'retry', n: usedA + 1, ms: d })
+                await delay(d)
+                tmo = capByHints(timeoutMs, hints)
+                cb = false
+            }
+            traceTakeover = false
+            if (heldDone !== null) {
+                emitUser({ ...heldDone, n: usedA })
+                heldDone = null
+            }
+            r0 = { ...r0, attempts: usedA }
+        }
 
         //暫時性錯誤: 等延遲、再過守門、單獨再跑一次(execCli之maxRetries 0; execCli自理之重試已用完), 結果之attempts為兩段之和
         if (s0.fail === null && canTransient(r0)) {
@@ -416,18 +519,15 @@ async function runExecCli(exe, args, opt = {}) {
                     return withGate({ ...getErrorResult('ABORTED', 'aborted'), attempts: a0 })
                 }
                 //重試輪之timeoutMs另以期限封頂(即使守門未運作而g1.tmo為原值: 首次耗時與重試延遲已用掉預算, 原值可能超出期限)
-                let s1 = await shape(await execCli(exe, args, { ...base, maxRetries: 0, timeoutMs: Math.min(g1.tmo, capByDeadline()) }))
+                let tmo1 = Math.min(g1.tmo, capByDeadline(), capByHints(timeoutMs, hints))
+                let s1 = await shape(await execCli(exe, args, { ...base, maxRetries: 0, timeoutMs: tmo1 }))
                 let r1 = s1.fail !== null ? s1.fail : s1.r
-                return withGate(attachErrorType({ ...r1, attempts: a0 + get(r1, 'attempts', 1) }))
+                cut.note(tmo1, r1, g1.callerBound)
+                return withGate(cut.mark(attachErrorType({ ...r1, attempts: a0 + get(r1, 'attempts', 1) })))
             }
         }
-        return withGate(attachErrorType(r0))
+        return withGate(cut.mark(attachErrorType(r0)))
     }
-
-    //maxRetries、retryDelayMs, 無效回退與execCli相同之預設(0、5000)
-    let maxRetries = get(opt, 'maxRetries', null)
-    maxRetries = isp0int(maxRetries) ? cint(maxRetries) : 0
-    let retryDelayMs = castPintOr(get(opt, 'retryDelayMs', null), 5000)
 
     let used = 0 //計入maxRetries預算之嘗試次數(暫時性重試之嘗試不計入, 另記於trAtt)
     let trPending = false //下一輪為暫時性重試(單獨一次嘗試, 不佔預算)
@@ -439,9 +539,19 @@ async function runExecCli(exe, args, opt = {}) {
             return withGate({ ...getErrorResult('ABORTED', 'aborted'), attempts: used + trAtt })
         }
         let tmo = trPending ? Math.min(gi.tmo, capByDeadline()) : gi.tmo //暫時性重試輪另以期限封頂(同路徑A)
+        let cb = gi.callerBound
+        if (hints !== null && (used > 0 || trPending)) {
+            let th = capByHints(timeoutMs, hints) //有期限: 重試之逾時以遞補層期限封頂(見檔頭【期限約束重試】)
+            if (th < tmo) {
+                tmo = th
+                cb = false
+            }
+        }
 
-        //子進程(本次至多maxRetries-used次重試, 由execCli自理非驗證之失敗與其重試; 暫時性重試輪只跑一次)
-        let rRaw = await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: trPending ? 0 : maxRetries - used, retryDelayMs })
+        //子進程(本次至多maxRetries-used次重試, 由execCli自理非驗證之失敗與其重試; 暫時性重試輪只跑一次);
+        //有期限時本層接管非驗證失敗之重試(execCli之maxRetries 0, 沿用其不重試判準), 令每次重試皆受期限約束
+        lastDone = null
+        let rRaw = await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: (trPending || hints !== null) ? 0 : maxRetries - used, retryDelayMs })
         if (trPending) {
             trAtt += get(rRaw, 'attempts', 1)
             trPending = false
@@ -452,6 +562,7 @@ async function runExecCli(exe, args, opt = {}) {
         let sh = await shape(rRaw)
         let r = sh.r
         if (!r.ok) {
+            cut.note(tmo, r, cb)
 
             //暫時性錯誤: 等延遲後回迴圈頂(再過守門)單獨再跑一次; shouldStop於等待中成立則回原失敗
             if (sh.fail === null && canTransient(r)) {
@@ -465,7 +576,16 @@ async function runExecCli(exe, args, opt = {}) {
                     continue
                 }
             }
-            return withGate(attachErrorType({ ...r, attempts: used + trAtt }))
+
+            //有期限時本層接管之非驗證失敗重試: 可重試(execCli判準)、尚有次數、且「剩餘 − 退避 ≥ minAttemptMs」才重試(回迴圈頂再過守門)
+            if (hints !== null && sh.fail === null && lastDone === 'exhausted' && used <= maxRetries) {
+                let d = Math.min(retryDelayMs * used, MAX_RETRY_DELAY_MS)
+                if (retryFits(hints, d)) {
+                    await delay(d)
+                    continue
+                }
+            }
+            return withGate(cut.mark(attachErrorType({ ...r, attempts: used + trAtt })))
         }
 
         //截斷(確定性: 同提示詞同上限必然再截斷), 不驗證、不重試, 直接以incomplete收場
@@ -495,12 +615,17 @@ async function runExecCli(exe, args, opt = {}) {
             attempts: used + trAtt,
             ...(get(r, 'truncated', false) === true ? { truncated: true, finishReason: get(r, 'finishReason', ''), tokens: get(r, 'tokens', null) } : {}), //acceptTruncated放行後驗證不過者仍標明被截斷
         }
+        cut.note(tmo, fail, cb)
         if (used > maxRetries) {
-            return withGate(attachErrorType(fail))
+            return withGate(cut.mark(attachErrorType(fail)))
         }
 
-        //重試間隔, 同execCli: retryDelayMs×已嘗試次數, 上限15000ms
-        await delay(Math.min(retryDelayMs * used, MAX_RETRY_DELAY_MS))
+        //重試間隔, 同execCli: retryDelayMs×已嘗試次數, 上限15000ms; 有期限時「剩餘 − 退避 < minAttemptMs」即不再重試
+        let dv = Math.min(retryDelayMs * used, MAX_RETRY_DELAY_MS)
+        if (!retryFits(hints, dv)) {
+            return withGate(cut.mark(attachErrorType(fail)))
+        }
+        await delay(dv)
     }
 }
 

@@ -336,8 +336,9 @@ describe('dispatchAiFallback failureKind處置', function() {
             let fp = crypto.createHash('sha256').update(key).digest('hex').slice(0, 16)
             let cooled = events.filter((e) => e.type === 'cooled')
             assert.strict.deepEqual(
-                [Object.keys(st.keyCooling), typeof st.keyCooling[fp], JSON.stringify(st).includes(key), cooled.map((e) => [e.scope, e.failureKind]), typeof st.cooling['anthropic:t4e'], r.quotaExhausted],
-                [[fp], 'number', false, [['key', 'no-credit'], ['entry', 'no-credit']], 'number', ['anthropic:t4e']],
+                //條目冷卻紀錄為{ at, n, reason }, 整組沒額度之reason為quota(固定視窗; 2026-11-11 da402 DA-4, 帳本R-COOL-2); 金鑰層keyCooling不變
+                [Object.keys(st.keyCooling), typeof st.keyCooling[fp], JSON.stringify(st).includes(key), cooled.map((e) => [e.scope, e.failureKind]), [typeof st.cooling['anthropic:t4e'].at, st.cooling['anthropic:t4e'].reason], r.quotaExhausted],
+                [[fp], 'number', false, [['key', 'no-credit'], ['entry', 'no-credit']], ['number', 'quota'], ['anthropic:t4e']],
             )
         })
 
@@ -483,13 +484,14 @@ describe('dispatchAiFallback failureKind處置', function() {
 
         it('限流: 換下一把(既有規則)；cooldownMs>0且全部限流 → 條目冷卻(內建429觸發)', async function() {
             let { r, store } = await call([rest('anthropic:t6a', ['sk-ant-ratelimited-11111', 'sk-ant-ratelimited-22222'])], { cooldownMs: 600000 })
-            assert.strict.deepEqual([r.failureKind, outcomes(r), typeof store.peek().cooling['anthropic:t6a'], store.peek().keyCooling], ['rate-limit', ['next-key', 'next-key'], 'number', undefined])
+            //條目冷卻紀錄為{ at, n, reason }(2026-11-11 da402 DA-4)
+            assert.strict.deepEqual([r.failureKind, outcomes(r), store.peek().cooling['anthropic:t6a'].reason, store.peek().keyCooling], ['rate-limit', ['next-key', 'next-key'], 'rate-limit', undefined])
         })
 
         it('CLI限流字樣(未給coolDetect): 內建依failureKind觸發條目冷卻', async function() {
             let log = newLog()
             let { r, store } = await call([cli('claude-api:t6b', ['sk-ant-ratelimited-11111', 'sk-ant-ratelimited-22222'], log)], { cooldownMs: 600000 })
-            assert.strict.deepEqual([r.failureKind, readLog(log).length, typeof store.peek().cooling['claude-api:t6b'], srv.requests.length], ['rate-limit', 2, 'number', 0])
+            assert.strict.deepEqual([r.failureKind, readLog(log).length, store.peek().cooling['claude-api:t6b'].reason, srv.requests.length], ['rate-limit', 2, 'rate-limit', 0]) //紀錄為{ at, n, reason }(da402 DA-4)
         })
 
         it('CLI限流: 未啟用冷卻(cooldownMs未給)則不冷卻', async function() {
@@ -514,8 +516,9 @@ describe('dispatchAiFallback failureKind處置', function() {
             let b = await call([rest('anthropic:t7d', ['sk-ant-good-11111'], { model: 'err-500' })], { cooldownMs: 600000, coolDetect: () => true })
             let c = await call([rest('anthropic:t7e', ['sk-ant-good-11111'], { model: 'err-500' })], { cooldownMs: 600000, coolDetect: () => false })
             assert.strict.deepEqual(
-                [typeof a.store.peek().cooling['anthropic:t7c'], typeof b.store.peek().cooling['anthropic:t7d'], c.store.peek().cooling['anthropic:t7e']],
-                ['number', 'number', undefined],
+                //紀錄為{ at, n, reason }(da402 DA-4): 內建限流觸發reason為rate-limit, coolDetect增加之觸發為detect
+                [a.store.peek().cooling['anthropic:t7c'].reason, b.store.peek().cooling['anthropic:t7d'].reason, c.store.peek().cooling['anthropic:t7e']],
+                ['rate-limit', 'detect', undefined],
             )
         })
 

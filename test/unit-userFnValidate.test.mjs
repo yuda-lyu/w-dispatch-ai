@@ -185,8 +185,9 @@ describe('自訂validate之回傳形態(CLI、REST、遞補層同規則)', funct
         })
         let ms = Date.now() - t0
         let a = t.tried[0] || {}
-        let r = [a.providerId, a.outcome, a.errorType, String(a.stderr).indexOf('validate timed out: ') === 0, ms <= budgetMs + 500]
-        let rr = ['A', 'skip-group', 'validation', true, true]
+        //驗證等待逾時發生在被預算封頂之嘗試(條目逾時預設300000遠大於預算)→ budget-cut、最終budget(2026-11-11 da402 DA-1, 帳本R-COOL-1; 修前為skip-group)
+        let r = [a.providerId, a.outcome, a.errorType, String(a.stderr).indexOf('validate timed out: ') === 0, ms <= budgetMs + 500, t.errorType]
+        let rr = ['A', 'budget-cut', 'validation', true, true, 'budget']
         assert.strict.deepEqual(r, rr)
     })
 

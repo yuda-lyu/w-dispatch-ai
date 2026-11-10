@@ -17,6 +17,7 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
 import { classifyRestFailure, classifyFetchError } from './failureKind.mjs'
+import { readAttemptHints, retryFits, capByHints, createCutTracker } from './attemptDeadline.mjs'
 
 
 // dispatchApiAnthropic.mjs — 以fetch直呼Anthropic Messages API(POST /v1/messages), 以Console之API金鑰計費
@@ -552,14 +553,25 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     let lastResult = null
     let totalAttempts = 0
 
+    //遞補層之期限提示(內部鍵attemptHints, 見attemptDeadline.mjs): 有期限時重試受期限約束, 最後一次逾時由期限決定者標記cutByDeadline; 未給者與修前相同
+    let hints = readAttemptHints(opt)
+    let cut = createCutTracker(hints)
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
 
-        //delay, 重試間隔隨次數遞增, 上限15000ms(同execCli)
+        //delay, 重試間隔隨次數遞增, 上限15000ms(同execCli); 有期限時「剩餘 − 退避 < minAttemptMs」即不再重試
         if (attempt > 0) {
-            await delay(Math.min(retryDelayMs * attempt, MAX_RETRY_DELAY_MS))
+            let d = Math.min(retryDelayMs * attempt, MAX_RETRY_DELAY_MS)
+            if (!retryFits(hints, d)) {
+                break
+            }
+            await delay(d)
         }
 
-        lastResult = await callOnce(url, headers, bodyText, timeoutMs, validator, acceptTruncated, secrets, fetchFn)
+        //重試之逾時以期限封頂(首次已由遞補層封頂)
+        let tmo = attempt > 0 ? capByHints(timeoutMs, hints) : timeoutMs
+        lastResult = await callOnce(url, headers, bodyText, tmo, validator, acceptTruncated, secrets, fetchFn)
+        cut.note(tmo, lastResult)
         totalAttempts = attempt + 1
 
         if (lastResult.ok) {
@@ -592,7 +604,7 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
 
     lastResult.attempts = totalAttempts
 
-    return lastResult
+    return cut.mark(lastResult)
 }
 
 

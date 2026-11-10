@@ -72,3 +72,16 @@
 - **失敗通道要對照〈輸入參數之檢測機制〉§5.1**:首版 `forgetQuota` 沿用本套件「永不拋錯、fail-open」之習慣,無效參數靜默回 `[]`;讀 dspec 後改為「同步且有副作用之入口,無效一般參數同步 throw、先於副作用」(`createFileStore` 對缺漏設定於組裝期 throw 為本套件先例),「參數有效但清不掉」才如實回 `[]`。fail-open 屬派工熱路徑(讀者、帳),**明示之管理動作傳錯參數靜默成功會讓使用端以為已清帳**。`callHookSync` 之狀態字為 `'value'`／`'threw'`／`'async'`(非 `'error'`),判斷 set 失敗用 `=== 'threw'`。
 - **套件無命令列入口**:建議 4 提「CLI 子命令」,但 `package.json` 無 `bin`、`src` 無 argv 入口;新增 `bin` 屬打包面變更(`package.json`／`toolg`),不在修正輪授權內,以可 import 之 `forgetQuota`(接受 state 或 store)代替,列待裁示。
 - **真實換帳號未實測**:本輪禁止呼叫真實用量 API;讀者回應之 `email` 欄位形狀依 `getQuota*` 既有單元測試與 ke340 本機實跑記錄(claude 讀 `~/.claude.json` 之 `oauthAccount.emailAddress`、codex 取 app-server `account/read`、agy 取 `--log-file` 內 `applyAuthResult: email=`),端到端待使用端發布後觀察。
+
+## 冷卻／健康／預算之語意邊界實作(2026-11-11 di402,排程第 402 項併 Gitea #130;帳本 `rulebook_cooling.md` R-COOL-1～4、R-CALLER-1-6 改寫)
+
+- **修前紅要分「被改回之行為」與「新欄位」**:以 `git archive HEAD` 解至 `./tmp/` 之快照跑新測試(node 自 `tmp/` 往上解析得 repo 之 `node_modules`),新模組不存在之檔整檔載入失敗(函數不存在亦算紅);為免整檔因命名匯出不存在而連結失敗,測試對新增之命名匯出改用命名空間取用(`import * as ns`),令只有該案紅。保持案(邊界不得過度判定、未給新選項時行為同修前)修前即綠,報告須逐案標明「保持案」而不是硬湊紅。
+- **預寫之 store 紀錄要落在「過期但未逾清除門檻」**:冷卻紀錄之清除門檻為「有效視窗＋`cooldownMaxMs`」,測試把 `cooldownMaxMs` 設小(30 分)時預寫「2 小時前」之紀錄會先被掃表清掉、變成新建(n 1)——斷言 n 2 失敗而誤以為接線沒生效。選預寫時刻時先算兩個門檻。
+- **`budget-cut` 改變了既有測試之預期**:凡「條目逾時遠大於預算」之既有案(剩餘預算壓進 timeoutMs、守門＋預算、逐次預算整合、驗證等待逾時)都會由 `skip-group／timeout` 變為 `budget-cut／budget`;全套跑一次即可撈齊,逐案註明設計出處改寫,不放寬斷言。
+- **重試之「不重試判準」取自 execCli 之觀察事件**:`execCli` 之 `kNoRetry` 是模組內 WeakSet、外部看不到;本層接管重試時改讀 `onTrace` 之 `done.reason`(`spawn`／`enoent`／`code2`／`exhausted`),與 execCli 自身之判準逐字同源,不另以結構判定(`isSpawnFail` 會把非 ENOENT 之非同步啟動錯誤也算進去,比 execCli 嚴)。
+- **變異在副本上做**:外審進行中不要動 repo 之 src(審查者正在讀);`tmp/di402/mut` 複製 src 與 test 後逐一套用變異、跑對應測試,repo 不受影響,也不必事後比對 sha256。
+- **REST 之「多送一次」不一定到得了伺服器**:重試不看期限之變異下,第三次請求之逾時被夾成 1ms,fetch 尚未送達即中止,替身之收件數仍為 2——收件數斷言抓不到;改於轉接器層直呼(帶內部鍵)斷言 `attempts` 與末次逾時值才分得出。下游已有同一正規化時(工作流之 `castBudgetMs` 被遞補層兜底),要找「只有本層看得到」之觀察點(prompt 等待上限)才能證明本層之改動有作用。
+- **「不落定」要以增量還原,不以舊值覆寫**:`envDown` 等待期間並行之他呼叫可能已改動或刪除同一條目(成交刪除連敗),以快照之舊值寫回會復活已刪紀錄;還原改為「減去本次增量、紀錄不在即略過」,並以事件閘門(等 `group-exhausted` 後再跑另一呼叫、再放行 envDown)寫成可重現之測試。
+- **新增之重試路徑要逐一盤查**:「期限約束一切重試」除 `maxRetries` 外,還有 opencode 之暫時性錯誤重試(其期限判斷只讀守門提示,守門關閉時即不看期限)與驗證不過之重試;以 `rg "delay\(|retry"` 列出所有重試與退避點再對表,外審(terra)仍找出前者。
+- **`envDown` 之等待不得以剩餘預算封頂(di402b 修正)**:呼叫端預算恆為各條目逾時之和或更小,斷網時條目等滿逾時、整鏈結束時剩餘 ≈ 0,封頂等於只等約 1 毫秒,呼叫端之真實探測(數十毫秒至數秒)來不及回覆即視同「通」,斷網被計為條目故障。初版(外審 terra F17 亦要求封頂,理由為免永不落定之 envDown 使呼叫超出預算約 5 秒)方向相反——環境歸因屬結束後之記帳,5 秒上限即是對「永不落定」之保護。測「剩餘 ≈ 0」之案用「條目逾時 = 預算」(真時間 400 毫秒)製造,並在 `envDown` 被詢問時自證「距期限 < `minAttemptMs`」,不以牆鐘斷言;延遲 d 與 5000(及與 1 毫秒)之裕度各 ≥ 3 秒(≥ 49 毫秒),負載不改判定。
+- **回傳形狀之帶出要在每一層查**:遞補層結果有 `envDown`,但 `callAiWithFallback` 重建回傳物件而丟失(只列 `tried`、`usage`、`quotaExhausted` 等已知鍵),`createAiCaller.callAI` 以展開則原已帶出。新增遞補層結果鍵時用 `rg "quotaExhausted" src` 之類既有鍵為線索找所有重建回傳之站點。

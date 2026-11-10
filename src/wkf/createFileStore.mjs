@@ -1,3 +1,4 @@
+import fs from 'fs'
 import path from 'path'
 import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
@@ -24,6 +25,13 @@ import { callHookSync } from '../callUserFn.mjs'
 //
 // 【併發假定】與dispatchAiFallback之store文件一致: 假定單行程序列調用,
 //   並行執行同一任務請自行加鎖, 否則兩行程互相覆蓋游標。
+//
+// 【同一行程同一檔案共用一個狀態物件(2026-11-11 da402 DA-10)】修前每次get皆讀檔回新物件, 同一行程內並行之呼叫(如runFanout之各席位、
+//   多個createAiCaller共用同一狀態檔)各持舊快照整份寫回: 冷卻加長之n、持久連敗會遺失, 已刪之紀錄會被後寫者復活。
+//   改為以檔案絕對路徑為鍵之行程內共用物件: get恆回同一物件(並行之呼叫就地修改), set把外來副本之鍵併入該物件(不整份取代)後寫檔。
+//   檔案於本行程之外被改動或刪除(以最後一次讀寫後之mtime與大小比對)時, 下一次get重讀並就地換掉該物件之內容(持有者看到新內容)。
+//   跨行程仍為上述之「單行程」假設(兩行程同時寫同一檔仍互相覆蓋)。已知限制: 行程外之改寫若恰與本行程最後一次寫入之mtime與大小皆相同則察覺不到;
+//   set收到「非get所回之物件」(呼叫端自行複製之副本)時以其頂層鍵併入共用物件, 副本缺少之頂層鍵不刪除, 副本若帶舊之巢狀物件(如整份cooling)則以之取代該鍵。
 //
 // 【本工廠為同步函數會throw】file與dir皆缺屬設定錯誤, 應於組裝期即失敗(fail fast),
 //   與dispatchAiWkf工廠同一約定; 執行期之get/set則不throw(讀壞回空、寫失敗靜默)。
@@ -75,24 +83,63 @@ function createFileStore(opt = {}) {
         stamp = () => new Date().toISOString()
     }
 
+    //shared, 本行程內同一檔案(絕對路徑)之共用狀態(見檔頭【同一行程同一檔案共用一個狀態物件】)
+    let fileKey = path.resolve(file)
+    if (!SHARED.has(fileKey)) {
+        SHARED.set(fileKey, { state: null, sig: null })
+    }
+    let shared = SHARED.get(fileKey)
+
+    //readFile, 讀檔並剔除本層自用欄位(檔案不存在或非法JSON回空物件)
+    let readFile = () => {
+        let r = fsReadJson(file)
+        let j = (get(r, 'error', undefined) !== undefined) ? null : get(r, 'success', null)
+        if (!isobj(j)) {
+            return {}
+        }
+        let state = { ...j }
+        for (let k of ownKeys) {
+            delete state[k]
+        }
+        return state
+    }
+
     return {
 
         file,
 
         get: () => {
-            let r = fsReadJson(file)
-            let j = (get(r, 'error', undefined) !== undefined) ? null : get(r, 'success', null)
-            if (!isobj(j)) {
-                return {}
+            let sig = sigOf(fileKey)
+            if (shared.state !== null && sig === shared.sig) {
+                return shared.state
             }
-            let state = { ...j }
-            for (let k of ownKeys) {
-                delete state[k]
+
+            //首次讀取, 或檔案於本行程之外被改動或刪除: 重讀並就地換掉共用物件之內容(持有者看到新內容)
+            let fresh = readFile()
+            if (shared.state === null) {
+                shared.state = fresh
             }
-            return state
+            else {
+                for (let k of Object.keys(shared.state)) {
+                    delete shared.state[k]
+                }
+                Object.assign(shared.state, fresh)
+            }
+            shared.sig = sig
+            return shared.state
         },
 
         set: (state) => {
+            if (shared.state === null) {
+                shared.state = isobj(state) ? state : {}
+            }
+            else if (isobj(state) && state !== shared.state) {
+                Object.assign(shared.state, state) //外來副本之頂層鍵併入共用物件, 不整份取代(副本缺少之頂層鍵不刪除; 同知識管線之共享store作法)
+            }
+            for (let k of ownKeys) {
+                delete shared.state[k] //本層自用欄位不留在共用物件(get之契約: 不含自用欄位——外審terra F14)
+            }
+            state = shared.state
             //stamp為同步契約: 拋錯或回傳Promise(承接其rejection)皆退用預設時間戳——檔頭「執行期之get/set不throw」;
             //回傳值不可序列化(BigInt、循環參照、已撤銷之Proxy)者亦退用預設, 否則整份寫檔靜默失敗(游標與冷卻遺失)
             let h = callHookSync(() => stamp())
@@ -107,8 +154,30 @@ function createFileStore(opt = {}) {
             }
             let out = { ...(isobj(state) ? state : {}), at }
             fsWriteJson(file, out, { useFormat: true })
+            shared.sig = sigOf(fileKey) //本行程自己之寫入不觸發重讀
         },
 
+    }
+}
+
+
+//SHARED, 行程內各狀態檔(絕對路徑)之共用狀態{ state, sig }
+let SHARED = new Map()
+
+
+/**
+ * 檔案之簽章(mtime與大小; 不存在或讀不到回'none')，供判斷檔案是否於本行程之外被改動
+ *
+ * @param {String} fp 輸入檔案絕對路徑
+ * @returns {String} 回傳簽章字串
+ */
+function sigOf(fp) {
+    try {
+        let s = fs.statSync(fp)
+        return `${s.mtimeMs}:${s.size}`
+    }
+    catch {
+        return 'none'
     }
 }
 

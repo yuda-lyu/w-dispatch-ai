@@ -69,6 +69,10 @@ describe('WDispatchAi', function() {
             'getQuotaCodex',
             'getQuotaAntigravity',
             'forgetQuota', //2026-11-09新增(da116, Gitea #116): 換訂閱帳號後明示清除額度帳
+            'castBudgetMs', //2026-11-11新增(di402, 排程402／Gitea #130): 執行期剩餘時間之正規化(供知識管線同一份)
+            'coolEntry', //同上: 以遞補層同一規則寫入條目冷卻
+            'coolingOf', //同上: 讀出條目冷卻紀錄
+            'streakOf', //同上: 讀出持久連敗次數
         ]
         assert.strict.deepEqual(r, rr)
     })
@@ -89,6 +93,7 @@ describe('WDispatchAi', function() {
             ...fn(9), //resolveProviders ~ createAiEventLogger
             'object', //OUTCOME_TEXT
             ...fn(8), //salvageTruncatedArray ~ forgetQuota
+            ...fn(4), //castBudgetMs ~ streakOf
         ]
         assert.strict.deepEqual(r, rr)
     })
