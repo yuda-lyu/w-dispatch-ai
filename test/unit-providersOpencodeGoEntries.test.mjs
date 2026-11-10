@@ -20,10 +20,9 @@ import createFakeCli from './tools/fakeCliForTest.mjs'
 
 
 //2026-11-03 Go型錄(opencode 1.19.5 CLI)各模型之檔位; 空陣列代表無檔位
-//(crouton-alpha-free為2026-11-07 Gitea #92新增, 檔位取自同日`opencode models opencode-go --refresh --verbose`之CLI型錄)
+//(2026-11-07曾增1條免費期條目, 2026-11-10因上游下架移除而回到8條, 見providers.mjs檔頭Go型錄漂移紀錄與本檔末「已下架」案)
 let VARIANTS = {
     'beam-free': ['low', 'medium', 'high', 'xhigh', 'max'],
-    'crouton-alpha-free': ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
     'deepseek-v4.1-flash': ['low', 'high', 'max'],
     'minimax-m3.1-flash': ['low', 'medium', 'high', 'xhigh', 'max'],
     'qwen3.8-flash': ['low', 'medium', 'xhigh'],
@@ -36,7 +35,6 @@ let VARIANTS = {
 //條目順序(不以請求資料訓練者在前, 會訓練者〔須使用者於工作區隱私設定明開〕殿後)
 let GO_IDS = [
     'ocgo:opencode-go/beam-free',
-    'ocgo:opencode-go/crouton-alpha-free',
     'ocgo:opencode-go/deepseek-v4.1-flash',
     'ocgo:opencode-go/minimax-m3.1-flash',
     'ocgo:opencode-go/qwen3.8-flash',
@@ -53,22 +51,22 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
 
     describe('欄位(G1、G2、G7)', function() {
 
-        it('恰有9條, 順序固定(不訓練者在前、iceman與muse殿後; 2026-11-07起crouton-alpha-free緊接beam-free之後)', function() {
+        it('恰有8條, 順序固定(不訓練者在前、iceman與muse殿後)', function() {
             assert.strict.deepEqual(goEntries.map((p) => p.id), GO_IDS)
         })
 
         it('每條: kind=opencode、provider=opencode-go、model為id去掉ocgo:前綴且以opencode-go/開頭(provider與model配對)', function() {
             let r = goEntries.map((p) => [p.kind, p.provider, p.model === p.id.replace(/^ocgo:/, ''), p.model.startsWith(`${p.provider}/`)])
-            assert.strict.deepEqual([goEntries.length, r], [9, GO_IDS.map(() => ['opencode', 'opencode-go', true, true])])
+            assert.strict.deepEqual([goEntries.length, r], [8, GO_IDS.map(() => ['opencode', 'opencode-go', true, true])])
         })
 
         it('每條envVar為OPENCODE_GO_KEYS(不沿用OPENCODE_KEYS)', function() {
-            assert.strict.deepEqual([goEntries.length, goEntries.map((p) => p.envVar)], [9, GO_IDS.map(() => 'OPENCODE_GO_KEYS')])
+            assert.strict.deepEqual([goEntries.length, goEntries.map((p) => p.envVar)], [8, GO_IDS.map(() => 'OPENCODE_GO_KEYS')])
         })
 
         it('每條防寫同其餘oc:條目: permission為{edit:deny, bash:ask}, 不deny bash; 不匿名(無useStoredAuth:false, Go須金鑰)', function() {
             let r = goEntries.map((p) => [p.config.permission, p.useStoredAuth])
-            assert.strict.deepEqual([goEntries.length, r], [9, GO_IDS.map(() => [{ edit: 'deny', bash: 'ask' }, undefined])])
+            assert.strict.deepEqual([goEntries.length, r], [8, GO_IDS.map(() => [{ edit: 'deny', bash: 'ask' }, undefined])])
         })
 
         it('每條只含預期欄位(id/model/kind/provider/envVar/detectTruncation/config/extraArgs; iceman另有outputTokenMax), config只有permission', function() {
@@ -81,13 +79,13 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
                 }
                 return [ks.sort(), ['permission']]
             })
-            assert.strict.deepEqual([goEntries.length, r], [9, rr])
+            assert.strict.deepEqual([goEntries.length, r], [8, rr])
             assert.strict.deepEqual(goEntries.filter((p) => 'outputTokenMax' in p).map((p) => [p.id, p.outputTokenMax]), [['ocgo:opencode-go/iceman-contributor-free', 32000]])
         })
 
         it('每條detectTruncation為true(2026-11-04 da78, Gitea #78: Go推理模型長提示詞被輸出上限截斷時須回報incomplete而非靜默成功; 帳本R-OCGO-4); 非Go之opencode條目不帶(行為不變)', function() {
             let others = providers.filter((p) => p.kind === 'opencode' && !p.id.startsWith('ocgo:'))
-            assert.strict.deepEqual([goEntries.length, goEntries.map((p) => p.detectTruncation), others.length > 0, others.filter((p) => 'detectTruncation' in p).length], [9, GO_IDS.map(() => true), true, 0])
+            assert.strict.deepEqual([goEntries.length, goEntries.map((p) => p.detectTruncation), others.length > 0, others.filter((p) => 'detectTruncation' in p).length], [8, GO_IDS.map(() => true), true, 0])
         })
 
     })
@@ -113,7 +111,7 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
                     bad.push([p.id, ea])
                 }
             }
-            assert.strict.deepEqual([goEntries.length, bad], [9, []])
+            assert.strict.deepEqual([goEntries.length, bad], [8, []])
         })
 
         it('思考強度一律high(2026-09-30使用者指示): 型錄有high者帶high; 無high之qwen3.8-flash(low/medium/xhigh)取xhigh', function() {
@@ -129,7 +127,7 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
                 return vs.includes('high') ? 'high' : 'xhigh'
             })
             assert.strict.deepEqual(r, rr)
-            assert.strict.deepEqual(rr, ['high', 'high', 'high', 'high', 'xhigh', 'high', null, null, 'high'])
+            assert.strict.deepEqual(rr, ['high', 'high', 'high', 'xhigh', 'high', null, null, 'high'])
         })
 
     })
@@ -150,19 +148,19 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
 
         it('無REST類Go條目: 無條目baseURL指向/inference/go, 亦無api-*類kind之id含go', function() {
             let r = providers.filter((p) => /\/inference\/go|\/zen\/go/i.test(String(p.baseURL || '')) || (/^api-/.test(p.kind) && /(^|[:/_-])go([:/_-]|$)/i.test(p.id)))
-            assert.strict.deepEqual([goEntries.length, r], [9, []])
+            assert.strict.deepEqual([goEntries.length, r], [8, []])
         })
 
-        it('內建目錄共38條(原29＋Go 9), id不重複', function() {
+        it('內建目錄共37條(原29＋Go 8), id不重複', function() {
             let ids = providers.map((p) => p.id)
-            assert.strict.deepEqual([ids.length, new Set(ids).size], [38, 38])
+            assert.strict.deepEqual([ids.length, new Set(ids).size], [37, 37])
         })
 
     })
 
     describe('經resolveProviders展開(G3)', function() {
 
-        it('給OPENCODE_GO_KEYS(逗號多把): 9條皆展開keys、移除envVar、其餘欄位原樣', function() {
+        it('給OPENCODE_GO_KEYS(逗號多把): 8條皆展開keys、移除envVar、其餘欄位原樣', function() {
             let r = resolveProviders(providers, { env: { OPENCODE_GO_KEYS: 'oc_sk_aaa111, oc_sk_bbb222' }, pick: GO_IDS })
             let got = r.providers
             assert.strict.deepEqual(
@@ -180,7 +178,7 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             }))
         })
 
-        it('缺OPENCODE_GO_KEYS(含空字串、全空白): 9條全列入skipped(envVar為OPENCODE_GO_KEYS)、不拋、不進providers', function() {
+        it('缺OPENCODE_GO_KEYS(含空字串、全空白): 8條全列入skipped(envVar為OPENCODE_GO_KEYS)、不拋、不進providers', function() {
             let rs = [{}, { OPENCODE_GO_KEYS: '' }, { OPENCODE_GO_KEYS: '  ,  ' }].map((env) => resolveProviders(providers, { env, pick: GO_IDS }))
             let r = rs.map((x) => [x.providers.length, x.skipped.map((s) => s.id), x.skipped.every((s) => s.envVar === 'OPENCODE_GO_KEYS')])
             assert.strict.deepEqual(r, rs.map(() => [0, GO_IDS, true]))
@@ -191,11 +189,11 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             let ids = r.providers.map((p) => p.id)
             assert.strict.deepEqual(
                 [ids.some((id) => id.startsWith('ocgo:')), r.skipped.filter((s) => s.id.startsWith('ocgo:')).length, ids.includes('zen:jev-1.13-free')],
-                [false, 9, true],
+                [false, 8, true],
             )
         })
 
-        it('全取且備齊OPENCODE_GO_KEYS: Go條目9條在providers內、順序同目錄', function() {
+        it('全取且備齊OPENCODE_GO_KEYS: Go條目8條在providers內、順序同目錄', function() {
             let r = resolveProviders(providers, { env: { OPENCODE_GO_KEYS: 'oc_sk_aaa111' } })
             assert.strict.deepEqual(r.providers.filter((p) => p.id.startsWith('ocgo:')).map((p) => p.id), GO_IDS)
         })
@@ -258,76 +256,30 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
 })
 
 
-// 2026-11-07 Gitea #92(主控任務20261107120446之ke339): 新增 ocgo:opencode-go/crouton-alpha-free(限時Unlimited之免費期Go模型; 帳本R-OCGO-1⑩)
-// 規格來源(任務書〈主控已定〉2與〈必要之測試〉2): 形狀比照ocgo:opencode-go/beam-free; 依「不訓練者在前」緊接beam-free之後;
-//   resolveCatalogue({ pick: [新id] }): 有金鑰時1條、缺OPENCODE_GO_KEYS時列入skipped(同既有ocgo:)。
-describe('ocgo:opencode-go/crouton-alpha-free(Gitea #92)', function() {
+// 2026-11-10 da405(主控任務20261110193329): ocgo:opencode-go/crouton-alpha-free 上游下架, 自目錄移除(帳本R-OCGO-1⑩: 免費期模型會下架, 目錄與官方Go型錄一致為準)
+// 本案守「已移除」與「移除後之行為」: 該id不在目錄; 指名者列入missing(不拋)而非靜默展開; 全取時Go條目恰為GO_IDS。
+//   「目錄 ⊆ 官方Go型錄」之連網比對在 test/api-providersOpencodeGo.test.mjs(此處不連網)。
+describe('已下架之ocgo:opencode-go/crouton-alpha-free(2026-11-10 da405)', function() {
 
     let ID = 'ocgo:opencode-go/crouton-alpha-free'
-    let entry = providers.find((p) => p.id === ID)
-    let beam = providers.find((p) => p.id === 'ocgo:opencode-go/beam-free')
 
-    it('形狀比照ocgo:beam-free: 欄位集合、kind／provider／envVar／detectTruncation／防寫／檔位(--variant high)皆同, 僅id與model不同', function() {
-        let strip = (p) => {
-            let { id, model, ...x } = p
-            return x
-        }
+    it('目錄內無任何id或model含crouton之條目', function() {
+        let hit = providers.filter((p) => /crouton/i.test(`${p.id} ${p.model || ''}`)).map((p) => p.id)
+        assert.strict.deepEqual(hit, [])
+    })
+
+    it('resolveCatalogue({ pick: [該id] }): 即使備齊OPENCODE_GO_KEYS, providers為空、該id列入missing、不拋', function() {
+        let { resolved } = resolveCatalogue({ pick: [ID], env: { OPENCODE_GO_KEYS: 'oc_sk_aaa111' } })
         assert.strict.deepEqual(
-            [entry !== undefined, entry.model, Object.keys(entry).sort(), strip(entry)],
-            [true, 'opencode-go/crouton-alpha-free', Object.keys(beam).sort(), strip(beam)],
-        )
-        assert.strict.deepEqual(
-            [entry.kind, entry.provider, entry.envVar, entry.detectTruncation, entry.config, entry.extraArgs],
-            ['opencode', 'opencode-go', 'OPENCODE_GO_KEYS', true, { permission: { edit: 'deny', bash: 'ask' } }, ['--variant', 'high']],
+            [resolved.providers.length, resolved.skipped, resolved.missing],
+            [0, [], [ID]],
         )
     })
 
-    it('位置: 緊接beam-free之後、deepseek-v4.1-flash之前(不訓練者在前)', function() {
-        let ids = providers.map((p) => p.id)
-        let i = ids.indexOf(ID)
-        assert.strict.deepEqual(
-            [ids[i - 1], ids[i + 1]],
-            ['ocgo:opencode-go/beam-free', 'ocgo:opencode-go/deepseek-v4.1-flash'],
-        )
-    })
-
-    it('resolveCatalogue({ pick: [新id] }): 有OPENCODE_GO_KEYS時展開1條(keys、移除envVar)、skipped與missing皆空', function() {
-        let { resolved } = resolveCatalogue({ pick: [ID], env: { OPENCODE_GO_KEYS: 'oc_sk_aaa111,oc_sk_bbb222' } })
-        assert.strict.deepEqual(
-            [resolved.providers.map((p) => p.id), resolved.providers.map((p) => p.keys), resolved.providers.map((p) => 'envVar' in p), resolved.skipped, resolved.missing],
-            [[ID], [['oc_sk_aaa111', 'oc_sk_bbb222']], [false], [], []],
-        )
-    })
-
-    it('resolveCatalogue({ pick: [新id] }): 缺OPENCODE_GO_KEYS(未設、空字串、全空白、只設OPENCODE_KEYS)時0條、列入skipped(envVar為OPENCODE_GO_KEYS)、不拋', function() {
-        let envs = [{}, { OPENCODE_GO_KEYS: '' }, { OPENCODE_GO_KEYS: '  ,  ' }, { OPENCODE_KEYS: 'oc_sk_free1' }]
-        let r = envs.map((env) => {
-            let { resolved } = resolveCatalogue({ pick: [ID], env })
-            return [resolved.providers.length, resolved.skipped, resolved.missing]
-        })
-        assert.strict.deepEqual(r, envs.map(() => [0, [{ id: ID, envVar: 'OPENCODE_GO_KEYS' }], []]))
-    })
-
-    describe('經dispatchAiFallback以假opencode執行', function() {
-
-        let fake = null
-        before(function() {
-            fake = createFakeCli('opencodegocrouton')
-        })
-        after(function() {
-            fake.clean()
-        })
-
-        it('金鑰以OPENCODE_AUTH_CONTENT注入 {"opencode-go":{type:api,key}}, argv為 run --agent build -m opencode-go/crouton-alpha-free --format json --variant high', async function() {
-            let { resolved } = resolveCatalogue({ pick: [ID], env: { OPENCODE_GO_KEYS: 'oc_sk_go_test_key' }, exes: { opencode: fake.exe } })
-            let r = await dispatchAiFallback('hello', { providers: resolved.providers })
-            let o = JSON.parse(r.stdout)
-            assert.strict.deepEqual(
-                [r.ok, r.providerId, o.args, JSON.parse(o.env.OPENCODE_AUTH_CONTENT), JSON.parse(o.env.OPENCODE_CONFIG_CONTENT), o.stdin],
-                [true, ID, ['run', '--agent', 'build', '-m', 'opencode-go/crouton-alpha-free', '--format', 'json', '--variant', 'high'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, { permission: { edit: 'deny', bash: 'ask' } }, 'hello'],
-            )
-        })
-
+    it('全取且備齊OPENCODE_GO_KEYS: 展開之ocgo:條目恰為GO_IDS(8條), 不含該id', function() {
+        let { resolved } = resolveCatalogue({ env: { OPENCODE_GO_KEYS: 'oc_sk_aaa111' } })
+        let ids = resolved.providers.filter((p) => p.id.startsWith('ocgo:')).map((p) => p.id)
+        assert.strict.deepEqual([ids, ids.includes(ID)], [GO_IDS, false])
     })
 
 })

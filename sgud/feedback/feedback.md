@@ -5,3 +5,4 @@
 | 日期 | 類別 | 對象 | 內容 | 依據 |
 |---|---|---|---|---|
 | 2026-11-09 | 全域設定 | 規格〈診斷輸出與遮罩〉(跨套件) | 該規格涵蓋「錯誤原文、連線字串、帳密、資料值」之遮罩,**未涵蓋「帳號識別(email)寫入持久化狀態與事件」之形式**.本輪(da116)需把登入帳號之識別存進額度帳(狀態檔,常被備份或附進日誌),並在事件與日誌表示「帳號改變」:依派工單「不含帳號完整值」自行決定帳內存 sha256(去空白、小寫)前 16 碼、事件只帶前 8 碼.建議規格補一條跨套件通則:帳號識別在持久化狀態與事件中之統一形式(雜湊取碼長度、是否加鹽、比對時之正規化),免各套件各自決定. | `src/subQuotaGate.mjs` `accountIdOf`、`accountTagOf`;`sgud/rule/rulebook_quotagate.md` R-SPAWNGATE-7 規則①與已知限制③ |
+| 2026-11-10 | 全域技能 | dispatch-opencode(`SKILL.md`) | 技能內仍載已下架之 `crouton-alpha-free`、內建條目「38 條」與「`ocgo:` 9 條」之敘述(本機 `~/.claude/skills/dispatch-opencode/SKILL.md` 第 10、88、129～131、150 行;唯讀核對,未改).本輪(da405)已自本套件移除該條目(內建 37 條、`ocgo:` 8 條),請由主控同步技能文字;另建議於技能補一句通則:限時免費之 Go 條目會下架,連網守門 `api-providersOpencodeGo` 紅燈時依帳本 R-OCGO-1⑩ 重查官方 Go 型錄／Zen 型錄／官方 Go 頁後移除,不以名稱推測改名、不放寬守門. | 本機唯讀 Grep `crouton|ocgo:|9 條|38`(`SKILL.md` 上列行);`sgud/rule/rulebook_opencodego.md` R-OCGO-1〈型錄漂移紀錄〉2026-11-10 |

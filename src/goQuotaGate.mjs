@@ -18,10 +18,10 @@ import { awaitUserFn, readCallerObj } from './callUserFn.mjs'
 //
 // 【用量端點之限制(2026-11-07 Gitea #92補記; 不改行為)】用量端點只回「整把金鑰」之三視窗(rolling／weekly／monthly)百分比, 沒有逐模型分項,
 //   而官方各模型月額獨立(見providers.mjs檔頭【OpenCode Go】段之官方月額表)。故本層以單一百分比(任一視窗≥門檻)擋該把金鑰之「全部」ocgo:條目:
-//   無從得知是哪個模型用掉額度, 也無法讓Unlimited之免費期模型(beam-free、crouton-alpha-free、iceman-contributor-free)免於被一併略過。
+//   無從得知是哪個模型用掉額度, 也無法讓Unlimited之免費期模型(beam-free、iceman-contributor-free)免於被一併略過。
 //   使用端若以為「其他模型仍有額度」卻整組被略過, 即此限制所致; 需要單獨放行者以條目或呼叫層的`quotaGate: false`(或調高門檻)處理。
 //
-// 【Unlimited免費期條目之連坐(2026-11-07 ke340評估, Gitea #93; 不改行為)】被擋的是「整把金鑰」, 故該金鑰因付費模型用量達門檻時, 免費期條目(beam-free、crouton-alpha-free、iceman-contributor-free)亦被略過。
+// 【Unlimited免費期條目之連坐(2026-11-07 ke340評估, Gitea #93; 不改行為)】被擋的是「整把金鑰」, 故該金鑰因付費模型用量達門檻時, 免費期條目(beam-free、iceman-contributor-free)亦被略過。
 //   曾評估「內建之免費期條目不受該金鑰用量門檻約束」而不採: 缺證據——金鑰用量達門檻或到頂時, 免費期模型是否仍可呼叫從未實測(本層存在的前提即「Go額度到頂時run之行為與字樣未查明」,
 //   免費池到頂時run不結束只到逾時), 繞過門檻會把「略過一次」換成「可能整個逾時(預設300秒)」, 與本層目的相反; 且此項不得以真模型呼叫驗證。要放行者以條目或呼叫層的quotaGate: false逐條處理、自擔風險;
 //   待實證(在用量≥門檻之金鑰上以quotaGate: false對一條免費期條目做一次短逾時呼叫)後再決定是否內建, 見規則帳本R-OCGO-5。

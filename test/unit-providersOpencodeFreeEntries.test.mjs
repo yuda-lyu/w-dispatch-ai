@@ -96,8 +96,8 @@ describe('providers之opencode免費條目裁定(2026-11-03)', function() {
             providers.length,
         ]
         //條目數: 2026-11-03 da63時為29; 同日da65(Gitea #65)新增8條CLI類Go條目(ocgo:, 見unit-providersOpencodeGoEntries)而為37;
-        //2026-11-07 ke339(Gitea #92)再新增ocgo:opencode-go/crouton-alpha-free而為38(oc:／zen:條目零增刪)
-        assert.strict.deepEqual(r, [false, false, 38])
+        //2026-11-07 ke339(Gitea #92)曾再新增1條ocgo:免費期條目而為38; 2026-11-10 da405因上游下架移除而回到37(oc:／zen:條目始終零增刪)
+        assert.strict.deepEqual(r, [false, false, 37])
     })
 
 })

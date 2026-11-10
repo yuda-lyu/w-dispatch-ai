@@ -10,7 +10,15 @@
 
 > 2026-11-08 再整理(檔約 34KB,超過約 30KB 門檻):2026-10-23～11-05 之遞補與錯誤型別、CLI spawn 守門與 Go 用量冷卻(da67)、opencode 單次輸出上限與截斷偵測(da78)、放行最小間隔與暫時性重試(da320)等四節,已抽出至 `experience_20261108.md`(逐字搬移,節號與標題不變);需要時再調閱.
 
-## OpenCode Go 型錄漂移對齊與 crouton-alpha-free 收錄(2026-11-07 ke339,Gitea #92;帳本 `rulebook_opencodego.md` R-OCGO-1、`rulebook_opencodefree.md` R-OCFREE-2)
+## 免費期 Go 條目下架:連網守門紅燈的處置(2026-11-10 da405;帳本 `rulebook_opencodego.md` R-OCGO-1⑩ 與〈型錄漂移紀錄〉2026-11-10)
+
+- **連網守門的紅燈是漂移訊號,不是程式缺陷**:`api-providersOpencodeGo` 在 2026-11-07 收錄當天綠,三天後由主控跟跑測試才現紅(缺 `crouton-alpha-free`)——限時免費模型會下架(⑩ 早預告),首例就是它.處置順序:①自己重取官方型錄確認(不信轉述):匿名 GET Go 型錄、Zen 型錄、官方 Go 頁(`https://opencode.ai/v2/docs/console/go/` 去標籤純文字);②三處交叉:Go 型錄 30 個無、Zen 型錄 84 個無、官方頁〈Usage limits〉表無(`alpha` 僅出現在頁內 CSS 變數,別被 grep 誤導);③找後繼者:同日新增的是 `longcat-2.5-free`,release 日期與名稱皆與 crouton 無承襲關係,**名稱無對應者不以推測當改名**,新出現的同類模型一律走⑩ 金絲雀才收;④移除條目與所有說明;⑤測試跟著改「目錄與官方型錄一致」,不放寬守門.
+- **Zen 型錄的價格結構**:`/zen/v1/models` 每個 model 的 `cost.text.input.price`／`cost.text.output.price` 皆為 0 即免費(含 `big-pickle`);用此欄位比 `*-free` 命名準.2026-11-10 共 12 個,目錄 `oc:` 8 個皆在,未收 4 個(`longcat-2.5-free` 新、`iceman-free`、`inkling-2-small-free`、`minimax-m3.1-flash-free` 為 10-30 移除後重現).**已移除的條目可能重現於清單**——「下架」不是單向,未收清單不能當一次性結論.
+- **以 `git archive HEAD` 取舊版重現紅,不 stash**:`git archive HEAD src test/api-…test.mjs package.json | tar -x -C ./tmp/<任務>/orig` 後以 `node ./node_modules/mocha/bin/mocha.js --no-parallel ./tmp/<任務>/orig/test/…` 跑(bare import 往上層解析到 repo 的 `node_modules`),3 秒內得到與主控跟跑相同的 `[true, ['ocgo:opencode-go/crouton-alpha-free']]` 紅.
+- **移除一條 `ocgo:` 條目要同步的計數**(ke339 新增清單的逆向;變異 18 個全抓到,可當清單):測試 4 檔(GoEntries 的 `GO_IDS`／`VARIANTS`／各處 9→8／38→37／`rr` 期望陣列少一項,GoDocs 的 LOCAL 表／收錄範圍／未收 21→22／38→37／README 錨點,OutputCap P3 9→8,FreeEntries 38→37)、README 5 處(Go 段標題、表列、未收個數、量級感受〔37×300s＝185min,3 階段 9.3 小時原本即以 37 算,ke339 當時只改了第一個數字〕、Options 表 `ocgo:` 條數)＋行為變更紀錄新增一條、`resolveProviders.mjs` JSDoc、`providers.mjs` 檔頭(條目與收錄、缺變數 skipped 條數、輸出上限段條數、條目區段標題、Unlimited 清單、官方月額表 Unlimited 句)、`goQuotaGate.mjs` 兩處.盤點指令:`Grep "crouton" src test README.md sgud`,目標是「只剩下架紀錄」;再 `Grep "38|9條|9 條|21 個" src README.md`.
+- **「移除」也要有守門**:新增「已下架」專案——目錄無任何 id／model 含該字樣、`resolveCatalogue({ pick:[該id] })` 即使備齊金鑰也回 `missing`(不拋)、全取時 `ocgo:` 恰為清單;使用端以 `pick` 指名舊 id 的行為(列入 `missing`、`patch` 靜默無作用)寫入 README 行為變更.變異首輪 README 敘述(第 66 條改回「新增」)存活——README 長敘述若是承諾的一部分就要有錨定句的測試,否則靜默回退.
+
+## OpenCode Go 型錄漂移對齊與 crouton-alpha-free 收錄(2026-11-07 ke339,Gitea #92;〔2026-11-10 該條目已因上游下架移除,見上節〕帳本 `rulebook_opencodego.md` R-OCGO-1、`rulebook_opencodefree.md` R-OCFREE-2)
 
 - **提出端的結論先自己重查,常是對一半**:提出端稱「zen 單價 0 共 8 個、免費池無漂移」;本機同日匿名 GET `/zen/v1/models`(81 個)單價 0 者是 **11 個**,`filterOpencodeFree(providers,{refresh:true})` 亦回 `removed` 為空、`uncatalogued` 3 個(`opencode/crouton-alpha-free`、`iceman-free`、`inkling-2-small-free`)——8 個既收的確實沒漂移,但多了 3 個未收.Go 型錄 30 個、新增 2／下架 2 則完全屬實.與 da63 同形(他人數據不可直接當本機結論),差別是這次提出端的 Go 部分全對、免費部分漏看.
 - **本機 opencode 型錄有快取,新模型要先 `--refresh`**:未 refresh 時 `opencode models opencode-go --verbose` 只列 31 個(缺 crouton-alpha-free),依新條目呼叫 1.6～3.5 秒即 `Exit code 1`(stderr 沒取;與 ProviderModelNotFoundError 約 1.7 秒同形,屬推定);`--refresh` 後列 32 個(＝公開 30＋`mimo-v2.5`／`v2.5-pro`,CLI 仍列、公開型錄已無).**收錄新 Go 條目的順序**:公開型錄確認 → `opencode models opencode-go --refresh --verbose`(帶金鑰注入)取檔位 → 才跑金絲雀;否則「條目壞了」會是假象.
