@@ -340,6 +340,8 @@ describe('dispatchAiFallback failureKind處置', function() {
                 [Object.keys(st.keyCooling), typeof st.keyCooling[fp], JSON.stringify(st).includes(key), cooled.map((e) => [e.scope, e.failureKind]), [typeof st.cooling['anthropic:t4e'].at, st.cooling['anthropic:t4e'].reason], r.quotaExhausted],
                 [[fp], 'number', false, [['key', 'no-credit'], ['entry', 'no-credit']], ['number', 'quota'], ['anthropic:t4e']],
             )
+            //排程第421項: 條目層 cooled 事件帶布林 renewed(新建 → false); scope 'key' 之金鑰冷卻(固定視窗、無 n)不帶(外審 terra #12③)
+            assert.strict.deepEqual(cooled.map((e) => [e.scope, 'renewed' in e, e.renewed]), [['key', false, undefined], ['entry', true, false]])
         })
 
         it('cooldownMs未啟用: 不寫keyCooling、不發cooled事件、store形狀與此前相同', async function() {

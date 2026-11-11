@@ -418,7 +418,7 @@ describe('opencode暫時性錯誤(database is locked)重試一次(R-SPAWNGATE-5)
             }
         })
 
-        it('預算判斷之minAttemptMs預設取守門之預設(20000): 剩餘約25秒 → 重試; 剩餘約19秒 → 不重試; spawnGate物件內之deadlineAt／minAttemptMs優先於遞補層提示', async function() {
+        it('預算判斷之minAttemptMs預設取守門之預設(20000): 剩餘約25秒 → 重試; 剩餘約19秒 → 不重試; spawnGate物件內之minAttemptMs優先於遞補層提示、deadlineAt兩者取較早者(排程第417項)', async function() {
             let { r: a } = await run('locked,ok', { spawnGateHints: { deadlineAt: Date.now() + 25000 } })
             assert.strict.deepEqual([a.ok, a.attempts], [true, 2])
             let { r: b, n: nb } = await run('locked,ok', { spawnGateHints: { deadlineAt: Date.now() + 19000 } })
@@ -426,6 +426,44 @@ describe('opencode暫時性錯誤(database is locked)重試一次(R-SPAWNGATE-5)
             //物件內給的deadlineAt(已近)優先於提示之寬裕期限 → 不重試
             let { r: c, n: nc } = await run('locked,ok', { spawnGate: { deadlineAt: Date.now() + 19000, minAttemptMs: 20000, maxCli: false, ramUsedMax: false, cpuMax: false, minGapMs: false, ticketDir: false, state: createGateState() }, spawnGateHints: { deadlineAt: Date.now() + 600000, minAttemptMs: 1000 } })
             assert.strict.deepEqual([c.ok, c.attempts, nc], [false, 1, 1])
+            //物件內給的deadlineAt(寬裕)晚於遞補層提示之期限(已近) → 取較早者(提示) → 不重試(修前物件優先, 取寬裕之值而重試)
+            let { r: d, n: nd } = await run('locked,ok', { spawnGate: { deadlineAt: Date.now() + 600000, maxCli: false, ramUsedMax: false, cpuMax: false, minGapMs: false, ticketDir: false, state: createGateState() }, spawnGateHints: { deadlineAt: Date.now() + 19000 } })
+            assert.strict.deepEqual([d.ok, d.attempts, nd], [false, 1, 1])
+        })
+
+        //外審 terra #02(402 行為不得改變): 遞補層於 spawnGate:false 時只給 attemptHints(守門不運作、無 spawnGateHints), 暫時性重試之預算判斷只受 retryFits(attemptHints 自帶之 minAttemptMs)約束,
+        //不採守門之預設 minAttemptMs(20000)——剩餘約 5 秒、minAttemptMs 100 → 仍重試(修前即重試; 把 attemptHints 併入封頂之期限來源則會誤擋)
+        it('spawnGate:false 且遞補層期限只經 attemptHints: 暫時性重試照常(剩餘約5秒、minAttemptMs 100 → 重試, 不被守門之預設 20000 擋掉)', async function() {
+            let base = Date.now()
+            let { r, n } = await run('locked,ok', { attemptHints: { deadlineAt: base + 5000, minAttemptMs: 100, entryTimeoutMs: 15000 } })
+            assert.strict.deepEqual([r.ok, r.attempts, n], [true, 2, 2])
+        })
+
+        //外審 terra #03: 暫時性重試輪之逾時另以期限封頂(即使守門未運作), 封頂之標記依取早後之來源——呼叫端期限較早者不標 cutByDeadline, 遞補層較早者標
+        it('守門未運作之暫時性重試輪: 封頂標記依取早後之來源(呼叫端期限較早 → 不標 cutByDeadline; 遞補層期限較早 → 標) — 無validate與有validate兩路', async function() {
+            let off = { maxCli: false, ramUsedMax: false, cpuMax: false, minGapMs: false, ticketDir: false }
+            for (let opt of [{}, { validate: () => true }]) {
+                let base = Date.now()
+                let early = await run('locked,locked-hang', {
+                    ...opt,
+                    timeoutMs: 15000,
+                    spawnGate: { ...off, state: createGateState(), deadlineAt: base + 1000 },
+                    spawnGateHints: { deadlineAt: base + 60000, minAttemptMs: 100 },
+                    attemptHints: { deadlineAt: base + 60000, minAttemptMs: 100, entryTimeoutMs: 15000 },
+                })
+                let base2 = Date.now()
+                let late = await run('locked,locked-hang', {
+                    ...opt,
+                    timeoutMs: 15000,
+                    spawnGate: { ...off, state: createGateState(), deadlineAt: base2 + 60000 },
+                    spawnGateHints: { deadlineAt: base2 + 1000, minAttemptMs: 100 },
+                    attemptHints: { deadlineAt: base2 + 1000, minAttemptMs: 100, entryTimeoutMs: 15000 },
+                })
+                assert.strict.deepEqual(
+                    [Object.keys(opt).length, early.r.errorType, 'cutByDeadline' in early.r, late.r.errorType, late.r.cutByDeadline],
+                    [Object.keys(opt).length, 'timeout', false, 'timeout', true],
+                )
+            }
         })
 
         it('重試前之等待中shouldStop轉真 → 不重試(回原失敗): 無validate與有validate兩路; 缺陷版(不等延遲或不於延遲後再判)會重試', async function() {

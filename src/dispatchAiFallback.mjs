@@ -83,7 +83,8 @@ import { isTimeoutLike } from './attemptDeadline.mjs'
 //   (2026-11-11 da402／di402, Gitea #130; 帳本R-COOL-2)紀錄改為{ at, n, reason }且加長: 有效視窗＝min(cooldownMs × cooldownGrowth^(n−1), cooldownMaxMs)
 //   (reason為'quota'〔整組沒額度〕或'budget'〔鏈首被封頂〕者恆為cooldownMs、不動n); n只在視窗外之觸發+1、每次呼叫每條目至多+1, 視窗內只更新at;
 //   讀到過期不刪(保留n), 久未觸發者(現在−at ≥ 有效視窗＋cooldownMaxMs)與畸形紀錄於重排前掃整表清除; 成交刪紀錄。cooldownGrowth預設1(視窗恆為cooldownMs, 排序同修前)、
-//   cooldownMaxMs預設24小時。cooled事件每次呼叫每條目至多一則, 帶本次有效視窗cooldownMs、n與reason('timeout'／'rate-limit'／'detect'／'quota'／'budget'／'streak')。
+//   cooldownMaxMs預設24小時。cooled事件每次呼叫每條目至多一則, 帶本次有效視窗cooldownMs、n與reason('timeout'／'rate-limit'／'detect'／'quota'／'budget'／'streak'),
+//   另帶布林renewed(2026-11-11 排程第421項): 寫入前該條目已在有效視窗內＝視窗內之重申(只更新at, n與reason不變)為true, 新建或視窗外之新觸發為false, 令只觀察之呼叫端不必自記事件即可分辨(條目層事件; scope 'key'之金鑰冷卻無此欄; 整組沒額度之事件於冷卻紀錄寫不進時同n不帶此欄)。
 //   寫法之單一來源為cooling.mjs(另匯出coolEntry／coolingOf／streakOf供呼叫端以同一規則寫讀); 金鑰層冷卻keyCooling不在此列, 維持固定視窗。
 //
 // 【持久連敗與環境歸因(2026-11-11 da402／di402; 帳本R-COOL-3)】coolAfterFails(正整數, 僅cooldownMs>0時有效)啟用時, 組盡(本組未成交而試完)且實際送出之嘗試數>0、
@@ -1105,7 +1106,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
                     let w = coolNow(id, 'budget')
                     if (w !== null && !cooledIds.has(id)) {
                         cooledIds.add(id)
-                        emit({ type: 'cooled', providerId: id, keyIndex, keyId, error: r.error, cooldownMs: w.cooldownMs, n: w.rec.n, reason: 'budget' })
+                        emit({ type: 'cooled', providerId: id, keyIndex, keyId, error: r.error, cooldownMs: w.cooldownMs, n: w.rec.n, reason: 'budget', renewed: w.renewed })
                     }
                 }
                 return withQuota({ ...getErrorResult('budget exhausted', 'budget'), tried })
@@ -1186,7 +1187,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
                     let w = coolNow(id, coolReason)
                     if (w !== null && !cooledIds.has(id)) {
                         cooledIds.add(id)
-                        emit({ type: 'cooled', providerId: id, keyIndex, keyId, error: r.error, cooldownMs: w.cooldownMs, n: w.rec.n, reason: coolReason })
+                        emit({ type: 'cooled', providerId: id, keyIndex, keyId, error: r.error, cooldownMs: w.cooldownMs, n: w.rec.n, reason: coolReason, renewed: w.renewed })
                     }
                 }
             }
@@ -1225,7 +1226,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
                 let w = coolNow(id, 'quota')
                 if (!cooledIds.has(id)) {
                     cooledIds.add(id)
-                    emit({ type: 'cooled', scope: 'entry', providerId: id, keyIndex: null, keyId: id, error: get(lastResult, 'error', ''), cooldownMs: w !== null ? w.cooldownMs : cooldownMs, ...(w !== null ? { n: w.rec.n } : {}), reason: 'quota', failureKind: 'no-credit' })
+                    emit({ type: 'cooled', scope: 'entry', providerId: id, keyIndex: null, keyId: id, error: get(lastResult, 'error', ''), cooldownMs: w !== null ? w.cooldownMs : cooldownMs, ...(w !== null ? { n: w.rec.n, renewed: w.renewed } : {}), reason: 'quota', failureKind: 'no-credit' }) //寫不進(凍結之state)時無紀錄可言: n與renewed皆不帶
                 }
             }
         }
@@ -1264,6 +1265,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
                             cooldownMs: w.cooldownMs,
                             n: w.rec.n,
                             reason: 'streak',
+                            renewed: w.renewed, //寫入前已在有效視窗內(視窗內之重申)
                             streak: s.k, //持久連敗次數(達門檻後不歸零)
                             errorType: counted[counted.length - 1], //本組最後一個計入之型別
                             keys: nk, //有效金鑰數(同組盡事件)

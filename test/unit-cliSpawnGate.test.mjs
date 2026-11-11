@@ -207,13 +207,15 @@ describe('cliSpawnGate(R-SPAWNGATE-1)', function() {
             }
         })
 
-        it('呼叫層提示(shouldStop、deadlineAt、minAttemptMs)於spawnGate物件未給同名鍵時採用, 物件優先', function() {
+        it('呼叫層提示(shouldStop、deadlineAt、minAttemptMs)於spawnGate物件未給同名鍵時採用; shouldStop、minAttemptMs物件優先, deadlineAt兩者皆有時取較早者(排程第417項, 見unit-spawnGateDeadlineEarlier)', function() {
             let f1 = () => true
             let f2 = () => false
             let c = resolveSpawnGate({ kind: 'opencode', shouldStop: f1, deadlineAt: 5000, minAttemptMs: 300, cores: 4 })
             assert.strict.deepEqual([c.shouldStop === f1, c.deadlineAt, c.minAttemptMs], [true, 5000, 300])
             let d = resolveSpawnGate({ kind: 'opencode', shouldStop: f1, deadlineAt: 5000, minAttemptMs: 300, spawnGate: { shouldStop: f2, deadlineAt: 7000, minAttemptMs: 100 }, cores: 4 })
-            assert.strict.deepEqual([d.shouldStop === f2, d.deadlineAt, d.minAttemptMs], [true, 7000, 100])
+            assert.strict.deepEqual([d.shouldStop === f2, d.deadlineAt, d.minAttemptMs], [true, 5000, 100]) //呼叫端之7000晚於提示之5000 → 取5000(修前物件優先為7000)
+            let d2 = resolveSpawnGate({ kind: 'opencode', shouldStop: f1, deadlineAt: 5000, minAttemptMs: 300, spawnGate: { shouldStop: f2, deadlineAt: 4000, minAttemptMs: 100 }, cores: 4 })
+            assert.strict.deepEqual(d2.deadlineAt, 4000) //呼叫端較早 → 照用呼叫端
             let e = resolveSpawnGate({ kind: 'opencode', shouldStop: 'x', deadlineAt: -1, minAttemptMs: 'x', cores: 4 })
             assert.strict.deepEqual([e.shouldStop, e.deadlineAt, e.minAttemptMs], [null, null, 20000])
         })

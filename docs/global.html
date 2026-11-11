@@ -2313,7 +2313,7 @@ console.log(r2.error, r2.errorDetail.upstream)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line192">line 192</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line194">line 194</a>
     </li></ul></dd>
     
 
@@ -2628,7 +2628,7 @@ console.log(r2.error, r2.errorDetail.upstream)
 
         
 <div class="param-desc">
-    <p>回傳{ rec(寫入之紀錄), cooldownMs(有效視窗), n0(寫入前之n，無紀錄為0), r0(寫入前之reason，無紀錄為null), incremented(是否+1) }，寫不進(凍結)回null</p>
+    <p>回傳{ rec(寫入之紀錄), cooldownMs(有效視窗), n0(寫入前之n，無紀錄為0), r0(寫入前之reason，無紀錄為null), incremented(是否+1), renewed(寫入前已在有效視窗內＝視窗內之重申，只更新at；新建或視窗外為false) }，寫不進(凍結)回null</p>
 </div>
 
 
@@ -8064,7 +8064,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line292">line 292</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line295">line 295</a>
     </li></ul></dd>
     
 
@@ -9964,7 +9964,7 @@ clearAgyStdinSupportCache()</code></pre>
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line979">line 979</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line984">line 984</a>
     </li></ul></dd>
     
 
@@ -10285,7 +10285,7 @@ console.log(r2.outcome)
 
             
 
-            <td class="description last"><p>輸入呼叫層提示之整體時限(epoch ms，遞補層由budgetMs換算)，等待不超過deadlineAt減minAttemptMs</p></td>
+            <td class="description last"><p>輸入呼叫層提示之整體時限(epoch ms，遞補層由budgetMs換算)，等待不超過deadlineAt減minAttemptMs；與spawnGate物件之同名鍵皆有效時取較早者</p></td>
         </tr>
 
     
@@ -10991,7 +10991,7 @@ console.log(composeError('Exit code 1', 'overloaded', 'Error: x\ny'))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line53">line 53</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line55">line 55</a>
     </li></ul></dd>
     
 
@@ -11153,7 +11153,7 @@ state非物件或不可讀、id非非空字串、cooldownMs非正整數、reason
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line349">line 349</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line355">line 355</a>
     </li></ul></dd>
     
 
@@ -11204,7 +11204,10 @@ state非物件或不可讀、id非非空字串、cooldownMs非正整數、reason
 
 let state = { cursors: {}, cooling: {} }
 console.log(coolEntry(state, 'oc:opencode/beam-free', { reason: 'quota', cooldownMs: 900000, now: 1000 }))
-// => { at: 1000, n: 1, reason: 'quota', cooldownMs: 900000, until: 901000 }</code></pre>
+// => { at: 1000, n: 1, reason: 'quota', cooldownMs: 900000, until: 901000, renewed: false }
+
+console.log(coolEntry(state, 'oc:opencode/beam-free', { reason: 'quota', cooldownMs: 900000, now: 2000 }))
+// => { at: 2000, n: 1, reason: 'quota', cooldownMs: 900000, until: 902000, renewed: true }</code></pre>
 
 
 
@@ -11554,7 +11557,7 @@ console.log(coolEntry(state, 'oc:opencode/beam-free', { reason: 'quota', cooldow
 
         
 <div class="param-desc">
-    <p>回傳{ at, n, reason, cooldownMs(本次有效視窗), until(at＋有效視窗) }，寫不進回null</p>
+    <p>回傳{ at, n, reason, cooldownMs(本次有效視窗), until(at＋有效視窗), renewed(寫入前已在有效視窗內＝視窗內之重申〔只更新at，n與reason不變〕為true；新建或視窗外之新觸發為false) }，寫不進回null</p>
 </div>
 
 
@@ -11602,7 +11605,7 @@ state非物件或不可讀、id非非空字串時同步throw；無紀錄、紀�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line397">line 397</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line403">line 403</a>
     </li></ul></dd>
     
 
@@ -13364,7 +13367,7 @@ onEvent({ type: 'cooled', providerId: 'agnes:agnes-3.0-flash', error: 'HTTP 429'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line243">line 243</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line244">line 244</a>
     </li></ul></dd>
     
 
@@ -13654,7 +13657,7 @@ onEvent({ type: 'cooled', providerId: 'agnes:agnes-3.0-flash', error: 'HTTP 429'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line276">line 276</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line277">line 277</a>
     </li></ul></dd>
     
 
@@ -14684,7 +14687,7 @@ let store = createFileStore({ dir: './state' })
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line404">line 404</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line405">line 405</a>
     </li></ul></dd>
     
 
@@ -16031,7 +16034,7 @@ let usage = createUsageCounter({ dir: './state' })
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line164">line 164</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line165">line 165</a>
     </li></ul></dd>
     
 
@@ -17260,7 +17263,7 @@ providers陣列順序即優先序，排前面的先用；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line668">line 668</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line669">line 669</a>
     </li></ul></dd>
     
 
@@ -25777,7 +25780,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line148">line 148</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line149">line 149</a>
     </li></ul></dd>
     
 
@@ -27614,7 +27617,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line344">line 344</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line345">line 345</a>
     </li></ul></dd>
     
 
@@ -28621,7 +28624,7 @@ console.log(finishOf('end_turn'), finishOf('length'), finishOf(''))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line355">line 355</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line356">line 356</a>
     </li></ul></dd>
     
 
@@ -32904,7 +32907,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line382">line 382</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line383">line 383</a>
     </li></ul></dd>
     
 
@@ -33220,7 +33223,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line228">line 228</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line231">line 231</a>
     </li></ul></dd>
     
 
@@ -33429,7 +33432,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line208">line 208</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line209">line 209</a>
     </li></ul></dd>
     
 
@@ -33587,7 +33590,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line133">line 133</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line135">line 135</a>
     </li></ul></dd>
     
 
@@ -33793,7 +33796,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line413">line 413</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line414">line 414</a>
     </li></ul></dd>
     
 
@@ -34267,7 +34270,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line493">line 493</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line494">line 494</a>
     </li></ul></dd>
     
 
@@ -34587,7 +34590,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line454">line 454</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line455">line 455</a>
     </li></ul></dd>
     
 
@@ -34745,7 +34748,7 @@ codex不存在或RPC失敗時退回直打chatgpt.com之用量端點。
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line397">line 397</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line398">line 398</a>
     </li></ul></dd>
     
 
@@ -35234,7 +35237,7 @@ console.log(isSpawnFail({ ok: false, code: null, error: 'FETCH_ERROR: ECONNREFUS
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="runExecCli.mjs.html">runExecCli.mjs</a>, <a href="runExecCli.mjs.html#line131">line 131</a>
+        <a href="runExecCli.mjs.html">runExecCli.mjs</a>, <a href="runExecCli.mjs.html#line132">line 132</a>
     </li></ul></dd>
     
 
@@ -35643,7 +35646,7 @@ console.log(isTransientFailure({ ok: false, code: 1, error: 'TIMEOUT after 300s'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line578">line 578</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line579">line 579</a>
     </li></ul></dd>
     
 
@@ -36619,7 +36622,7 @@ console.log((await judgeTruncated({ finishReason: 'length', content: '[{"a":1},'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line371">line 371</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line372">line 372</a>
     </li></ul></dd>
     
 
@@ -36937,7 +36940,7 @@ console.log((await judgeTruncated({ finishReason: 'length', content: '[{"a":1},'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line427">line 427</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line428">line 428</a>
     </li></ul></dd>
     
 
@@ -38600,7 +38603,7 @@ console.log((await judgeTruncated({ finishReason: 'length', content: '[{"a":1},'
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line623">line 623</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line628">line 628</a>
     </li></ul></dd>
     
 
@@ -40660,7 +40663,7 @@ console.log(base)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line73">line 73</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line75">line 75</a>
     </li></ul></dd>
     
 
@@ -41169,7 +41172,7 @@ console.log(normalizeFinishReason(' LENGTH '), normalizeFinishReason(null))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line269">line 269</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line272">line 272</a>
     </li></ul></dd>
     
 
@@ -43235,7 +43238,7 @@ console.log(r.stdout.trim(), r.finishReason, r.truncated, r.tokens.reasoning)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line200">line 200</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line201">line 201</a>
     </li></ul></dd>
     
 
@@ -43417,7 +43420,7 @@ console.log(r.stdout.trim(), r.finishReason, r.truncated, r.tokens.reasoning)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line180">line 180</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line181">line 181</a>
     </li></ul></dd>
     
 
@@ -46914,7 +46917,7 @@ console.log(r === null || typeof r.upstream === 'string')
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line311">line 311</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line314">line 314</a>
     </li></ul></dd>
     
 
@@ -47283,7 +47286,7 @@ console.log(r === null || typeof r.upstream === 'string')
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line350">line 350</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line351">line 351</a>
     </li></ul></dd>
     
 
@@ -48466,7 +48469,7 @@ console.log(redactText('Headers.append: "Bearer sk-abc\nX" is an invalid header 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line268">line 268</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line269">line 269</a>
     </li></ul></dd>
     
 
@@ -48696,7 +48699,7 @@ console.log(redactText('Headers.append: "Bearer sk-abc\nX" is an invalid header 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line305">line 305</a>
+        <a href="dispatchAiFallback.mjs.html">dispatchAiFallback.mjs</a>, <a href="dispatchAiFallback.mjs.html#line306">line 306</a>
     </li></ul></dd>
     
 
@@ -49058,7 +49061,7 @@ console.log(redactText('Headers.append: "Bearer sk-abc\nX" is an invalid header 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line251">line 251</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line254">line 254</a>
     </li></ul></dd>
     
 
@@ -50644,7 +50647,7 @@ providers與table同源產出故必然一致；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line432">line 432</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line433">line 433</a>
     </li></ul></dd>
     
 
@@ -50949,7 +50952,7 @@ providers與table同源產出故必然一致；
                 </td>
             
 
-            <td class="description last"><p>輸入呼叫層提示之整體時限(epoch ms)，spawnGate物件未給同名鍵時採用(由遞補層之budgetMs換算)</p></td>
+            <td class="description last"><p>輸入呼叫層提示之整體時限(epoch ms，由遞補層之budgetMs換算)，與spawnGate物件之同名鍵皆有效時取較早者(2026-11-11 起)，只有一者有效則用該者</p></td>
         </tr>
 
     
@@ -51588,7 +51591,7 @@ providers與table同源產出故必然一致；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line659">line 659</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line664">line 664</a>
     </li></ul></dd>
     
 
@@ -51979,7 +51982,7 @@ providers與table同源產出故必然一致；
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="runExecCli.mjs.html">runExecCli.mjs</a>, <a href="runExecCli.mjs.html#line191">line 191</a>
+        <a href="runExecCli.mjs.html">runExecCli.mjs</a>, <a href="runExecCli.mjs.html#line192">line 192</a>
     </li></ul></dd>
     
 
@@ -53845,7 +53848,7 @@ await test()
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line220">line 220</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line221">line 221</a>
     </li></ul></dd>
     
 
@@ -54659,7 +54662,7 @@ console.log(salvageTruncatedArray('[{"a":1}]')) //有閉合＝非截斷, 不在�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line332">line 332</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line333">line 333</a>
     </li></ul></dd>
     
 
@@ -55709,7 +55712,7 @@ console.log(splitKeys('sk-a;sk-b', { splitSemicolon: false }))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line439">line 439</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line445">line 445</a>
     </li></ul></dd>
     
 
@@ -56316,7 +56319,7 @@ console.log(streakOf({ failStreak: { 'a': { k: 3, at: 1000 } } }, 'a'))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line146">line 146</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line148">line 148</a>
     </li></ul></dd>
     
 
@@ -57234,7 +57237,7 @@ console.log(timeoutPatch(merged, { pick: ['a', 'b'] }))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line134">line 134</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line135">line 135</a>
     </li></ul></dd>
     
 
@@ -59524,7 +59527,7 @@ console.log(w.label, w.remainingPercent)
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line641">line 641</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line646">line 646</a>
     </li></ul></dd>
     
 
@@ -61407,7 +61410,7 @@ claude／codex: scope為空之視窗一律適用，scope非空者(模型別視�
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line113">line 113</a>
+        <a href="cooling.mjs.html">cooling.mjs</a>, <a href="cooling.mjs.html#line115">line 115</a>
     </li></ul></dd>
     
 
@@ -61917,7 +61920,7 @@ console.log(withOutputInfo({ ok: true, stdout: 'abc' }))
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line388">line 388</a>
+        <a href="cliSpawnGate.mjs.html">cliSpawnGate.mjs</a>, <a href="cliSpawnGate.mjs.html#line389">line 389</a>
     </li></ul></dd>
     
 
@@ -62332,7 +62335,7 @@ console.log(withOutputInfo({ ok: true, stdout: 'abc' }))
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Nov 11 2026 06:24:43 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Nov 11 2026 08:54:14 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

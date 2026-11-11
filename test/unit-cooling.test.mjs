@@ -79,7 +79,7 @@ describe('coolEntry／coolingOf／streakOf(da402 DA-9)', function() {
         let st = { cooling: {} }
         let sets = 0
         let r = coolEntry({ get: () => st, set: () => sets++ }, 'oc:x', { cooldownMs: 15 * MIN, reason: 'quota', now: 1000 })
-        assert.strict.deepEqual([r, sets, st.cooling['oc:x']], [{ at: 1000, n: 1, reason: 'quota', cooldownMs: 15 * MIN, until: 1000 + 15 * MIN }, 1, { at: 1000, n: 1, reason: 'quota' }])
+        assert.strict.deepEqual([r, sets, st.cooling['oc:x']], [{ at: 1000, n: 1, reason: 'quota', cooldownMs: 15 * MIN, until: 1000 + 15 * MIN, renewed: false }, 1, { at: 1000, n: 1, reason: 'quota' }]) //renewed(排程第421項)為新增欄, 既有欄位不變; 儲存之紀錄不含renewed
     })
 
     it('參數無效同步throw(先於副作用); 寫不進(凍結、get拋錯、set拋錯)回null', function() {

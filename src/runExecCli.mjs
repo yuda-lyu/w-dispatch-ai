@@ -47,7 +47,7 @@ import { readAttemptHints, retryFits, capByHints, createCutTracker } from './att
 //   ①本層接管重試: 交execCli之maxRetries為0, 由本層逐次呼叫並沿用execCli之不重試判準(以其觀察事件done之reason: 'spawn'／'enoent'／'code2'不重試, 'exhausted'可重試)
 //     與間隔公式(retryDelayMs×已嘗試次數, 上限15000ms)——修前無驗證路徑之重試在wsemi execCli內部而不看期限(探測P7: budgetMs 1500、牆鐘3327、3次請求), 本層接管而不擴充wsemi;
 //   ②每次重試之逾時以期限封頂, 「剩餘 − 退避 < minAttemptMs」即不再重試(驗證重試亦同); 無驗證路徑之重試不重新守門(同修前execCli內部重試之已知限制);
-//   ③封頂之標記: 最後一次嘗試以逾時結束(TIMEOUT開頭或validate timed out)且其逾時由遞補層期限決定(< entryTimeoutMs, 且非呼叫端自給之spawnGate.deadlineAt早於遞補層期限所致)、
+//   ③封頂之標記: 最後一次嘗試以逾時結束(TIMEOUT開頭或validate timed out)且其逾時由遞補層期限決定(< entryTimeoutMs, 且非呼叫端自給之spawnGate.deadlineAt早於遞補層期限所致——兩者取早後由誰決定即依誰判)、
 //     先前之重試沒有以足額逾時者, 結果加cutByDeadline與appliedTimeoutMs, 由遞補層裁定是否為budget-cut(見dispatchAiFallback檔頭【封頂逾時】)。
 //   未給attemptHints(直呼轉接器、遞補層無期限)者與修前逐位元相同。
 //
@@ -56,7 +56,8 @@ import { readAttemptHints, retryFits, capByHints, createCutTracker } from './att
 //
 // 【spawn守門(2026-11-04 Gitea #67; 見cliSpawnGate.mjs)】四家轉接器經本層統一於「每次spawn前」呼叫cliSpawnGate(轉接器只傳spawnGateKind與使用端之spawnGate, 皆為本層自用鍵, 不轉傳execCli):
 //   無validate: 守門一次後以execCli自理之重試跑(execCli內部之非驗證失敗重試不重新守門, 已知限制); 有validate: 每次(含驗證不過後之重試)spawn前各守門一次。
-//   守門等待不計入timeoutMs: 守門實際運作過(outcome非'off')且有deadlineAt(遞補層之budgetMs, 經spawnGateHints或spawnGate物件)者, spawn之timeoutMs以剩餘預算封頂, 令等待計入budgetMs;
+//   守門等待不計入timeoutMs: 守門實際運作過(outcome非'off')且有deadlineAt(遞補層之budgetMs經spawnGateHints, 或使用端自給之spawnGate物件;
+//   兩者皆有時取較早者——2026-11-11 排程第417項, 主控裁示甲; 修前使用端之值優先, 其值較晚時可越過budgetMs)者, spawn之timeoutMs以剩餘預算封頂, 令等待計入budgetMs;
 //   守門未運作(關閉、預設不限之kind、假exe)時timeoutMs原值不動, 與修前逐位元相同。守門中止(shouldStop)回errorType 'aborted'。
 //   實際等過或fail-open時結果加gateWaitedMs(驗證重試時為合計)與gateFailOpen; 未等待者不加欄位。cliSpawnGate永不reject, 此處另以try/catch為最後防線(守門失敗一律放行)。
 //
@@ -207,38 +208,53 @@ async function runExecCli(exe, args, opt = {}) {
     let sgHints = get(opt, 'spawnGateHints', null)
     let gateWaitedMs = 0 //各次守門等待之合計
     let gateFailOpen = false
-    //spawn之timeoutMs: 守門實際運作過且有deadlineAt(遞補層之budgetMs)者, 以守門後之剩餘預算封頂, 令守門等待計入budgetMs(逾時仍自spawn起算);
-    //守門未運作(off: 關閉、預設不限之kind、假exe)時一律原值, 與修前逐位元相同
-    let capByDeadline = () => {
-        try {
-            let da = get(sg, 'deadlineAt', null)
-            if (da === null || da === undefined) {
-                da = get(sgHints, 'deadlineAt', null)
-            }
-            if (da !== null && da !== undefined && isenum(da, { gt: 0 })) {
-                return Math.max(Math.min(timeoutMs, Number(da) - Date.now()), 1)
-            }
-        }
-        catch {} //spawnGate為呼叫端物件, 讀取拋錯視為無deadlineAt
-        return timeoutMs
-    }
-
     //遞補層之期限提示(內部鍵attemptHints, 見attemptDeadline.mjs與檔頭【期限約束重試】): 有期限時重試受期限約束, 最後一次逾時由期限決定者標記cutByDeadline
     let hints = readAttemptHints(opt)
     let cut = createCutTracker(hints)
 
-    //callerBelowDa: 呼叫端自給之spawnGate.deadlineAt早於遞補層期限(此時守門後之封頂由呼叫端期限決定, 不得標記為遞補層封頂)
-    let callerBelowDa = () => {
+    //有效期限(2026-11-11 排程第417項, 主控裁示甲): 呼叫端自給之spawnGate.deadlineAt與遞補層經spawnGateHints傳入之期限(由budgetMs換算)皆有效時取較早者
+    //(修前呼叫端之值優先, 其值較晚時守門等待與放行後之首次spawn可越過遞補層之budgetMs); 只有一者有效則用該者; 皆無回at: null。
+    //期限之來源只這兩個(與修前相同): attemptHints不併入封頂與暫時性重試之預算判斷——它另由retryFits約束重試(含其自帶之minAttemptMs);
+    //遞補層於守門運作時恆兩者同給同值, spawnGate:false時只給attemptHints而守門不運作, 若併入則暫時性重試之預算判斷會改採守門之預設minAttemptMs(外審terra #02)。
+    //callerBound: 取早後由呼叫端之值決定(嚴格早於遞補層之期限; 相等視為遞補層)——封頂之標記依此判, 呼叫端期限所致者不得標記為遞補層封頂(budget-cut);
+    //遞補層期限無spawnGateHints時, 比對基準退用attemptHints.deadlineAt(同修前之callerBelowDa; 僅影響標記, 不影響封頂)。
+    //一次決定(封頂值與標記)只讀一次呼叫端物件: 呼叫端為可動態讀取之物件(getter), 分次讀取可使封頂值與標記分叉(外審terra #04), 故回傳之快照供同一次決定共用。
+    //spawnGate為呼叫端物件, 讀取拋錯視為該來源無期限(另一來源仍生效)
+    let daOf = (v) => (v !== null && v !== undefined && isenum(v, { gt: 0 }) ? Number(v) : null)
+    let effDeadline = () => {
+        let c = null
+        let l = null
         try {
-            let c = get(sg, 'deadlineAt', null)
-            return hints !== null && c !== null && c !== undefined && isenum(c, { gt: 0 }) && Number(c) < hints.deadlineAt
+            c = daOf(get(sg, 'deadlineAt', null))
         }
-        catch {
-            return false
+        catch {}
+        try {
+            l = daOf(get(sgHints, 'deadlineAt', null))
         }
+        catch {}
+        if (c === null) {
+            return { at: l, callerBound: false }
+        }
+        let ref = l !== null ? l : (hints !== null ? hints.deadlineAt : null)
+        let callerBound = ref === null || c < ref
+        if (l === null) {
+            return { at: c, callerBound }
+        }
+        return { at: c < l ? c : l, callerBound }
     }
 
-    //enterGate: 回傳{ aborted, tmo, callerBound }(tmo為該次spawn之timeoutMs; callerBound為守門後之封頂由呼叫端自給期限決定)
+    //spawn之timeoutMs: 守門實際運作過且有有效期限(effDeadline: 遞補層之budgetMs與呼叫端自給期限取早)者, 以守門後之剩餘預算封頂, 令守門等待計入budgetMs(逾時仍自spawn起算);
+    //守門未運作(off: 關閉、預設不限之kind、假exe)時一律原值, 與修前逐位元相同。ed為effDeadline之快照
+    let capByDeadline = (ed) => {
+        let da = ed.at
+        if (da !== null) {
+            return Math.max(Math.min(timeoutMs, da - Date.now()), 1)
+        }
+        return timeoutMs
+    }
+
+    //enterGate: 回傳{ aborted, tmo, callerBound, ed }(tmo為該次spawn之timeoutMs; callerBound為守門後之封頂由呼叫端自給期限決定; ed為本次決定所用之期限快照,
+    //守門未運作者亦附, 供暫時性重試輪另以期限封頂時沿用——同一次決定之封頂值與標記取自同一快照)
     let enterGate = async () => {
         let g = null
         try {
@@ -259,7 +275,8 @@ async function runExecCli(exe, args, opt = {}) {
             gateWaitedMs += get(g, 'waitedMs', 0)
             gateFailOpen = gateFailOpen || get(g, 'failOpen', false) === true
         }
-        return { aborted: get(g, 'aborted', false) === true, tmo: ran ? capByDeadline() : timeoutMs, callerBound: ran && callerBelowDa() }
+        let ed = effDeadline()
+        return { aborted: get(g, 'aborted', false) === true, tmo: ran ? capByDeadline(ed) : timeoutMs, callerBound: ran && hints !== null && ed.callerBound, ed }
     }
     //輸出尾端擷取與機密值名單(失敗診斷用, 見檔頭【失敗診斷與成功欄位】): 擷取器於每次spawn重置, 故取到的是最後一次嘗試之輸出
     let cap = createTailCapture()
@@ -329,18 +346,15 @@ async function runExecCli(exe, args, opt = {}) {
             return false
         }
         try {
-            let da = get(sg, 'deadlineAt', null)
-            if (da === null || da === undefined) {
-                da = get(sgHints, 'deadlineAt', null)
-            }
-            if (da === null || da === undefined || !isenum(da, { gt: 0 })) {
+            let da = effDeadline().at //呼叫端自給期限與遞補層(spawnGateHints)期限取早(第417項); minAttemptMs之優先序不變(呼叫端物件優先)
+            if (da === null) {
                 return true
             }
             let ma = get(sg, 'minAttemptMs', null)
             if (ma === null || ma === undefined) {
                 ma = get(sgHints, 'minAttemptMs', null)
             }
-            return Number(da) - Date.now() - trDelayMs >= castPintOr(ma, DEFAULT_MIN_ATTEMPT_MS)
+            return da - Date.now() - trDelayMs >= castPintOr(ma, DEFAULT_MIN_ATTEMPT_MS)
         }
         catch {
             return true
@@ -518,11 +532,14 @@ async function runExecCli(exe, args, opt = {}) {
                 if (g1.aborted) {
                     return withGate({ ...getErrorResult('ABORTED', 'aborted'), attempts: a0 })
                 }
-                //重試輪之timeoutMs另以期限封頂(即使守門未運作而g1.tmo為原值: 首次耗時與重試延遲已用掉預算, 原值可能超出期限)
-                let tmo1 = Math.min(g1.tmo, capByDeadline(), capByHints(timeoutMs, hints))
+                //重試輪之timeoutMs另以期限封頂(即使守門未運作而g1.tmo為原值: 首次耗時與重試延遲已用掉預算, 原值可能超出期限);
+                //封頂之標記依本輪實際決定者: 呼叫端期限(取早後)決定且遞補層之封頂未更短者為呼叫端所致, 不論守門是否運作(外審terra #03)
+                let m1 = Math.min(g1.tmo, capByDeadline(g1.ed))
+                let capL = capByHints(timeoutMs, hints)
+                let tmo1 = Math.min(m1, capL)
                 let s1 = await shape(await execCli(exe, args, { ...base, maxRetries: 0, timeoutMs: tmo1 }))
                 let r1 = s1.fail !== null ? s1.fail : s1.r
-                cut.note(tmo1, r1, g1.callerBound)
+                cut.note(tmo1, r1, hints !== null && g1.ed.callerBound && !(capL < m1))
                 return withGate(cut.mark(attachErrorType({ ...r1, attempts: a0 + get(r1, 'attempts', 1) })))
             }
         }
@@ -538,8 +555,8 @@ async function runExecCli(exe, args, opt = {}) {
         if (gi.aborted) {
             return withGate({ ...getErrorResult('ABORTED', 'aborted'), attempts: used + trAtt })
         }
-        let tmo = trPending ? Math.min(gi.tmo, capByDeadline()) : gi.tmo //暫時性重試輪另以期限封頂(同路徑A)
-        let cb = gi.callerBound
+        let tmo = trPending ? Math.min(gi.tmo, capByDeadline(gi.ed)) : gi.tmo //暫時性重試輪另以期限封頂(同路徑A)
+        let cb = gi.callerBound || (trPending && hints !== null && gi.ed.callerBound) //暫時性重試輪之封頂不論守門是否運作皆含呼叫端期限, 標記同依取早後之來源(外審terra #03)
         if (hints !== null && (used > 0 || trPending)) {
             let th = capByHints(timeoutMs, hints) //有期限: 重試之逾時以遞補層期限封頂(見檔頭【期限約束重試】)
             if (th < tmo) {
