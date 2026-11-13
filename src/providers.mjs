@@ -836,7 +836,7 @@ let providers = [
     //不歸Argon(unit-subQuotaGate固定此例, 規則未改)。
     //〔提出端〕(使用端, 2026-11-13, agy 1.5.7, 同形extraProviders條目經resolveCatalogue＋dispatchAiFallback; 本機未重現其題組):
     //簡答「請只回覆兩個字：完成」high 41.1s與7.6s兩次成交、low 10.2s與medium 31.7s成交(同時段3.8-flash-high 18.0s; agy耗時起伏大, 不可據以比較快慢);
-    //四角色題組(衝突核對15/15、重評15/15、既有邊覆核16/16、預篩16/16)與3.8同分; 約129次Hydrogen呼叫期間「Gemini Models」7天窗口+2.39個百分點、Argon維持0%(單次觀察, 同時段另有少量3.8呼叫)。
+    //四角色題組(衝突核對15/15、重評15/15、既有邊覆核16/16、預篩16/16)與3.8同分; 約19次Hydrogen呼叫(題組14次＋簡答5次; 題組一次呼叫含多案, 提出端原報之「約129次」誤把案次當呼叫次, 2026-11-13更正, Gitea #140)期間「Gemini Models」7天窗口+2.39個百分點、Argon維持0%(單次觀察, 同時段另有少量3.8呼叫與同帳號正式管線之用量, 且讀數自身跳動約1個百分點, 不可據以推算單次耗用)。
     //〔本機 2026-11-13〕(agy 1.5.7, 經resolveCatalogue({ pick:['agy:gemini-4-hydrogen-high'] })＋dispatchAiFallback, 本條目設定):
     //①resolveCatalogue回1條、skipped 0、model／skipPermissions／addDirs如上; `agy models`列四個hydrogen slug; `/effort`之available為["low","medium","high","xhigh"]、current為high。
     //②簡答「請只回覆兩個字：完成」共5次皆ok、stdout「完成」(5.9s、4.5s、8.7s、8.0s、6.0s; agy耗時起伏大, 不可據以比較快慢)。
