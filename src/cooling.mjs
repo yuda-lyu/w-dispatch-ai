@@ -1,9 +1,8 @@
 import isobj from 'wsemi/src/isobj.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import isenum from 'wsemi/src/isenum.mjs'
+import castPintOr from './castPintOr.mjs'
 import { callHookSync } from './callUserFn.mjs'
 
 
@@ -53,11 +52,11 @@ let FIXED_REASONS = new Set(['quota', 'budget'])
  * @returns {Object} 回傳{ cooldownMs(非負整數，0代表未啟用), growth(≥1之有限數), maxMs(≥cooldownMs之正整數) }
  */
 function coolCfgOf(o) {
-    let cooldownMs = ispint(o?.cooldownMs) ? cint(o.cooldownMs) : 0
+    let cooldownMs = castPintOr(o?.cooldownMs, 0)
     let g = o?.cooldownGrowth
     let gn = isenum(g) ? Number(typeof g === 'string' ? g.trim() : g) : NaN //數字類收數字字串(K7)
     let growth = (Number.isFinite(gn) && gn >= 1) ? gn : DEFAULT_GROWTH
-    let maxMs = ispint(o?.cooldownMaxMs) ? cint(o.cooldownMaxMs) : DEFAULT_COOLDOWN_MAX_MS
+    let maxMs = castPintOr(o?.cooldownMaxMs, DEFAULT_COOLDOWN_MAX_MS)
     if (maxMs < cooldownMs) {
         maxMs = cooldownMs
     }
@@ -354,7 +353,7 @@ function readState(target, isStore) {
  */
 function coolEntry(state, id, opt = {}) {
     let isStore = checkTarget('coolEntry', state, id)
-    if (!ispint(opt?.cooldownMs)) {
+    if (castPintOr(opt?.cooldownMs, null) === null) {
         throw new Error('coolEntry: invalid opt.cooldownMs: must be a positive integer')
     }
     let reason = (opt.reason === undefined || opt.reason === null) ? 'timeout' : opt.reason
@@ -417,7 +416,7 @@ function coolingOf(state, id, opt = {}) {
     if (rec === null) {
         return null
     }
-    if (!ispint(opt?.cooldownMs)) {
+    if (castPintOr(opt?.cooldownMs, null) === null) {
         return rec
     }
     let cfg = coolCfgOf(opt)

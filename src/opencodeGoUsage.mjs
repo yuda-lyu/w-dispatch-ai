@@ -1,7 +1,7 @@
 import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import fetchQuotaJson from './quota/fetchQuotaJson.mjs'
 
 
@@ -178,7 +178,7 @@ async function run(opt, t0, setKey) {
     let url = baseURL.replace(/\/+$/, '') + '/usage'
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //GET＋Bearer, 端點只認Authorization: Bearer; redact令對端回顯之金鑰不入錯誤訊息
     let r = await fetchQuotaJson(url, {

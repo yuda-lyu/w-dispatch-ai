@@ -332,6 +332,8 @@ describe('agyGroupOf／itemsOf: 群組對應與視窗挑選', function() {
     it('agyGroupOf: gemini-4-argon*→Gemini 4 Argon、gemini-*→Gemini Models、claude-*／gpt-oss-*→Claude and GPT models(忽略大小寫)、其餘與非字串→null', function() {
         let g = agyGroupOf
         assert.strict.deepEqual([g('gemini-4-argon-high'), g('Gemini-4-Argon'), g('gemini-3.8-flash-high'), g('gemini-3.1-pro'), g('claude-opus-5-5-high'), g('gpt-oss-120b'), g('GPT-OSS-20B')], ['Gemini 4 Argon', 'Gemini 4 Argon', 'Gemini Models', 'Gemini Models', 'Claude and GPT models', 'Claude and GPT models', 'Claude and GPT models'])
+        //Gemini 4 Hydrogen(Gitea #137, 2026-11-13): agy 1.5.7之`/usage`無Hydrogen專屬群組, 依既有規則(gemini-*)歸「Gemini Models」, 不歸Argon(規則不改, 只固定此例)
+        assert.strict.deepEqual([g('gemini-4-hydrogen-high'), g('Gemini-4-Hydrogen-XHigh')], ['Gemini Models', 'Gemini Models'])
         for (let v of ['gpt-5', 'sonnet', '', 'x', null, undefined, 5, {}]) {
             assert.strict.deepEqual(g(v), null, String(v))
         }

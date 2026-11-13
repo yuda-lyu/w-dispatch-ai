@@ -1,7 +1,7 @@
 import get from 'lodash-es/get.js'
 import isnum from 'wsemi/src/isnum.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { awaitUserFn, callHookSync, validateNote } from './callUserFn.mjs'
 
@@ -95,7 +95,7 @@ function safeValidate(validator, text) {
  *
  */
 async function safeValidateAsync(validator, text, timeoutMs) {
-    let r = await awaitUserFn(() => validator(text), castPintOr(timeoutMs, dfTimeoutMs))
+    let r = await awaitUserFn(() => validator(text), castTimerMs(timeoutMs, dfTimeoutMs))
     if (r.state === 'value') {
         return { pass: !!r.value, note: '' }
     }

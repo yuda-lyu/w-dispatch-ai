@@ -9,7 +9,7 @@ import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli, { optTruncate } from './runExecCli.mjs'
 import { readCallerObj, errMsg, asText } from './callUserFn.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import parseOpencodeEvents from './parseOpencodeEvents.mjs'
 import { applyOutputTokenMax } from './outputTokenMax.mjs'
@@ -191,7 +191,7 @@ function getFormatArg(args) {
  * @param {Number|String} [opt.outputTokenMax=128000] 輸入單次回應輸出上限(token)正整數(數字或數字字串)，注入子進程環境OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX(reasoning與output合計，實際上限取此值與模型型錄limit.output之較小者；opencode自身預設32000)；給了有效值即蓋過呼叫端環境；未給或無效(0、負數、小數、非數字、Infinity、布林)時，呼叫端環境(opt.env或process.env)已設有效值者原樣保留，否則用套件預設128000；調高會使可用輸入約減少同量，見outputTokenMax.mjs檔頭，預設128000
  * @param {Boolean} [opt.detectTruncation=false] 輸入是否偵測輸出被上限截斷布林值，true代表改用`--format json`事件流並還原輸出，最後一步終止原因為length時回報失敗(errorType 'incomplete'、truncated:true、finishReason、tokens)且不重試，見檔頭【截斷偵測】，預設false代表不偵測(行為同修前)
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(finish為length)但有可見輸出之結果布林值，true代表放行(照常交validate)並標truncated:true，僅detectTruncation為true時有作用，預設false
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將強制關閉子進程及其子孫程序，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()；其絕對路徑並同步注入環境變數PWD(opencode以繼承之PWD優先於真實cwd決定session目錄，見檔頭)，呼叫端env內之PWD會被覆寫
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0；另有不佔此次數之暫時性錯誤重試(失敗訊息含`database is locked`、非逾時且耗時<15秒者多重試一次，每次呼叫至多一次，attempts照實累計)
@@ -346,7 +346,7 @@ async function dispatchOpencode(prompt, opt = {}) {
     env = applyOutputTokenMax(env, get(opt, 'outputTokenMax', null)).env
 
     //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), dfTimeoutMs)
 
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)

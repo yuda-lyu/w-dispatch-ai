@@ -8,6 +8,7 @@ import isfun from 'wsemi/src/isfun.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import buildValidator from './buildValidator.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
@@ -380,7 +381,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {String} [opt.effort=''] 輸入思考強度字串，'low'、'medium'、'high'、'xhigh'、'max'之一，以output_config.effort送出，其他值視為未給，預設''代表不送(由API依模型決定：Opus 5.5與Haiku 5.5為medium，Sonnet 5.5為high)
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如max_tokens、thinking、output_config、fallbacks)，將併入預設body(同名鍵以此為準)，預設{}。預設body為{ model, max_tokens: 16000, messages, system?, output_config? }。注意本轉接器不支援工具，帶入tools而模型回tool_use時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵(不分大小寫)覆寫預設標頭而不重複送出；預設標頭含'anthropic-version: 2023-06-01'與'Accept-Encoding: identity'，預設{}
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，全套件統一預設300000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求(含回應串流讀取)，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，預設undefined代表不驗證
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(stop_reason為max_tokens)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；無可見輸出(思考耗盡max_tokens)者一律失敗，預設false代表截斷一律失敗(errorType incomplete)
  * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試(不發真實請求)，簽章同全域fetch(url, init)，預設全域fetch；非函數視為未給
@@ -477,7 +478,7 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     }
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //maxRetries
     let maxRetries = get(opt, 'maxRetries', null)

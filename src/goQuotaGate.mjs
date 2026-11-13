@@ -7,6 +7,7 @@ import isenum from 'wsemi/src/isenum.mjs'
 import opencodeGoUsage from './opencodeGoUsage.mjs'
 import { judgeWindowItems, cachedQuery } from './quotaJudge.mjs'
 import { awaitUserFn, readCallerObj } from './callUserFn.mjs'
+import castTimerMs from './castTimerMs.mjs'
 
 
 // goQuotaGate.mjs — OpenCode Go用量冷卻之判定(內部模組, 由dispatchAiFallback於選到Go條目之某把金鑰前呼叫; Gitea #67第2節; 帳本R-SPAWNGATE-2)
@@ -101,7 +102,7 @@ function resolveQuotaGate(raw) {
     return {
         max,
         cacheMs: ms(o.cacheMs, DEFAULT_CACHE_MS),
-        timeoutMs: ms(o.timeoutMs, DEFAULT_TIMEOUT_MS),
+        timeoutMs: castTimerMs(o.timeoutMs, DEFAULT_TIMEOUT_MS), //讀者逾時: 與讀者(opencodeGoUsage)同判定(1～2147483647之整數), 免閘門採小數而讀者改用自己之預設(帳本R-TIMEOUT-1)
         usage: isfun(o.usage) ? o.usage : null,
         now: isfun(o.now) ? o.now : Date.now,
         state: isobj(o.state) && get(o.state, 'cache', null) instanceof Map ? o.state : null,

@@ -17,13 +17,13 @@
 
 | 功能 | 帳本 | 測試 |
 |---|---|---|
-| OpenCode Go 條目(8 條 `ocgo:`〔2026-11-07 曾增 `crouton-alpha-free` 為 9 條,2026-11-10 因上游下架移除〕;`OPENCODE_GO_KEYS`;檔位依型錄;不收 REST 類;連網守門 ⊆ 公開 Go 型錄,紅燈即依 R-OCGO-1⑩ 處理) | `rulebook_opencodego.md` R-OCGO-1 | `test/unit-providersOpencodeGoEntries.test.mjs`(20 條)、`test/api-providersOpencodeGo.test.mjs`(連網,2 條)、`test/unit-providers.test.mjs`(通則)、`test/unit-providersOpencodeFreeEntries.test.mjs`(條目數 37) |
+| OpenCode Go 條目(8 條 `ocgo:`〔2026-11-07 曾增 `crouton-alpha-free` 為 9 條,2026-11-10 因上游下架移除〕;`OPENCODE_GO_KEYS`;檔位依型錄;不收 REST 類;連網守門 ⊆ 公開 Go 型錄,紅燈即依 R-OCGO-1⑩ 處理) | `rulebook_opencodego.md` R-OCGO-1 | `test/unit-providersOpencodeGoEntries.test.mjs`(20 條)、`test/api-providersOpencodeGo.test.mjs`(連網,2 條)、`test/unit-providers.test.mjs`(通則)、`test/unit-providersOpencodeFreeEntries.test.mjs`(條目數;2026-11-13 da-hy 新增 agy Hydrogen 後為 38,當時 37) |
 | OpenCode Go 用量查詢 `opencodeGoUsage`(三視窗原值;`available`;`nextResetAt` 取最晚者;端點未文件化) | R-OCGO-2 | `test/unit-opencodeGoUsage.test.mjs`(38 條;假站台 `test/tools/fakeServerForGoUsageTest.mjs`)、`test/unit-WDispatchAi.test.mjs` |
 | Go 檔頭／條目註解／README 文字守門(da67 起「遞補層不接用量」改斷言 quotaGate 新句) | R-OCGO-3 | `test/unit-providersOpencodeGoDocs.test.mjs`(36 條) |
 | opencode 單次輸出上限(`outputTokenMax`:預設 128000;優先序 opt ＞ 呼叫端環境 ＞ 預設;無效值視為未給;三條 26 萬級 pin 32000) | R-OCGO-4 | `test/unit-outputTokenMax.test.mjs`(14＋1 pending)、`test/unit-opencodeTruncation.test.mjs`(D1)、`test/api-opencodeOutputCap.test.mjs`(真實 opencode＋假 OpenAI 服務,10 條)、`test/unit-providersOutputCap.test.mjs`(4 條) |
 | opencode 截斷偵測(`detectTruncation`／`acceptTruncated`;`--format json` 事件流重建 stdout;最後 `step_finish` 為 `length` 回 `incomplete`,不驗證不重試;遞補整組跳過) | R-OCGO-4 | `test/unit-parseOpencodeEvents.test.mjs`(16)、`test/unit-opencodeTruncation.test.mjs`(31;假 opencode `test/tools/fakeOpencodeEventsForTest.mjs`)、`test/api-opencodeOutputCap.test.mjs` |
 | 輸出上限與截斷診斷之檔頭／README 文字守門 | R-OCGO-4 | `test/unit-opencodeOutputCapDocs.test.mjs`(12 條) |
-| OpenCode Go 型錄漂移對齊(2026-11-07 公開型錄 30 個,曾新增 `crouton-alpha-free`;**2026-11-10 公開型錄 30 個,`crouton-alpha-free` 下架並自目錄移除、新增 `longcat-2.5-free` 未收;已收 8＋未收 22**;檔頭漂移紀錄兩則、官方月額表〔未實測,依官方表〕、用量端點限制〔無逐模型分項〕;免費額度逐模型計〔提出端實測〕) | `rulebook_opencodego.md` R-OCGO-1(型錄漂移紀錄)、`rulebook_opencodefree.md` R-OCFREE-2 | `test/unit-providersOpencodeGoEntries.test.mjs`(已下架專案 3 條)、`test/unit-providersOpencodeGoDocs.test.mjs`(Gitea #92／da405 九條＋條目註解)、`test/unit-providersOutputCap.test.mjs`(P3:`detectTruncation` 恰 8 條)、`test/unit-providersOpencodeFreeEntries.test.mjs`(條目數 37) |
+| OpenCode Go 型錄漂移對齊(2026-11-07 公開型錄 30 個,曾新增 `crouton-alpha-free`;**2026-11-10 公開型錄 30 個,`crouton-alpha-free` 下架並自目錄移除、新增 `longcat-2.5-free` 未收;已收 8＋未收 22**;檔頭漂移紀錄兩則、官方月額表〔未實測,依官方表〕、用量端點限制〔無逐模型分項〕;免費額度逐模型計〔提出端實測〕) | `rulebook_opencodego.md` R-OCGO-1(型錄漂移紀錄)、`rulebook_opencodefree.md` R-OCFREE-2 | `test/unit-providersOpencodeGoEntries.test.mjs`(已下架專案 3 條)、`test/unit-providersOpencodeGoDocs.test.mjs`(Gitea #92／da405 九條＋條目註解)、`test/unit-providersOutputCap.test.mjs`(P3:`detectTruncation` 恰 8 條)、`test/unit-providersOpencodeFreeEntries.test.mjs`(條目數;2026-11-13 da-hy 新增 agy Hydrogen 後為 38,當時 37) |
 
 ## 三、已知待辦
 

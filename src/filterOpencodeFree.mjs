@@ -7,7 +7,7 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import providersDefault from './providers.mjs'
 import runExecCli from './runExecCli.mjs'
 import getErrorType from './getErrorType.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import { awaitUserFn, readCallerObj, errMsg } from './callUserFn.mjs'
 
 
@@ -213,7 +213,7 @@ async function filterOpencodeFree(providers = providersDefault, opt = {}) {
             exe = DEFAULT_EXE
         }
         refreshed = get(opt, 'refresh', null) === true
-        let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+        let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
         let args = ['models', ...(refreshed ? ['--refresh'] : [])]
 
         //查詢: 注入者經awaitUserFn(支援async、永不落定亦必落定); 預設者經runExecCli(自帶逾時, 不reject)

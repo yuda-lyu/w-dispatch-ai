@@ -13,6 +13,7 @@ import { resolveQuotaGate, isGoEntry, checkGoQuota } from './goQuotaGate.mjs'
 import { resolveSubQuotaGate, subGateDecide, learnQuotaFromFailure } from './subQuotaGate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import castBudgetMs from './castBudgetMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
@@ -621,7 +622,7 @@ function judgeBudgetCut(o) {
  * @param {Function} [opt.shouldStop=null] 輸入中止判定函數()=>Boolean，於每次嘗試之間與CLI類spawnGate守門等待中檢查，回傳true即停止遞補回報ABORTED(不中止進行中之嘗試)——供呼叫端於成果已無人接收時(如客戶端斷線)止損；經工作流層原樣轉傳，中止後各後續呼叫進門即回ABORTED令整條工作流快速收束；回調須為同步函數(回傳值恰為true才中止)，拋出例外或回傳Promise(承接其rejection)皆視同false，預設null
  * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊，保留鍵保證永不轉傳各轉接器，預設undefined
  * @param {Function} [opt.onEvent=null] 輸入事件回調函數(ev)=>{}，ev.type可為'try'、'ok'、'next-key'、'skip-group'、'budget-out'、'aborted'、'quota-skip'(用量達門檻而略過某把金鑰(Go)或某訂閱類條目，未送請求；帶windows、until、cached、error，另帶source：'usage-api'由用量查詢判定、'ledger'由額度帳(store.quota)命中而未查詢、'limit-text'訂閱類條目失敗後由結果文字解析出重置時刻並已入帳〔此事件於該次失敗之後發出，windows為空，該次嘗試之tried照舊〕)、'quota-gate-error'(用量查詢失敗而不擋，帶errorType、code，同一把金鑰或同一讀者家族快取期間內只發一次)、'quota-ledger-void'(Gitea #116：訂閱類條目之額度帳經帳號比對或定期重探而作廢，該次判定改走用量讀者；帶key〔被作廢之帳鍵〕、reason〔'account-changed'登入帳號與入帳時不同、'recheck-below'重探時用量已低於門檻〕、until、source、accountFrom／accountTo〔帳號識別雜湊前8碼或null，不含email〕，先於該次之quota-skip或try事件)、'cooled'(冷卻觸發，帶error與cooldownMs，僅cooldownMs>0時出現；條目層者每次呼叫每條目至多一則，cooldownMs為本次有效視窗，另帶n與reason('timeout'、'rate-limit'、'detect'、'quota'、'budget'、'streak')，reason為streak時另帶streak、errorType、keys、attempted；沒額度之金鑰冷卻與整組沒額度之條目冷卻另帶scope('key'或'entry')與failureKind)、'budget-cut'(嘗試之逾時被本層期限封頂且整鏈已用盡、差額≥minAttemptMs，帶error、errorType、appliedTimeoutMs、entryTimeoutMs、durationMs；隨即回budget exhausted，不發skip-group／group-exhausted)、'skip-key'(本次呼叫內已知沒額度之金鑰被略過而未送請求，僅Anthropic官方端點條目，帶failureKind與error)、'context-too-long'(脈絡過長，整個呼叫隨即結束，帶failureKind與error)、'group-exhausted'(本組未成交而試完，每次呼叫每組恰一次，位於本組最後一個next-key或skip-group之後、下一組首個try之前；帶keys(有效金鑰數，0代表登入態之單一虛擬金鑰)、attempted(本組實際嘗試數，不含skip-key)、by('all-keys'每把皆換鑰失敗，或'skip-group'以與金鑰無關之失敗收尾)、errorTypes(本組各次嘗試之errorType依序)、error(本組最後一次錯誤)，有failureKind時另帶failureKinds，組內每一把皆沒額度時另帶quotaExhausted: true；成交、預算用盡、中止之組不發，亦不寫入tried)；失敗事件(next-key/skip-group)另帶errorType、stdout(被拒回覆)與stderr(錯誤輸出)供診斷，後兩者於失敗路徑已由轉接器截斷；回調拋出例外或回傳被reject之Promise皆不影響主流程(不等待其結果)，預設null
- * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒正整數，條目可覆寫，全套件統一預設300000
+ * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，條目可覆寫，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則(同dispatch functions之validate，自訂函數可回傳Promise)，條目可覆寫，預設undefined
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受REST文字類轉接器回報之截斷內容布林值(原樣轉傳轉接器)，1.0.37起截斷於validate之前判失敗，validate內含搶救策略者須給true，預設false
  * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0；opencode條目遇`database is locked`(本機資料庫鎖競爭)之快速失敗另由轉接器層多重試一次，不佔此次數(見runExecCli.mjs檔頭【暫時性錯誤重試】)，仍失敗才換家
@@ -1008,7 +1009,8 @@ async function dispatchAiFallback(prompt, opt = {}) {
             }
 
             //有效timeout, 有預算時以剩餘預算封頂; entryTimeout為條目自己之逾時(封頂前), 供轉接器標記與本層判定封頂逾時(budget-cut)
-            let entryTimeout = castPintOr(get(attemptOpt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+            //逐層判定(條目 → 共用 → 預設): 條目自帶之timeoutMs無效(超過計時器上限、Infinity等)者視為未給而落到共用值, 不以無效值遮蔽有效之共用值(同resolveCatalogue之timeoutPatch逐層落下)
+            let entryTimeout = castTimerMs(get(entryOpt, 'timeoutMs', null), castTimerMs(get(sharedOpt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS))
             let effTimeout = entryTimeout
             if (deadline !== null) {
                 let remaining = deadline - Date.now()

@@ -8,7 +8,7 @@ import isbol from 'wsemi/src/isbol.mjs'
 import dispatchAiFallback from '../dispatchAiFallback.mjs'
 import dfTimeoutMs from '../dfTimeoutMs.mjs'
 import buildValidator from '../buildValidator.mjs'
-import castPintOr from '../castPintOr.mjs'
+import castTimerMs from '../castTimerMs.mjs'
 import { awaitUserFn, settleUserValue, readCallerObj, errMsg, asText } from '../callUserFn.mjs'
 import extractJsonLoose from './extractJsonLoose.mjs'
 import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
@@ -296,7 +296,7 @@ async function callAiWithFallback(prompt, opt = {}) {
         }
         else {
             //防禦性: 未經本層驗證即成功者(不應發生), 補跑完整parse＋check(上限timeoutMs), 不過即判驗證失敗
-            let p = await awaitUserFn(() => wkfValidate(r.stdout), castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs))
+            let p = await awaitUserFn(() => wkfValidate(r.stdout), castTimerMs(get(opt, 'timeoutMs', null), dfTimeoutMs))
             result = (p.state === 'value' && p.value === true && parsedOf.has(r.stdout)) ? parsedOf.get(r.stdout).j : null
         }
     }

@@ -5,6 +5,7 @@ import isbol from 'wsemi/src/isbol.mjs'
 import dispatchAiFallback from './dispatchAiFallback.mjs'
 import resolveCatalogue from './resolveCatalogue.mjs'
 import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import castBudgetMs from './castBudgetMs.mjs'
 import { callHookSync } from './callUserFn.mjs'
 
@@ -171,7 +172,7 @@ function createAiCaller(opt = {}) {
 
         //逐次設定: timeoutMs(有效正整數)、budgetMs(有效正整數, 與建構值取小)、validate(有給)、acceptTruncated(僅布林時透傳)、onEvent
         let callOpt = { providers, ...base }
-        let timeoutMs = castPintOr(get(co, 'timeoutMs', null), null)
+        let timeoutMs = castTimerMs(get(co, 'timeoutMs', null), null)
         if (timeoutMs !== null) {
             callOpt.timeoutMs = timeoutMs
         }

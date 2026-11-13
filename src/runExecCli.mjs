@@ -14,6 +14,7 @@ import getErrorResult from './getErrorResult.mjs'
 import buildValidator from './buildValidator.mjs'
 import cliSpawnGate, { DEFAULT_MIN_ATTEMPT_MS } from './cliSpawnGate.mjs'
 import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { judgeTruncated } from './checkTruncation.mjs'
 import { awaitUserFn, callHookSync, readCallerObj, validateNote } from './callUserFn.mjs'
@@ -198,8 +199,9 @@ async function runExecCli(exe, args, opt = {}) {
     }
 
     //validator, 規則字串與自訂函式皆由本層判定; 無有效規則則不驗證
-    //timeoutMs, 兩路(有無validate)同一預設: 無效回退全套件統一之dfTimeoutMs(四家轉接器皆已正規化後傳入, 此為直呼本函數時之一致性)
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfTimeoutMs)
+    //timeoutMs, 兩路(有無validate)同一預設: 1～2147483647之整數才採用, 無效(含超過計時器上限)回退全套件統一之dfTimeoutMs(四家轉接器皆已正規化後傳入, 此為直呼本函數時之一致性;
+    //判定同wsemi execCli(1.9.59起iseint之timer), 但無效時用本套件之預設而非execCli自有之120000, 不夾上限; 帳本R-TIMEOUT-1)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), dfTimeoutMs)
 
     //spawnGate／spawnGateKind為本層自用鍵(不轉傳execCli): 每次spawn前經cliSpawnGate守門(見cliSpawnGate.mjs); kind未給(直呼本函數)則不守門
     //spawnGateHints為遞補層傳入之提示({ shouldStop, deadlineAt, minAttemptMs }, 見dispatchAiFallback), 令預設情形下守門等待亦可被中止、計入budgetMs
@@ -248,7 +250,8 @@ async function runExecCli(exe, args, opt = {}) {
     let capByDeadline = (ed) => {
         let da = ed.at
         if (da !== null) {
-            return Math.max(Math.min(timeoutMs, da - Date.now()), 1)
+            //向下取整: 呼叫端自給之deadlineAt可為小數, 小數之timeoutMs交execCli會被其判為無效而改用120000(整數/計時器範圍之判定, 見castTimerMs)
+            return Math.max(Math.min(timeoutMs, Math.floor(da - Date.now())), 1)
         }
         return timeoutMs
     }
@@ -316,7 +319,7 @@ async function runExecCli(exe, args, opt = {}) {
     //暫時性錯誤重試(見檔頭【暫時性錯誤重試】): 只對spawnGateKind為opencode; transientRetry為測試用注入, 非預期之值逐鍵改用預設(K3)
     let trOpt = get(opt, 'transientRetry', null)
     let trObj = isobj(trOpt) ? trOpt : {}
-    let trDelayMs = castPintOr(get(trObj, 'delayMs', null), TRANSIENT_RETRY_DEFAULTS.delayMs)
+    let trDelayMs = castTimerMs(get(trObj, 'delayMs', null), TRANSIENT_RETRY_DEFAULTS.delayMs) //交wsemi delay(計時器): 超過2147483647者無效(wsemi delay對其改用10毫秒)
     let trFastMs = castPintOr(get(trObj, 'fastMs', null), TRANSIENT_RETRY_DEFAULTS.fastMs)
     let trOn = sgKind === TRANSIENT_KIND
     let trTrace = getTrace({ onTrace: get(opt, 'onTrace', null) }) //觀察回調: 與execCli共用同一opt.onTrace(凍結事件、同步、拋錯忽略、未給時為null)

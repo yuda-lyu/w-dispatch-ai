@@ -259,6 +259,17 @@ describe('opencode暫時性錯誤(database is locked)重試一次(R-SPAWNGATE-5)
             }
         })
 
+        it('transientRetry.delayMs無效(超過計時器上限2147483647、Infinity、\'0x10\'、小數、0)者回退預設2000(經transient-retry事件之ms觀察), 有效值原值; 不把原值交計時器(wsemi delay對超過上限者改用10毫秒)', async function() {
+            //規格: 帳本R-TIMEOUT-1(同timeoutMs之計時器範圍判定); 事件之ms為決定採用之重試延遲; 無效者每案實際等2秒(預設), 故只取3個代表值
+            let got = []
+            for (let v of [2147483648, Infinity, 7]) {
+                let events = []
+                await run('locked,ok', { transientRetry: { delayMs: v }, onTrace: (e) => events.push(e) })
+                got.push([String(v), events.filter((e) => e.type === 'transient-retry').map((e) => e.ms)])
+            }
+            assert.strict.deepEqual(got, [['2147483648', [2000]], ['Infinity', [2000]], ['7', [7]]])
+        })
+
         it('觀察回調(opt.onTrace): 決定重試時發出凍結之transient-retry事件{ n, ms, durationMs }, 位於第1次settle之後、第2次spawn之前; 無重試與非opencode不發; 回調拋錯不影響結果 — 無validate與有validate兩路', async function() {
             for (let opt of [{}, { validate: () => true }]) {
                 let events = []

@@ -6,7 +6,7 @@ import isearr from 'wsemi/src/isearr.mjs'
 import providersAll from './providers.mjs'
 import resolveProviders from './resolveProviders.mjs'
 import readEnvFile from './readEnvFile.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 
 
 // resolveCatalogue.mjs — 目錄展開: 內建目錄＋安裝方自帶條目合併 → 逾時三層取值寫進patch → resolveProviders
@@ -94,7 +94,7 @@ function mergeCatalogue(catalogue, extraProviders) {
  * 逾時三層取值：逐id取providerTimeouts[id]、條目自帶timeoutMs、全域timeoutMs之第一個有效值，寫成可餵resolveProviders之patch
  *
  * 特點：
- * 只收正整數(數字字串轉為數字)，某層無效視為未給而落到下一層，三層皆無效之id不寫入；
+ * 只收1～2147483647之整數(數字字串轉為數字; 判定同轉接器之timeoutMs, 見castTimerMs; 超過計時器上限者無效、不夾上限)，某層無效視為未給而落到下一層，三層皆無效之id不寫入；
  * pick省略或為空陣列時對全目錄，給了則只取pick內之id；
  * merged非陣列即throw；opt非物件或各鍵無效時只用條目自帶值
  *
@@ -124,7 +124,7 @@ function timeoutPatch(merged, opt = {}) {
     let pick = get(opt, 'pick', null)
     let ids = isearr(pick) ? new Set(pick) : null
     let pts = get(opt, 'providerTimeouts', null)
-    let tm = castPintOr(get(opt, 'timeoutMs', null), null)
+    let tm = castTimerMs(get(opt, 'timeoutMs', null), null)
 
     let out = {}
     for (let p of merged) {
@@ -134,8 +134,8 @@ function timeoutPatch(merged, opt = {}) {
         if (ids !== null && !ids.has(p.id)) {
             continue
         }
-        let v1 = (isobj(pts) && Object.prototype.hasOwnProperty.call(pts, p.id)) ? castPintOr(pts[p.id], null) : null
-        let v2 = castPintOr(p.timeoutMs, null)
+        let v1 = (isobj(pts) && Object.prototype.hasOwnProperty.call(pts, p.id)) ? castTimerMs(pts[p.id], null) : null
+        let v2 = castTimerMs(p.timeoutMs, null)
         let v = v1 ?? v2 ?? tm
         if (v !== null) {
             out[p.id] = { timeoutMs: v }

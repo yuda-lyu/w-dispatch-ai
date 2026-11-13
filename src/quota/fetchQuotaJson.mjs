@@ -3,6 +3,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import castPintOr from '../castPintOr.mjs'
+import castTimerMs from '../castTimerMs.mjs'
 import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
 import redactText from '../redactText.mjs'
 
@@ -157,7 +158,7 @@ async function fetchQuotaJson(url, opt = {}) {
     }
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfQuotaTimeoutMs)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), dfQuotaTimeoutMs)
 
     //maxBodyBytes
     let maxBodyBytes = castPintOr(get(opt, 'maxBodyBytes', null), DEFAULT_MAX_BODY_BYTES)

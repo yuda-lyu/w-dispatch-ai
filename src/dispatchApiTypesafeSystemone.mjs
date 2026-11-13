@@ -8,6 +8,7 @@ import isp0int from 'wsemi/src/isp0int.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import buildValidator from './buildValidator.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
@@ -255,7 +256,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
  * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
  * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，預設{}
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求，全套件統一預設300000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
@@ -350,7 +351,7 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     }
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //maxRetries
     let maxRetries = get(opt, 'maxRetries', null)

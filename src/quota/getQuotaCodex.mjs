@@ -7,7 +7,7 @@ import iseobj from 'wsemi/src/iseobj.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
 import cdbl from 'wsemi/src/cdbl.mjs'
 import execCliJsonRpc from 'wsemi/src/execCliJsonRpc.mjs'
-import castPintOr from '../castPintOr.mjs'
+import castTimerMs from '../castTimerMs.mjs'
 import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
 import readJsonOrNull from './readJsonOrNull.mjs'
 import fetchQuotaJson from './fetchQuotaJson.mjs'
@@ -378,7 +378,7 @@ async function getQuotaCodex(email = '', opt = {}) {
     }
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfQuotaTimeoutMs)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), dfQuotaTimeoutMs)
 
     //useAppServer與fallbackHttp
     let useAppServer = get(opt, 'useAppServer', true) !== false

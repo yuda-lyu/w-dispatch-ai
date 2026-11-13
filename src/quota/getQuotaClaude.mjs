@@ -5,7 +5,7 @@ import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
-import castPintOr from '../castPintOr.mjs'
+import castTimerMs from '../castTimerMs.mjs'
 import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
 import readJsonOrNull from './readJsonOrNull.mjs'
 import fetchQuotaJson from './fetchQuotaJson.mjs'
@@ -215,7 +215,7 @@ async function getQuotaClaude(email = '', opt = {}) {
     let fpConf = relocated ? path.join(configDir, '.claude.json') : path.join(homeDir, '.claude.json')
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), dfQuotaTimeoutMs)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), dfQuotaTimeoutMs)
 
     //userAgent
     let userAgent = get(opt, 'userAgent', null)

@@ -4,7 +4,7 @@ import isarr from 'wsemi/src/isarr.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import callAiWithFallback from './callAiWithFallback.mjs'
-import castPintOr from '../castPintOr.mjs'
+import castTimerMs from '../castTimerMs.mjs'
 import castBudgetMs from '../castBudgetMs.mjs'
 import dfTimeoutMs from '../dfTimeoutMs.mjs'
 import { awaitUserFn, readCallerObj, asText } from '../callUserFn.mjs'
@@ -125,7 +125,7 @@ async function runRolePipeline(opt = {}) {
         //拋錯、reject以'stage[id].prompt threw: 訊息'、逾時以'stage[id].prompt did not settle within Ns'回報
         let stageOpt = { ...callOpt, ...overrides }
         let stageBudget = castBudgetMs(get(stageOpt, 'budgetMs', null)) //執行期之剩餘時間(主控裁示D11甲): ≤0為已無時間、小數向下取整, 未給或非數值為不限
-        let stageTo = castPintOr(get(stageOpt, 'timeoutMs', null), dfTimeoutMs)
+        let stageTo = castTimerMs(get(stageOpt, 'timeoutMs', null), dfTimeoutMs)
         let tp = Date.now()
         let pr = await awaitUserFn(() => promptFn({ input, prev, results, index: i }), stageBudget === null ? stageTo : Math.min(stageTo, stageBudget))
         if (pr.state !== 'value') {

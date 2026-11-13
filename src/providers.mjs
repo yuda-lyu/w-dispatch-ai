@@ -478,8 +478,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //  anthropic: REST(kind api-anthropic)  條目欄位effort(轉為body.output_config.effort, 2026-10-24): 未給時API依模型預設——Opus 5.5與Haiku 5.5為medium(非high)、
 //           Sonnet 5.5為high——故三條皆明給EFFORT; 三模型皆為自適應思考(省略thinking即開), Opus 5.5不可關閉, 條目不送thinking也不得以disabled關閉(上方測試守門)。
 //           claude-api:(CLI)同claude:條目以--effort表示。
-//  agy      以模型slug之檔位表示(gemini-3.8-flash-high、gemini-4-argon-high、claude-sonnet-5-5-high、claude-opus-5-5-high), 不另帶--effort
-//           (與slug檔位不一致時agy報conflicts)。各模型可選檔位因模型而異(2026-10-16: Gemini 4 Argon與3.8 Flash皆為low/medium/high, 無xhigh/max),
+//  agy      以模型slug之檔位表示(gemini-3.8-flash-high、gemini-4-hydrogen-high、gemini-4-argon-high、claude-sonnet-5-5-high、claude-opus-5-5-high), 不另帶--effort
+//           (與slug檔位不一致時agy報conflicts)。各模型可選檔位因模型而異(2026-10-16: Gemini 4 Argon與3.8 Flash皆為low/medium/high, 無xhigh/max; 2026-11-13: Gemini 4 Hydrogen為low/medium/high/xhigh, 本目錄取high),
 //           以`agy -p /effort --model <slug> --output-format json`之available查(不耗額度; Git Bash下須加MSYS_NO_PATHCONV=1,
 //           否則/effort被改寫成路徑而當成提示詞送出)。
 //  注意: 條目覆寫extraArgs時須一併帶上本常數(與防寫常數), 否則回退各CLI之預設強度(codex條目之防寫為獨立之sandbox欄位, 不在extraArgs, 覆寫時只需帶強度)。
@@ -828,12 +828,35 @@ let providers = [
         //工作流層無害(空回覆過不了validate而自動遞補); 需要寫入能力請於條目覆寫為true
         skipPermissions: false,
     },
+    //agy之Gemini 4 Hydrogen(2026-11-13新增, 來源: 使用端建議, Gitea #137): 使用端稱Gemini 4 Hydrogen於2026-11-13推出、Google以之取代Flash品牌(使用端轉述, 本套件無官方出處);
+    //agy 1.5.7之`agy models`列gemini-4-hydrogen-low/medium/high/xhigh(顯示名Gemini 4 Hydrogen (Low/Medium/High/XHigh)), 3.8 Flash三條仍在列(尚未下架);
+    //`/effort`之available為["low","medium","high","xhigh"]、current為high(〔提出端〕查)。取-high與其餘agy條目同檔位(EFFORT); xhigh為本模型另有之檔位, 不收(未實測, 需要者以extraProviders自帶)。
+    //排在3.8之後、Argon之前; 不取代也不刪除3.8(下游以id引用; 3.8實際下架時另案移除)。防寫與addDirs同3.8條目。
+    //額度池: `/usage`於agy 1.5.7仍只有「Gemini Models」「Claude and GPT models」「Gemini 4 Argon」三群組、無Hydrogen專屬群組; subQuotaGate之agyGroupOf依規則(gemini-*)歸「Gemini Models」、
+    //不歸Argon(unit-subQuotaGate固定此例, 規則未改)。
+    //〔提出端〕(使用端, 2026-11-13, agy 1.5.7, 同形extraProviders條目經resolveCatalogue＋dispatchAiFallback; 本機未重現其題組):
+    //簡答「請只回覆兩個字：完成」high 41.1s與7.6s兩次成交、low 10.2s與medium 31.7s成交(同時段3.8-flash-high 18.0s; agy耗時起伏大, 不可據以比較快慢);
+    //四角色題組(衝突核對15/15、重評15/15、既有邊覆核16/16、預篩16/16)與3.8同分; 約129次Hydrogen呼叫期間「Gemini Models」7天窗口+2.39個百分點、Argon維持0%(單次觀察, 同時段另有少量3.8呼叫)。
+    //〔本機 2026-11-13〕(agy 1.5.7, 經resolveCatalogue({ pick:['agy:gemini-4-hydrogen-high'] })＋dispatchAiFallback, 本條目設定):
+    //①resolveCatalogue回1條、skipped 0、model／skipPermissions／addDirs如上; `agy models`列四個hydrogen slug; `/effort`之available為["low","medium","high","xhigh"]、current為high。
+    //②簡答「請只回覆兩個字：完成」共5次皆ok、stdout「完成」(5.9s、4.5s、8.7s、8.0s、6.0s; agy耗時起伏大, 不可據以比較快慢)。
+    //③寫檔金絲雀(skipPermissions:false, 與3.8、Argon同條件各1次對照): 要求寫到「工作區(addDirs['.']＝cwd)外」之絕對路徑 → 三者皆被擋(ok:true、stdout空、stderr帶「write_file」permission「auto-denied」說明、檔案未落地);
+    //要求寫到工作區內(cwd)之檔 → 三者皆放行而落地(agy 1.5.7之行為, 非Hydrogen特有; 即本欄「防寫」只擋工作區外之寫入, 見sgud/state/state_agy.md待辦)。
+    //④額度前後對照(只呼叫Hydrogen 4次, 前後各讀兩次/usage): 「Gemini 4 Argon」7天窗口1.01→1.01→1.01(不動); 「Gemini Models」5小時窗口7.51→8.09(+0.58)、7天窗口讀數跳動(前41.06／40.3、後40.36／40.46, 跳動幅度大於4次之增量, 無法判別);
+    //無Hydrogen專屬群組; 同帳號他行程之用量可能混入(單次對照, 僅作量級與歸屬之參考, 不可精算單次耗用)。
+    {
+        id: 'agy:gemini-4-hydrogen-high',
+        model: 'gemini-4-hydrogen-high',
+        kind: 'antigravity',
+        addDirs: ['.'],
+        skipPermissions: false,
+    },
     //agy之Gemini 4 Argon(2026-10-16新增, 使用者指示): agy 1.4.0之`agy models`列gemini-4-argon-low/medium/high, `/effort`之available為
     //["low","medium","high"], 取-high符合EFFORT, 硬帶--effort max/xhigh回「has no "max" effort (available: low, medium, high)」。
     //額度池: `/usage`之獨立群組「Gemini 4 Argon」, 只有7天窗口(無5小時窗口), Pro方案與「Gemini Models」群組分開
     //(2026-10-16以4次呼叫前後對照實測: 用Argon時Gemini群組讀數0→0、用3.8時Argon讀數2.11→2.11, 皆未動);
     //官方描述Ultra方案計入較大之Gemini額度桶(Ultra實際回應未見, 未驗證)。故本機Pro觀察到的是額度池獨立(CLI、登入、網路仍與上一條共用, 非故障域獨立);
-    //Ultra若如官方描述則與上一條共池。全取鏈中四條agy條目相鄰, agy整體卡頓時會連續逾時4次(約4×timeoutMs), 宜搭配budgetMs與cooldownMs。
+    //Ultra若如官方描述則與上一條共池。全取鏈中五條agy條目相鄰(2026-11-13新增Hydrogen後; 原為四條), agy整體卡頓時會連續逾時5次(約5×timeoutMs), 宜搭配budgetMs與cooldownMs。
     //排在3.8之後、不取代也不刪除3.8: 下游w-knowledge-extract以id引用3.8條目; 無任務級品質證據可證Argon較佳(四項輕量題兩者同分)。
     //防寫與addDirs同上一條。實測(agy 1.4.0、同時段與3.8對照, 經本條目設定): 簡答8.5s(3.8為8.2s)、推理題10.7s答對(11.9s)、
     //讀檔16.6s正確(13.7s)、寫檔金絲雀12.2s被擋未落地且ok:true、stdout空(stderr同3.8有「jetski: no output produced」說明)。

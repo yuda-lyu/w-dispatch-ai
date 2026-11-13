@@ -1,6 +1,6 @@
 import get from 'lodash-es/get.js'
 import isarr from 'wsemi/src/isarr.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 
 
@@ -46,7 +46,7 @@ function budgetFor(providers) {
     }
     let n = 0
     for (let p of providers) {
-        n += castPintOr(get(p, 'timeoutMs', null), dfTimeoutMs)
+        n += castTimerMs(get(p, 'timeoutMs', null), dfTimeoutMs)
     }
     return n
 }

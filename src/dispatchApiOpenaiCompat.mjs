@@ -6,6 +6,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import buildValidator from './buildValidator.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
@@ -307,7 +308,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {String} [opt.system=''] 輸入system提示詞字串，將以system角色置於messages首位，預設''代表不帶
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如temperature、max_tokens、response_format)，將併入預設body(同名鍵以此為準)，預設{}。注意本轉接器不支援工具，帶入tools而模型回tool_calls時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，要改回允許壓縮可給{'Accept-Encoding':'gzip, deflate, br'}，預設{}
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將中止請求(含回應串流讀取)，全套件統一預設300000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求(含回應串流讀取)，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(finish_reason為length)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；content_filter與可見輸出為空者一律失敗，預設false代表截斷一律失敗(errorType incomplete)
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)與截斷不重試，預設0
@@ -399,7 +400,7 @@ async function dispatchApiOpenaiCompat(prompt, opt = {}) {
     }
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //maxRetries
     let maxRetries = get(opt, 'maxRetries', null)

@@ -24,4 +24,6 @@
 
 | 冷卻、健康與預算之語意邊界(排程第 402 項、併 Gitea #130,2026-11-11 da402 設計／di402 實作) | `sgud/rule/rulebook_cooling.md` | R-COOL-1～5 | R-COOL-1 封頂逾時 `budget-cut`(轉接器重試層標記 `cutByDeadline`、遞補層 `judgeBudgetCut`:整鏈已用盡且差額 ≥ `minAttemptMs`;不冷卻、不組盡、不計連敗;鏈首例外 `reason: 'budget'`);R-COOL-2 冷卻紀錄 `{ at, n, reason }` 與加長(`cooldownGrowth` 預設 1、`cooldownMaxMs` 預設 24 小時;視窗外才 +1、每呼叫至多 +1、視窗內只更新 at;quota／budget 固定視窗;過期不刪、掃整表清理;單一寫法 `cooling.mjs`,匯出 `coolEntry`／`coolingOf`／`streakOf`);R-COOL-3 持久連敗 `coolAfterFails`(store 之 `failStreak`,零嘗試與 params 不計)與 `envDown`(本次遞增不落定);R-COOL-4 期限約束一切重試(REST 四家、`runExecCli` 接管 CLI 重試,不擴充 wsemi);R-COOL-5 使用端自給之 `spawnGate.deadlineAt` 與遞補層期限取較早者(排程第 417 項;封頂標記依取早後之來源;`minAttemptMs`／`shouldStop` 優先序不動);另 R-COOL-2 第 10 點 `cooled` 事件與 `coolEntry` 回傳之 `renewed`(排程第 421 項:寫入前已在有效視窗內＝視窗內之重申);另 `castBudgetMs`(D11 甲,見 R-CALLER-1-6 改寫) |
 
+| `timeoutMs` 之判定單一來源 `castTimerMs`(排程第 438 項,2026-11-13 da-hy;主控帳本 G17、dspec §11 第 19～21 項、wsemi 1.9.59 `execCli`) | `sgud/rule/rulebook_timeout.md` | R-TIMEOUT-1 | 1～2147483647 之整數(或其十進位數字字串)才採用,其餘一律用各入口之預設(轉接器與遞補層 300000),不夾上限、不報錯;取代 `castPintOr`(`Infinity`→1.8e308、`'0x10'`→16、超過上限原樣轉交 → `execCli` 120 秒／REST 溢位 1 毫秒);27 站點 25 檔全集表與盤點測試;`--print-timeout` 推導不再封頂;刻意不改者(`awaitUserFn`、閘門 `ms()`、`cliSpawnGate`、`budgetMs`)與理由;32 個變異全抓、修前紅 |
+
 引用說明:程式碼註解與測試中之「帳本R-XXX-N」仍指上表對應檔內同編號之節.

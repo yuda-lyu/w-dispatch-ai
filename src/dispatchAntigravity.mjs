@@ -9,7 +9,7 @@ import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli, { optTruncate } from './runExecCli.mjs'
 import { asText } from './callUserFn.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import parseAgyStream from './parseAgyStream.mjs'
 import checkAgyStdinSupport, { MIN_STDIN_VERSION } from './checkAgyStdinSupport.mjs'
@@ -66,7 +66,9 @@ import checkAgyStdinSupport, { MIN_STDIN_VERSION } from './checkAgyStdinSupport.
 //   與execCli之timeoutMs為兩層獨立逾時。agy自身逾時時**以離開碼0交回部分輸出**(stderr為「[agy] print timeout after Ns with turn in progress;
 //   returning partial output」, stdout為已產出之部分、可能為空), 不是錯誤——原設計令它先於外層到時(舊推導max(30, timeoutMs秒−30), 自agy啟動後起算),
 //   故自然耗時超過該截止點之回合一律被當成ok:true之截斷輸出(連超過timeoutMs者亦然), 遞補層之TIMEOUT分流與冷卻皆不可達(成功還會解除既有冷卻)。
-//   現printTimeout未給時推導為timeoutMs加30秒(timeoutMs超過execCli計時器上限2147483647者同樣封頂), 令外層先逾時(error以TIMEOUT開頭);
+//   現printTimeout未給時推導為生效之timeoutMs加30秒, 令外層先逾時(error以TIMEOUT開頭); 生效之timeoutMs＝1～2147483647之整數(計時器上限, 即wsemi execCli之timeoutMs上限),
+//   超過上限等非預期值視為未給而用預設300000(castTimerMs, 2026-11-13起; 不再夾至上限——wsemi 1.9.59起execCli對超過上限者改用其自有預設120000, 夾上限或原樣轉交皆令外層與本套件之預設不一致),
+//   故推導值最大為2147483+30秒, 不會超出agy可解析之Go duration範圍(實測9007199254770s與9223372037s皆exit 2 invalid duration);
 //   agy之自身計時只在外層強殺失效時作後備。行為變更: 自然耗時介於舊截止點與timeoutMs者由截斷改為完整成功, 達timeoutMs者由「部分輸出ok:true」改為TIMEOUT失敗;
 //   仍要部分輸出者明給小於timeoutMs之printTimeout(並自行驗證完整性)。
 //
@@ -79,7 +81,6 @@ let DEFAULT_EXE = 'agy'
 let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
 let MAX_PROMPT_LENGTH = 30000 //命令列上限32767扣除exe路徑與旗標後之保守值
 let PRINT_TIMEOUT_BUFFER_S = 30 //agy自身計時較外層晚到之秒數
-let MAX_TIMER_MS = 2147483647 //wsemi execCli計時器上限(外層timeoutMs本就夾至此值); 推導同樣封頂, 免超出agy可解析之Go duration範圍(實測9007199254770s與9223372037s皆exit 2 invalid duration)
 let PROMPT_VIA_LIST = ['argv', 'stdin', 'auto'] //promptVia可用值
 let DEFAULT_PROMPT_VIA = 'auto' //預設值及其理由見檔頭【提示詞兩種傳法】
 let STDIN_CONFLICT_FLAGS = ['output-format', 'input-format', 'print', 'p', 'prompt', 'i', 'prompt-interactive'] //stdin路徑下extraArgs不得出現之旗標名(不分單雙橫線、不分`=值`), 見檔頭
@@ -191,7 +192,7 @@ function reshapeAgyResult(r, raw) {
  * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'630s')，預設''代表由timeoutMs推導(加30秒，恆大於timeoutMs令外層先逾時；agy自身逾時是離開碼0之部分輸出，不是錯誤，故一般無須手動設)
  * @param {Array} [opt.addDirs=自動納入cwd] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`(argv路徑)或`--input-format stream-json --output-format stream-json`(stdin路徑，此路徑下extraArgs不得含衝突旗標，見promptVia)之前，預設[]
- * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒正整數，逾時將強制關閉子進程及其子孫程序，全套件統一預設300000
+ * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將強制關閉子進程及其子孫程序，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
@@ -267,13 +268,13 @@ async function dispatchAntigravity(prompt, opt = {}) {
         skipPermissions = true
     }
 
-    //timeoutMs, 先行取值以供printTimeout推導, 無效回退全套件統一預設300000
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    //timeoutMs, 先行取值以供printTimeout推導; 1～2147483647之整數才採用, 無效(含超過計時器上限)回退全套件統一預設300000(castTimerMs, 與wsemi execCli之判定相同, 不夾上限)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
-    //printTimeout, 未給時由timeoutMs加緩衝推導, 令外層先逾時(agy自身逾時為exit 0之部分輸出而非錯誤, 見檔頭)
+    //printTimeout, 未給時由timeoutMs加緩衝推導, 令外層先逾時(agy自身逾時為exit 0之部分輸出而非錯誤, 見檔頭); timeoutMs恆≤2147483647, 推導值在agy可解析之範圍內
     let printTimeout = get(opt, 'printTimeout', null)
     if (!isestr(printTimeout)) {
-        printTimeout = `${Math.floor(Math.min(timeoutMs, MAX_TIMER_MS) / 1000) + PRINT_TIMEOUT_BUFFER_S}s`
+        printTimeout = `${Math.floor(timeoutMs / 1000) + PRINT_TIMEOUT_BUFFER_S}s`
     }
 
     //addDirs, 逐項展開為--add-dir(agy該旗標可重複)

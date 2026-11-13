@@ -96,8 +96,9 @@ describe('providers之opencode免費條目裁定(2026-11-03)', function() {
             providers.length,
         ]
         //條目數: 2026-11-03 da63時為29; 同日da65(Gitea #65)新增8條CLI類Go條目(ocgo:, 見unit-providersOpencodeGoEntries)而為37;
-        //2026-11-07 ke339(Gitea #92)曾再新增1條ocgo:免費期條目而為38; 2026-11-10 da405因上游下架移除而回到37(oc:／zen:條目始終零增刪)
-        assert.strict.deepEqual(r, [false, false, 37])
+        //2026-11-07 ke339(Gitea #92)曾再新增1條ocgo:免費期條目而為38; 2026-11-10 da405因上游下架移除而回到37(oc:／zen:條目始終零增刪);
+        //2026-11-13 da-hy(Gitea #137)新增1條agy:gemini-4-hydrogen-high而為38(其餘條目零增刪)
+        assert.strict.deepEqual(r, [false, false, 38])
     })
 
 })

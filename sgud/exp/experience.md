@@ -10,6 +10,17 @@
 
 > 2026-11-08 再整理(檔約 34KB,超過約 30KB 門檻):2026-10-23～11-05 之遞補與錯誤型別、CLI spawn 守門與 Go 用量冷卻(da67)、opencode 單次輸出上限與截斷偵測(da78)、放行最小間隔與暫時性重試(da320)等四節,已抽出至 `experience_20261108.md`(逐字搬移,節號與標題不變);需要時再調閱.
 
+## `timeoutMs` 判定單一來源與 Hydrogen 條目(2026-11-13 da-hy,排程第 438 項與 Gitea #137;帳本 `rulebook_timeout.md` R-TIMEOUT-1、`rulebook_agy.md` R-AGY-1／R-AGY-2)
+
+- **wsemi 升版後「相容」之假象**:wsemi 1.9.59 起 `execCli` 對 `timeoutMs` 改 `iseint` 判定(超過上限者用自有預設 120000),本套件舊之 `castPintOr`(`ispint` 通過後 `cint`)把 `Infinity`→1.8e308、`'0x10'`→16、`new Number(5000)`→5000、超過上限者原樣轉交——測試全綠(只測有效值):1.8e308 與超過上限者被 `execCli` 判無效而用 120 秒(與套件預設 300 秒不一致),`'0x10'`(16 毫秒)與包裝物件(5000)則被當有效而得非預期值.外審#18 指出初稿把後兩者也寫成「落入 120 秒」(誤述,已更正).**升級被呼叫之自有套件後,對「它把非預期值改成預設」之輸入格,逐入口以記錄替身觀察「實際交給它之值」**,不能只看既有測試綠.
+- **同一個非預期值在不同入口有三種後果**:CLI 交 `execCli`→120 秒;REST 交 `setTimeout`→Node 視為 1 毫秒(`TimeoutOverflowWarning`,立即 `TIMEOUT`);`--print-timeout` 推導→`2147513s`.盤點時以「值最終流到哪個計時器」分類,而非只看函數名.
+- **觀察「實際交給外部函數之值」之作法**:`module.register` 之 resolve hook 把 `wsemi/src/execCli.mjs` 換成記錄替身(precedent:`strictStrTruncateHooksForTest`),子行程探針逐入口×逐輸入值呼叫、印單行 JSON,測試以 `spawnSync` 解析;不 spawn、不等逾時、與負載無關.REST 類改用「延遲代理」(`test/tools/delayProxyForTest.mjs`:收完請求等 300 毫秒才轉給既有假伺服器)——誤採為 1 毫秒者必 `TIMEOUT`、正確者與負載無關必成功.
+- **極短逾時之真實 spawn 測試必偶發**:舊 `unit-dispatchAntigravity` 之 printTimeout 案含 `timeoutMs` 1、999 毫秒格而實際啟動假 CLI:Windows 上 `.cmd` shim 經 cmd 啟動,外層 `taskkill` 與子進程輸出競速,正常負載時子進程常贏、高負載時 `taskkill` 先到而得空輸出(`JSON.parse('')` → `Unexpected end of JSON input`).本機常態負載實測(各 20 次,`tmp/da-hy/flake.mjs`):`timeoutMs` 1 → 20/20 為 `TIMEOUT` 結果、但 stdout 仍完整(殺程序延遲大於子進程輸出時間);999／5000／40000 → 0 次逾時、stdout 完整——即 1 毫秒格本就恆處於「逾時競速」區,斷言只靠殺程序之延遲才不空;**未以人為負載重現空輸出**(派工禁止加壓),成因由機制與常態實測推定,修法(移出 spawn)消除該依賴.修法是把「只需推導出之參數」之斷言移到不 spawn 之參數層,真實 spawn 只留長逾時格;**不放寬容忍、不重試**.
+- **修前紅取證**:`git archive --format=tar -o <檔> HEAD src README.md sgud package.json` 解至 `tmp/<案>/head`(解壓用相對路徑:GNU tar 會把 `C:` 當遠端主機),疊上工作區新測試與工具,逐檔跑;node 自 `tmp/` 往上解析得 repo 之 `node_modules`,不必另裝(同樣作法用於變異副本).
+- **agy 寫檔金絲雀須分「工作區內／外」**:agy 1.5.7 在 `skipPermissions:false` 下,工作區(`addDirs['.']`＝cwd)內之寫入放行、工作區外被擋(`ok:true`、stdout 空、stderr `write_file` permission `auto-denied`);只寫「被擋、未落地」會因路徑選擇而得相反結論.同提示詞對 3.8、Argon 各 1 次對照,確認非 Hydrogen 特有.
+- **額度對照之讀數**:`/usage` 之 7 天窗口讀數跳動(同帳號數十秒內 ±0.4～0.8 個百分點)大於數次呼叫之增量,**5 小時窗口較單調**(本次 4 次 Hydrogen:7.51→8.09);歸屬判斷以「Argon 不動、Gemini 群組 5 小時窗口上升」為證,不精算單次耗用;對照前之其他對照呼叫(3.8、Argon 金絲雀)須先做完再讀基準,否則基準被污染(本次 Argon 因金絲雀由 0 升至 1.01).
+- **codex 唯讀審查之中文讀檔**:本機 codex 0.167.0 以 `rg` 讀含中文註解之行,審查者回覆之引用與原文不符(讀回之內容失真,模型自行改寫);ASCII 行正確.外審提示詞須註明「中文註解不可讀者標明不可讀、不臆測」,註解真實性由主責自行核對.
+
 ## 免費期 Go 條目下架:連網守門紅燈的處置(2026-11-10 da405;帳本 `rulebook_opencodego.md` R-OCGO-1⑩ 與〈型錄漂移紀錄〉2026-11-10)
 
 - **連網守門的紅燈是漂移訊號,不是程式缺陷**:`api-providersOpencodeGo` 在 2026-11-07 收錄當天綠,三天後由主控跟跑測試才現紅(缺 `crouton-alpha-free`)——限時免費模型會下架(⑩ 早預告),首例就是它.處置順序:①自己重取官方型錄確認(不信轉述):匿名 GET Go 型錄、Zen 型錄、官方 Go 頁(`https://opencode.ai/v2/docs/console/go/` 去標籤純文字);②三處交叉:Go 型錄 30 個無、Zen 型錄 84 個無、官方頁〈Usage limits〉表無(`alpha` 僅出現在頁內 CSS 變數,別被 grep 誤導);③找後繼者:同日新增的是 `longcat-2.5-free`,release 日期與名稱皆與 crouton 無承襲關係,**名稱無對應者不以推測當改名**,新出現的同類模型一律走⑩ 金絲雀才收;④移除條目與所有說明;⑤測試跟著改「目錄與官方型錄一致」,不放寬守門.

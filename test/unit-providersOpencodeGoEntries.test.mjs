@@ -151,9 +151,9 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             assert.strict.deepEqual([goEntries.length, r], [8, []])
         })
 
-        it('內建目錄共37條(原29＋Go 8), id不重複', function() {
+        it('內建目錄共38條(原29＋Go 8＋agy Hydrogen 1〔2026-11-13 Gitea #137〕), id不重複', function() {
             let ids = providers.map((p) => p.id)
-            assert.strict.deepEqual([ids.length, new Set(ids).size], [37, 37])
+            assert.strict.deepEqual([ids.length, new Set(ids).size], [38, 38])
         })
 
     })

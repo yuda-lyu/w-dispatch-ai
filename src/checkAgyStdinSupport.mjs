@@ -2,7 +2,7 @@ import get from 'lodash-es/get.js'
 import isestr from 'wsemi/src/isestr.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import strCompareForVersion from 'wsemi/src/strCompareForVersion.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 
 
 // checkAgyStdinSupport.mjs — 探測agy是否支援`--input-format stream-json`(內部模組, 由dispatchAntigravity之stdin路徑使用; 帳本R-AGY-4)
@@ -55,7 +55,7 @@ function clearAgyStdinSupportCache() {
  * @param {String} exe 輸入agy執行檔名稱或絕對路徑字串，與dispatchAntigravity實際spawn者相同
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.cwd=undefined] 輸入探測子進程工作目錄字串，預設undefined代表process.cwd()
- * @param {Number} [opt.timeoutMs=15000] 輸入探測逾時毫秒正整數，上限15000
+ * @param {Number} [opt.timeoutMs=15000] 輸入探測逾時毫秒，須為1至2147483647之整數(可為數字字串)，非預期之輸入視為未給，有效值超過15000者取15000(上限15000)
  * @returns {Promise} 回傳Promise，resolve回傳物件，內含supported(true代表版本不低於1.1.15、false代表低於、null代表無法判定[未能啟動、逾時、非零離開或解析不出版本號])、version(--version首行字串，無法取得為'')、minVersion('1.1.15')；本函數不會reject
  * @example
  * //need agy cli in system PATH
@@ -83,7 +83,7 @@ async function checkAgyStdinSupport(exe, opt = {}) {
     }
 
     let cwd = get(opt, 'cwd', null)
-    let timeoutMs = Math.min(castPintOr(get(opt, 'timeoutMs', null), PROBE_TIMEOUT_MAX_MS), PROBE_TIMEOUT_MAX_MS)
+    let timeoutMs = Math.min(castTimerMs(get(opt, 'timeoutMs', null), PROBE_TIMEOUT_MAX_MS), PROBE_TIMEOUT_MAX_MS)
 
     let p = (async () => {
         let ro = { timeoutMs, maxRetries: 0 }

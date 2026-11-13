@@ -1,6 +1,5 @@
 import isobj from 'wsemi/src/isobj.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
+import castPintOr from './castPintOr.mjs'
 
 
 // attemptDeadline.mjs — 遞補層期限於轉接器內之執行(重試受期限約束、封頂之標記; 2026-11-11 da402／di402; 帳本 R-COOL-1、R-COOL-4)
@@ -40,8 +39,8 @@ function readAttemptHints(opt) {
         }
         return {
             deadlineAt: d,
-            minAttemptMs: ispint(h.minAttemptMs) ? cint(h.minAttemptMs) : DEFAULT_MIN_ATTEMPT_MS,
-            entryTimeoutMs: ispint(h.entryTimeoutMs) ? cint(h.entryTimeoutMs) : null,
+            minAttemptMs: castPintOr(h.minAttemptMs, DEFAULT_MIN_ATTEMPT_MS),
+            entryTimeoutMs: castPintOr(h.entryTimeoutMs, null),
         }
     }
     catch {
@@ -87,7 +86,7 @@ function capByHints(tmo, h) {
     if (h === null) {
         return tmo
     }
-    return Math.max(Math.min(tmo, remainingOf(h)), 1)
+    return Math.max(Math.min(tmo, Math.floor(remainingOf(h))), 1) //向下取整: deadlineAt可為小數, 小數逾時交execCli會被其判為無效而改用120000
 }
 
 

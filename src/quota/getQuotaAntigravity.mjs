@@ -9,7 +9,7 @@ import isnum from 'wsemi/src/isnum.mjs'
 import cdbl from 'wsemi/src/cdbl.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import strCompareForVersion from 'wsemi/src/strCompareForVersion.mjs'
-import castPintOr from '../castPintOr.mjs'
+import castTimerMs from '../castTimerMs.mjs'
 import { isSpawnFail } from '../getErrorType.mjs'
 import toQuotaLabel from './toQuotaLabel.mjs'
 import toQuotaWindow from './toQuotaWindow.mjs'
@@ -175,9 +175,9 @@ async function agyPrint(exe, cmd, o) {
     if (isestr(o.logFile)) {
         args.push('--log-file', o.logFile)
     }
-    //--print-timeout恆>=外層timeoutMs(ceil且下限5秒; 同execCli計時器上限2147483647封頂, 免超出agy可解析之duration範圍),
+    //--print-timeout恆>=外層timeoutMs(ceil且下限5秒; timeoutMs已由getQuotaAntigravity以castTimerMs判定為1～2147483647之整數, 不超出agy可解析之duration範圍),
     //且agy計時自其啟動完成後才起算, 故外層必先到時(真agy加--print-timeout 1s仍完整回3群組, 2026-10-16實測); 與dispatchAntigravity之+30s推導同一原則
-    args.push('-p', cmd, '--output-format', 'json', '--print-timeout', `${Math.max(5, Math.ceil(Math.min(o.timeoutMs, 2147483647) / 1000))}s`)
+    args.push('-p', cmd, '--output-format', 'json', '--print-timeout', `${Math.max(5, Math.ceil(o.timeoutMs / 1000))}s`)
 
     let r = await execCli(exe, args, { timeoutMs: o.timeoutMs, cwd: o.cwd })
 
@@ -271,7 +271,7 @@ async function getQuotaAntigravity(email = '', opt = {}) {
     }
 
     //timeoutMs
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //cwd
     let cwd = get(opt, 'cwd', null)

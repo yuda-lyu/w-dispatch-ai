@@ -4,7 +4,7 @@ import isobj from 'wsemi/src/isobj.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
-import castPintOr from './castPintOr.mjs'
+import castTimerMs from './castTimerMs.mjs'
 import splitKeys from './splitKeys.mjs'
 import { errField, errMsg } from './callUserFn.mjs'
 import { redactApiKeyText } from './redactText.mjs'
@@ -149,7 +149,7 @@ async function probeOnce(key, opt) {
     if (!isestr(model)) {
         model = DEFAULT_MODEL
     }
-    let timeoutMs = castPintOr(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
+    let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
     let red = (s) => strTruncate(redactApiKeyText(s, [key]), 200)
 
     let controller = new AbortController()

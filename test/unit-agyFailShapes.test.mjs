@@ -128,4 +128,20 @@ describe('agy條目之非成功結局形狀(agy 1.4.0實測)與內建條目規�
         assert.strict.deepEqual(rr, [true, true, true, true, ['gemini-4-argon-high', false, ['.']]])
     })
 
+    it('內建agy條目含Gemini 4 Hydrogen條目, 排在Gemini 3.8條目之後、Argon條目之前, 自帶防寫與addDirs; 3.8條目仍保留(不取代不刪除)', function() {
+        //規格: 使用端建議(Gitea #137)與agy 1.5.7之`agy models`列gemini-4-hydrogen-low/medium/high/xhigh, 取-high與既有agy條目同檔位(EFFORT);
+        //id為「agy:」加model(id命名規則); 位置在3.8之後、Argon之前; 3.8條目不取代不刪除(下游以id引用)
+        let ids = providers.map((p) => p.id)
+        let iHy = ids.indexOf('agy:gemini-4-hydrogen-high')
+        let rr = [
+            ids.includes('agy:gemini-3.8-flash-high'), //下游以此id引用, 不得刪除
+            ids.filter((id) => id === 'agy:gemini-4-hydrogen-high').length,
+            iHy > ids.indexOf('agy:gemini-3.8-flash-high'),
+            iHy < ids.indexOf('agy:gemini-4-argon-high'),
+            iHy >= 0 ? [providers[iHy].model, providers[iHy].kind, providers[iHy].skipPermissions, providers[iHy].addDirs] : null,
+            iHy >= 0 ? Object.keys(providers[iHy]).sort() : null,
+        ]
+        assert.strict.deepEqual(rr, [true, 1, true, true, ['gemini-4-hydrogen-high', 'antigravity', false, ['.']], ['addDirs', 'id', 'kind', 'model', 'skipPermissions']])
+    })
+
 })

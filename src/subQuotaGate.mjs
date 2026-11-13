@@ -14,6 +14,7 @@ import { ledgerFind, ledgerPut, ledgerDrop, ledgerMark, toMs, clampUntilMs } fro
 import claudeLimitUntilOf from './claudeLimitUntil.mjs'
 import { awaitUserFn, callHookSync, readCallerObj } from './callUserFn.mjs'
 import { baseErrorOf } from './failureDiag.mjs'
+import castTimerMs from './castTimerMs.mjs'
 
 
 // subQuotaGate.mjs — 訂閱類條目(claude無金鑰者、codex、antigravity)之用量門檻(內部模組, 由dispatchAiFallback於選到該條目、呼叫轉接器前使用; Gitea #93; 帳本R-SPAWNGATE-6)
@@ -246,7 +247,8 @@ function resolveSubQuotaGate(raw, attemptOpt, nk, id, idExplicit) {
 
     //讀者選項
     let isAgy = family === 'antigravity'
-    let timeoutMs = isAgy ? ms(o.antigravityTimeoutMs, DEFAULT_AGY_TIMEOUT_MS) : ms(o.timeoutMs, DEFAULT_TIMEOUT_MS)
+    //讀者逾時: 與讀者(getQuotaClaude／Codex／Antigravity)同判定(1～2147483647之整數), 免閘門採小數而讀者改用自己之預設(帳本R-TIMEOUT-1)
+    let timeoutMs = isAgy ? castTimerMs(o.antigravityTimeoutMs, DEFAULT_AGY_TIMEOUT_MS) : castTimerMs(o.timeoutMs, DEFAULT_TIMEOUT_MS)
     let readerOpt = { timeoutMs }
     if (family === 'claude') {
         readerOpt.profileFallback = false //只要額度, 不多打profile端點
