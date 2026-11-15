@@ -4,6 +4,7 @@ import isenum from 'wsemi/src/isenum.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
+import iseint from 'wsemi/src/iseint.mjs'
 import cint from 'wsemi/src/cint.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
@@ -81,6 +82,18 @@ import { readAttemptHints, retryFits, capByHints, createCutTracker } from './att
 //   ⑥觀察回調: 決定重試時(等延遲之前)經opt.onTrace(與execCli同一回調, 凍結事件、同步、拋錯忽略、未給時不組事件)發出 'transient-retry' { n(已嘗試次數), ms(重試延遲), durationMs(該次失敗耗時) },
 //      令測試與診斷能以事件為同步點(dspec〈計時器相關函數之觀察回調與測試〉); 事件不含輸出內文。
 //
+// 【命中即不重試stopRetryIf(2026-11-15 wda156, Gitea #156; 帳本R-OCLIMIT-1)】本層自用鍵stopRetryIf(函數(結果)=>Boolean, 轉接器傳入, 不轉傳execCli; 目前僅dispatchOpencode使用:
+//   該次嘗試之stderr已見主要請求之免費池用盡／免費層429錯誤列並已樹狀終止子行程, 見opencodeLimit.mjs)。每次execCli結果出來後判定, 真即該次結果為最終結果:
+//   不再依maxRetries重試、不做暫時性重試、不驗證(子行程於終止前自行以0結束者亦不等驗證, 原樣回傳由轉接器改標為失敗——驗證可能永不落定, 外審terra #1)。
+//   無期限而呼叫端之maxRetries非execCli所接受之次數(Infinity、'0x10'等)者不接管(照舊交execCli, 其改用0; 外審terra #11);
+//   暫時性重試輪之失敗不再接管重試(修前其為單獨一次execCli呼叫; 外審terra #12); stopRetryIf在場時暫時性錯誤之判定不看stderr之日誌列(外審terra #13)。wsemi之execCli內部重試無法中途喊停(被終止之子行程離開碼為1, 屬其可重試者),
+//   故給了stopRetryIf且maxRetries>0時, 本層接管非驗證失敗之重試(交execCli之maxRetries為0, 沿用其不重試判準與間隔公式, 同【期限約束重試】之接管):
+//   無驗證路徑沿用接管迴圈(觀察事件序列與execCli自身之重試迴圈相同; 無期限時各次重試沿用首次之逾時、不重新守門, 同execCli內部重試);
+//   有驗證路徑之非驗證失敗重試於迴圈內進行; 無期限(僅因stopRetryIf而接管, stopOnly)時逐項比照修前之execCli內部重試: 以「一次execCli呼叫」為虛擬呼叫,
+//   虛擬呼叫內先用完maxRetries才考慮暫時性重試(修前順序; 有期限者沿既有之「暫時性重試先、接管重試後」)、間隔以虛擬呼叫內之次數計、不重新守門、
+//   觀察事件序列相同(attempt之n累計、重試前補發retry、虛擬呼叫結束時補發單一done)——2026-11-15外審agy-hydrogen #5／#6指出初版之順序與事件序列異於修前, 已改。
+//   maxRetries為0(預設)或未給stopRetryIf者與修前逐位元相同; 未命中之一般失敗在無期限時亦與修前相同(以上述比照)。回調拋錯視為否。
+//
 // 【失敗診斷與成功欄位(2026-11-08 da110, Gitea #110; 規則與實查見failureDiag.mjs檔頭)】本層於每個最終結果(withGate)統一補:
 //   ①失敗(errorType 'exec'或'timeout', 即非零離開、訊號結束、逾時)加errorDetail{ exitCode, stderrTail, stdoutTail? }, 且execCli原生error形狀(`Exit code N`、`Signal: X`、`TIMEOUT after Ns`)
 //     寫成`<原始>: <尾段>`(stderr空且為Exit code時退用stdout尾段——claude把失敗訊息印在stdout); stdout／stderr／errorType等既有欄位不動, errorType於補原因之前已決定;
@@ -109,6 +122,7 @@ let MAX_RETRY_DELAY_MS = 15000
 //暫時性錯誤(見檔頭【暫時性錯誤重試】): 辨識用正規式(內部常數, 不開放配置)與預設值
 let TRANSIENT_RE = /database is locked/i
 let TOOL_USE_RE = /"type"\s*:\s*"tool_use"/
+let LOG_LINE_RE = /(?:^|\s)level=(?:DEBUG|INFO|WARN|ERROR)(?:\s|$)/ //opencode日誌列(--print-logs印到stderr者)
 let TRANSIENT_RETRY_DEFAULTS = { delayMs: 2000, fastMs: 15000 }
 let TRANSIENT_KIND = 'opencode'
 
@@ -118,6 +132,7 @@ let TRANSIENT_KIND = 'opencode'
  *
  * @param {Object} r 輸入execCli(或經重整)之結果物件
  * @param {Number} [fastMs=15000] 輸入「很快」之門檻毫秒，失敗耗時(durationMs)須小於此值；無durationMs者無從判斷，視為否
+ * @param {Boolean} [skipLogLines=false] 輸入stderr中之opencode日誌列(含`level=DEBUG|INFO|WARN|ERROR`)是否不算布林值，true代表只看日誌列以外之行(本轉接器自動補--print-logs時用，令判定同修前〔修前日誌寫入日誌檔、不在stderr〕；2026-11-15 外審terra #13)，預設false
  * @returns {Boolean} 回傳是否為暫時性錯誤之布林值
  * @example
  *
@@ -130,7 +145,7 @@ let TRANSIENT_KIND = 'opencode'
  * // => false (逾時不算)
  *
  */
-function isTransientFailure(r, fastMs = TRANSIENT_RETRY_DEFAULTS.fastMs) {
+function isTransientFailure(r, fastMs = TRANSIENT_RETRY_DEFAULTS.fastMs, skipLogLines = false) {
     if (!isobj(r) || r.ok === true) {
         return false
     }
@@ -148,7 +163,12 @@ function isTransientFailure(r, fastMs = TRANSIENT_RETRY_DEFAULTS.fastMs) {
     }
     let se = get(r, 'stderr', '')
     if (typeof se === 'string' && TRANSIENT_RE.test(se)) {
-        return true
+        if (skipLogLines !== true) {
+            return true
+        }
+        if (se.split('\n').some((l) => TRANSIENT_RE.test(l) && !LOG_LINE_RE.test(l))) {
+            return true
+        }
     }
     if (typeof so === 'string' && so.includes('"error"')) {
         for (let line of so.split('\n')) {
@@ -363,7 +383,25 @@ async function runExecCli(exe, args, opt = {}) {
             return true
         }
     }
-    let canTransient = (r) => trOn && !trUsed && isTransientFailure(r, trFastMs) && !stopNow() && budgetOk()
+    //stopRetryIf(本層自用鍵, 見檔頭【命中即不重試】): 結果命中即為最終結果; 非函數視同未給, 回調拋錯或回傳非true皆為否
+    let stopFn = get(opt, 'stopRetryIf', null)
+    if (typeof stopFn !== 'function') {
+        stopFn = null
+    }
+    let isStop = (r) => {
+        if (stopFn === null) {
+            return false
+        }
+        let h = callHookSync(() => stopFn(r))
+        return h.state === 'value' && h.value === true
+    }
+    //takeover: 本層接管非驗證失敗之重試(遞補層有期限, 或給了stopRetryIf); 僅maxRetries>0時有差別
+    let takeover = hints !== null || stopFn !== null
+    //mrCliOk: 呼叫端之maxRetries是否為execCli所接受之次數(iseint count: 0～4294967295之整數或其數字字串)——無期限之接管(僅stopRetryIf所致)須與修前「交execCli自理」相同:
+    //execCli對非預期值(Infinity、'0x10'等)改用0, 而本層之isp0int＋cint把Infinity轉為極大有限數, 接管時會近乎無限重試(外審terra #11), 故此時不接管、照舊交execCli
+    let mrCliOk = iseint(get(opt, 'maxRetries', null), { use: 'count' })
+    //canTransient: stopRetryIf在場(本轉接器自動補--print-logs)時, stderr之日誌列不算暫時性錯誤之依據(同修前, 日誌原在日誌檔; 外審terra #13)
+    let canTransient = (r) => trOn && !trUsed && isTransientFailure(r, trFastMs, stopFn !== null) && !isStop(r) && !stopNow() && budgetOk()
 
     //reshapeResult／acceptTruncated為本層自用鍵(不轉傳execCli), 見檔頭【輸出重整與截斷(2026-11-04 da78)】
     let reshapeFn = get(opt, 'reshapeResult', null)
@@ -420,6 +458,7 @@ async function runExecCli(exe, args, opt = {}) {
     delete base.transientRetry
     delete base.diagSecrets
     delete base.attemptHints
+    delete base.stopRetryIf
 
     //maxRetries、retryDelayMs, 無效回退與execCli相同之預設(0、5000)
     let maxRetries = get(opt, 'maxRetries', null)
@@ -478,17 +517,17 @@ async function runExecCli(exe, args, opt = {}) {
         }
         let s0 = null
         let r0 = null
-        if (hints === null || maxRetries === 0) {
+        if (!takeover || maxRetries === 0 || (hints === null && !mrCliOk)) {
 
-            //無期限(或不重試): 同修前, 非驗證之失敗與其重試由execCli自理
+            //無期限且無stopRetryIf(或不重試): 同修前, 非驗證之失敗與其重試由execCli自理
             s0 = await shape(await execCli(exe, args, { ...base, timeoutMs: g0.tmo }))
             r0 = s0.fail !== null ? s0.fail : s0.r
             cut.note(g0.tmo, r0, g0.callerBound)
         }
         else {
 
-            //有期限且maxRetries>0: 本層接管重試(execCli之maxRetries 0, 沿用其不重試判準與間隔公式), 每次重試之逾時以期限封頂、「剩餘 − 退避 < minAttemptMs」即不再重試;
-            //重試不重新守門(同修前execCli內部重試之已知限制)
+            //有期限(或給了stopRetryIf)且maxRetries>0: 本層接管重試(execCli之maxRetries 0, 沿用其不重試判準與間隔公式), 每次重試之逾時以期限封頂、「剩餘 − 退避 < minAttemptMs」即不再重試;
+            //重試不重新守門(同修前execCli內部重試之已知限制); stopRetryIf命中即停(見檔頭【命中即不重試】); 無期限時各次重試沿用首次之逾時(同execCli內部重試)
             let usedA = 0
             let tmo = g0.tmo
             let cb = g0.callerBound
@@ -502,7 +541,7 @@ async function runExecCli(exe, args, opt = {}) {
                 usedA += get(r0, 'attempts', 1)
                 traceBase = usedA
                 cut.note(tmo, r0, cb)
-                if (r0.ok === true || s0.fail !== null || lastDone !== 'exhausted' || usedA > maxRetries) {
+                if (r0.ok === true || s0.fail !== null || lastDone !== 'exhausted' || usedA > maxRetries || isStop(r0)) {
                     break
                 }
                 let d = Math.min(retryDelayMs * usedA, MAX_RETRY_DELAY_MS)
@@ -511,8 +550,10 @@ async function runExecCli(exe, args, opt = {}) {
                 }
                 emitUser({ type: 'retry', n: usedA + 1, ms: d })
                 await delay(d)
-                tmo = capByHints(timeoutMs, hints)
-                cb = false
+                if (hints !== null) {
+                    tmo = capByHints(timeoutMs, hints)
+                    cb = false
+                }
             }
             traceTakeover = false
             if (heldDone !== null) {
@@ -551,13 +592,36 @@ async function runExecCli(exe, args, opt = {}) {
 
     let used = 0 //計入maxRetries預算之嘗試次數(暫時性重試之嘗試不計入, 另記於trAtt)
     let trPending = false //下一輪為暫時性重試(單獨一次嘗試, 不佔預算)
+    let gi = null
+    let skipGate = false //下一輪為無期限之接管重試(僅stopRetryIf所致): 同execCli內部重試, 不重新守門、沿用本輪之守門結果
+    //stopOnly: 僅因stopRetryIf而接管(無期限)——須與修前「execCli內部重試」逐項相同: 一次execCli呼叫(虛擬呼叫)內先用完maxRetries才考慮暫時性重試、
+    //重試間隔以該虛擬呼叫內之次數計、不重新守門、觀察事件序列相同(attempt之n於虛擬呼叫內累計、重試前補發retry、虛擬呼叫結束時補發單一done; 同路徑A之traceTakeover)
+    let stopOnly = hints === null && stopFn !== null && maxRetries > 0 && mrCliOk
+    let vcN = 0 //本虛擬呼叫已嘗試次數(僅stopOnly)
+    let flushVc = () => {
+        if (!stopOnly) {
+            return
+        }
+        if (heldDone !== null) {
+            emitUser({ ...heldDone, n: vcN })
+            heldDone = null
+        }
+        vcN = 0
+    }
+    if (stopOnly) {
+        traceTakeover = true
+        heldDone = null
+    }
     for (;;) {
 
         //守門(每次驗證重試前亦重新守門; execCli自理之非驗證失敗重試不在此列, 見cliSpawnGate.mjs檔頭)
-        let gi = await enterGate()
-        if (gi.aborted) {
-            return withGate({ ...getErrorResult('ABORTED', 'aborted'), attempts: used + trAtt })
+        if (!skipGate || gi === null) {
+            gi = await enterGate()
+            if (gi.aborted) {
+                return withGate({ ...getErrorResult('ABORTED', 'aborted'), attempts: used + trAtt })
+            }
         }
+        skipGate = false
         let tmo = trPending ? Math.min(gi.tmo, capByDeadline(gi.ed)) : gi.tmo //暫時性重試輪另以期限封頂(同路徑A)
         let cb = gi.callerBound || (trPending && hints !== null && gi.ed.callerBound) //暫時性重試輪之封頂不論守門是否運作皆含呼叫端期限, 標記同依取早後之來源(外審terra #03)
         if (hints !== null && (used > 0 || trPending)) {
@@ -571,7 +635,12 @@ async function runExecCli(exe, args, opt = {}) {
         //子進程(本次至多maxRetries-used次重試, 由execCli自理非驗證之失敗與其重試; 暫時性重試輪只跑一次);
         //有期限時本層接管非驗證失敗之重試(execCli之maxRetries 0, 沿用其不重試判準), 令每次重試皆受期限約束
         lastDone = null
-        let rRaw = await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: (trPending || hints !== null) ? 0 : maxRetries - used, retryDelayMs })
+        traceBase = vcN //stopOnly: attempt之n於虛擬呼叫內累計(traceTakeover僅stopOnly時為true)
+        let rRaw = await execCli(exe, args, { ...base, timeoutMs: tmo, maxRetries: (trPending || takeover) ? 0 : maxRetries - used, retryDelayMs })
+        if (stopOnly) {
+            vcN += get(rRaw, 'attempts', 1)
+        }
+        let wasTr = trPending //本輪為暫時性重試(修前為單獨一次execCli呼叫, 其失敗不再接管重試; 外審terra #12)
         if (trPending) {
             trAtt += get(rRaw, 'attempts', 1)
             trPending = false
@@ -583,6 +652,19 @@ async function runExecCli(exe, args, opt = {}) {
         let r = sh.r
         if (!r.ok) {
             cut.note(tmo, r, cb)
+
+            //本層接管之非驗證失敗重試是否可行(execCli判準: 可重試、尚有次數; 且stopRetryIf未命中)
+            let tkAvail = takeover && !(stopOnly && wasTr) && sh.fail === null && lastDone === 'exhausted' && used <= maxRetries && !isStop(r)
+
+            //stopOnly: 同修前execCli內部重試——虛擬呼叫內先用完maxRetries(不重新守門、間隔以虛擬呼叫內次數計、補發retry事件), 之後才考慮暫時性重試
+            if (stopOnly && tkAvail) {
+                let d = Math.min(retryDelayMs * vcN, MAX_RETRY_DELAY_MS)
+                emitUser({ type: 'retry', n: vcN + 1, ms: d })
+                await delay(d)
+                skipGate = true
+                continue
+            }
+            flushVc()
 
             //暫時性錯誤: 等延遲後回迴圈頂(再過守門)單獨再跑一次; shouldStop於等待中成立則回原失敗
             if (sh.fail === null && canTransient(r)) {
@@ -597,8 +679,8 @@ async function runExecCli(exe, args, opt = {}) {
                 }
             }
 
-            //有期限時本層接管之非驗證失敗重試: 可重試(execCli判準)、尚有次數、且「剩餘 − 退避 ≥ minAttemptMs」才重試(回迴圈頂再過守門)
-            if (hints !== null && sh.fail === null && lastDone === 'exhausted' && used <= maxRetries) {
+            //有期限時本層接管之非驗證失敗重試(既有, R-COOL-4): 「剩餘 − 退避 ≥ minAttemptMs」才重試, 回迴圈頂再過守門(stopOnly之接管已於上方處理)
+            if (hints !== null && tkAvail) {
                 let d = Math.min(retryDelayMs * used, MAX_RETRY_DELAY_MS)
                 if (retryFits(hints, d)) {
                     await delay(d)
@@ -606,6 +688,12 @@ async function runExecCli(exe, args, opt = {}) {
                 }
             }
             return withGate(cut.mark(attachErrorType({ ...r, attempts: used + trAtt })))
+        }
+        flushVc() //成功(或截斷)即虛擬呼叫結束: 先補發done, 再截斷判定與驗證(同修前execCli於回傳前發done)
+
+        //stopRetryIf命中而子行程於終止前自行以0結束: 即為最終結果, 不等驗證(驗證可能永不落定而耗滿逾時; 由轉接器改標為失敗, 外審terra #1)
+        if (isStop(r)) {
+            return withGate({ ...r, attempts: used + trAtt })
         }
 
         //截斷(確定性: 同提示詞同上限必然再截斷), 不驗證、不重試, 直接以incomplete收場

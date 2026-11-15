@@ -296,7 +296,22 @@ describe('opencode日誌對時擷取(必要測試3)', function() {
         fs.writeFileSync(f, lines.join('\n') + '\n', 'utf8')
         return f
     }
-    let run = (opt = {}) => dispatchOpencode('hi', { exe: fake.exe, model: 'opencode-go/deepseek-v4-pro', extraArgs: [specFile({ code: 1, stderr: 'Error: Unexpected server error. Check server logs for details.' })], ...opt })
+    //2026-11-15 wda156(Gitea #156): 讀日誌檔只在「日誌列未印到stderr」時(stopOnLimit:false, 或呼叫端以--print-logs=false明示關閉)——
+    //預設補--print-logs後opencode不再把本行程之列寫入日誌檔(本機實測), 上游原因改由stderr之ERROR列取(見下方「預設不讀日誌檔」案與unit-dispatchOpencodeLimit); 本describe其餘各案以stopOnLimit:false驗讀檔路徑
+    let run = (opt = {}) => dispatchOpencode('hi', { exe: fake.exe, model: 'opencode-go/deepseek-v4-pro', extraArgs: [specFile({ code: 1, stderr: 'Error: Unexpected server error. Check server logs for details.' })], stopOnLimit: false, ...opt })
+
+    it('預設(stopOnLimit未給: 補--print-logs, 日誌列印到stderr)不讀日誌檔: 日誌檔有相符之列亦不取; stderr有相符之ERROR列時取之', async function() {
+        //spec: dispatchOpencode檔頭【免費池用盡與免費層429】「日誌印到stderr時日誌檔不寫入本行程之列, 讀檔只會取到他行程者」
+        let now = Date.now()
+        let f = logOf([ln(now, 'providerID=opencode-go modelID=deepseek-v4-pro agent=build error.error="FROM-LOG-FILE [overloaded]"')])
+        let a = await run({ opencodeLog: f, stopOnLimit: undefined })
+        let se = `${ln(now, 'providerID=opencode-go modelID=deepseek-v4-pro agent=build error.error="FROM-STDERR [prefill_cap_refused]"')}\nError: Unexpected server error.`
+        let b = await dispatchOpencode('hi', { exe: fake.exe, model: 'opencode-go/deepseek-v4-pro', opencodeLog: f, extraArgs: [specFile({ code: 1, stderr: se })] })
+        //呼叫端明示--print-logs=false(日誌不印到stderr)者照舊讀日誌檔
+        let c = await run({ opencodeLog: f, stopOnLimit: undefined, extraArgs: [specFile({ code: 1, stderr: 'Error: Unexpected server error. Check server logs for details.' }), '--print-logs=false'] })
+        let rr = ['upstream' in a.errorDetail, a.error, b.errorDetail.upstream, b.error.startsWith('Exit code 1 [prefill_cap_refused]: '), c.errorDetail.upstream]
+        assert.strict.deepEqual(rr, [false, 'Exit code 1: Error: Unexpected server error. Check server logs for details.', 'FROM-STDERR [prefill_cap_refused]', true, 'FROM-LOG-FILE [overloaded]'])
+    })
 
     it('±60秒內相符一筆、不相符(model、provider)與超出時窗各一筆: 只取相符者; 分類放進error文字', async function() {
         let now = Date.now()
@@ -318,7 +333,7 @@ describe('opencode日誌對時擷取(必要測試3)', function() {
     it('逾時: 原因行發生在嘗試之初, 仍於時窗內取得, error以TIMEOUT開頭並帶分類', async function() {
         let now = Date.now()
         let f = logOf([ln(now - 500, 'providerID=opencode modelID=beam-free agent=build error.error="AI_APICallError: Free usage limit reached. Free models work in OpenCode"')])
-        let r = await dispatchOpencode('hi', { exe: fake.exe, model: 'opencode/beam-free', timeoutMs: 1500, opencodeLog: f, extraArgs: [specFile({ hang: true, stderr: '' })] })
+        let r = await dispatchOpencode('hi', { exe: fake.exe, model: 'opencode/beam-free', timeoutMs: 1500, opencodeLog: f, stopOnLimit: false, extraArgs: [specFile({ hang: true, stderr: '' })] })
         assert.strict.deepEqual(r.errorType, 'timeout')
         assert.strict.deepEqual(r.error, 'TIMEOUT after 1.5s [Free usage limit]')
         assert.strict.deepEqual(r.errorDetail.upstream.startsWith('AI_APICallError: Free usage limit reached'), true)

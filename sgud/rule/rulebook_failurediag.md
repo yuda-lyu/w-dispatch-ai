@@ -38,6 +38,8 @@ opencode 日誌(**單一累積檔**,非依啟動分檔):`~/.local/share/opencode
 
 ## R-FAILDIAG-3 opencode 失敗時日誌對時擷取(`src/opencodeUpstream.mjs`)
 
+**2026-11-15 wda156 改寫(R-OCLIMIT-1 第 7 點)**:`dispatchOpencode` 預設補 `--print-logs`(日誌列印到 stderr),此時 opencode 不把本行程之列寫入日誌檔(本機實測),**改由本次嘗試之 stderr ERROR 列取上游原因、不讀日誌檔**(擇一規則同下、無時窗);下列讀檔規則只在日誌列未印到 stderr 時適用(`stopOnLimit:false`,或呼叫端以 `--print-logs=false`／`--no-print-logs` 明示關閉).
+
 **規則**:`dispatchOpencode` 於 `runExecCli` 回失敗且已有 `errorDetail` 時,讀日誌檔尾(至多 2MiB,`UPSTREAM_TAIL_BYTES`)**一次**,取時窗內 `providerID`／`modelID` 與 `-m provider/model` 相符之 `level=ERROR` 行的 `error.error`(退用 `error`、非通稱之 `message`),遮蔽並折為單行(至多 300 字元)附入 `errorDetail.upstream`,並把簡短分類放進 error 文字(`Exit code 1 [overloaded]: <尾段>`).
 - 時窗:失敗時刻(讀檔當下)±60 秒;失敗耗時超過 60 秒者(逾時),下界延至該次嘗試起點(`tFail − durationMs`),否則慢失敗之原因行(免費層 429 令 run 不結束,原因行在起點後約 1 秒)落在時窗外;下界另留 2 秒寬限.
 - 擇一:優先 `agent` 非 `title`,其次時戳最晚.**已知限制**:同模型並行呼叫在同一時窗內同時失敗時無從區分(通常同因).

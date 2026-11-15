@@ -67,7 +67,7 @@ describe('dispatchAi', function() {
             r.push([t.ok, o.args])
         }
         let rr = [
-            [true, ['run', '--agent', 'build', '-m', 'mdl']],
+            [true, ['run', '--agent', 'build', '-m', 'mdl', '--print-logs', '--log-level', 'ERROR']], //日誌旗標: 2026-11-15 wda156起dispatchOpencode預設補上(見其檔頭【免費池用盡與免費層429】)
             [true, ['-p', '--dangerously-skip-permissions', '--model', 'mdl']],
             [true, ['exec', '--sandbox', 'workspace-write', '--skip-git-repo-check', '-m', 'mdl']],
             [true, ['--dangerously-skip-permissions', '--print-timeout', '330s', '--model', 'mdl', '--add-dir', process.cwd(), '--print', 'abc']],

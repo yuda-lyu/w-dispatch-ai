@@ -41,11 +41,14 @@ describe('dispatchOpencode', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('固定帶run與--agent旗標, agent預設build', async function() {
+    //2026-11-15 wda156(Gitea #156): 呼叫端未帶日誌旗標時固定補上(stopOnLimit預設true, 見dispatchOpencode檔頭【免費池用盡與免費層429】), 置於固定旗標之後、extraArgs之前
+    let LOG_FLAGS = ['--print-logs', '--log-level', 'ERROR']
+
+    it('固定帶run與--agent旗標, agent預設build; 另補日誌旗標--print-logs --log-level ERROR', async function() {
         let t = await dispatchOpencode('abc', { exe: fake.exe })
         let o = JSON.parse(t.stdout)
         let r = [t.ok, o.args]
-        let rr = [true, ['run', '--agent', 'build']]
+        let rr = [true, ['run', '--agent', 'build', ...LOG_FLAGS]]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -53,7 +56,7 @@ describe('dispatchOpencode', function() {
         let t = await dispatchOpencode('abc', { exe: fake.exe, model: 'opencode/beam-free' })
         let o = JSON.parse(t.stdout)
         let r = o.args
-        let rr = ['run', '--agent', 'build', '-m', 'opencode/beam-free']
+        let rr = ['run', '--agent', 'build', '-m', 'opencode/beam-free', ...LOG_FLAGS]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -101,7 +104,7 @@ describe('dispatchOpencode', function() {
             JSON.parse(t4.stdout).env.OPENCODE_AUTH_CONTENT,
             JSON.parse(t1.stdout).args,
         ]
-        let rr = ['{}', '{}', '', '', ['run', '--agent', 'build']]
+        let rr = ['{}', '{}', '', '', ['run', '--agent', 'build', ...LOG_FLAGS]]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -156,7 +159,7 @@ describe('dispatchOpencode', function() {
         let rr = [
             config,
             { 'agnes-ai': { type: 'api', key: 'sk-abc123' } },
-            ['run', '--agent', 'build', '-m', 'agnes-ai/agnes-2.0-flash'],
+            ['run', '--agent', 'build', '-m', 'agnes-ai/agnes-2.0-flash', ...LOG_FLAGS],
         ]
         assert.strict.deepEqual(r, rr)
     })

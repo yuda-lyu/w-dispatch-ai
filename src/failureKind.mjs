@@ -10,6 +10,7 @@ import { errField, errMsg } from './callUserFn.mjs'
 // 【為何需要】errorType只機械分「http/fetch/exec/timeout…」, 同為HTTP 400就分不出「沒額度」與「脈絡過長」,
 //   遞補層因而對兩者一律「換下一把金鑰」: 沒額度時把所有金鑰輪過一遍(誤判額度用盡), 脈絡過長時換金鑰結果必然相同(空耗)。
 //   failureKind是另加的欄位(errorType照舊不動, 兩者並存), 僅api-anthropic與claude帶key之失敗結果帶之, 其餘kind無此欄。
+//   例外(2026-11-15 wda156, Gitea #156): dispatchOpencode於主要請求之免費池用盡／免費層429而終止子行程時帶'no-credit'／'rate-limit'(沿用本檔之值; 判準不在本檔, 見opencodeLimit.mjs), 其餘opencode失敗無此欄。
 //
 // 【failureKind一覽】
 //   'no-credit'         沒額度: 402 billing_error、400訊息「Your credit balance is too low…」、使用者自設花費上限之400

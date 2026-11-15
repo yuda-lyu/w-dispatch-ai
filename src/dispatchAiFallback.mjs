@@ -66,6 +66,15 @@ import { isTimeoutLike } from './attemptDeadline.mjs'
 //   coolDetect與內建觸發之優先序: 內建(429、TIMEOUT、failureKind為rate-limit)先判, 未命中才呼叫coolDetect; 兩者為「或」(疊加)——coolDetect只能增加觸發, 不能否決內建觸發;
 //   no-credit之金鑰冷卻與條目冷卻不經coolDetect。
 //
+// 【轉接器回報之額度用盡(2026-11-15 wda156, Gitea #156; 帳本R-OCLIMIT-1)】dispatchOpencode於主要請求之免費池用盡(`Free usage limit reached`)時即樹狀終止子行程並回
+//   errorType 'quota'、failureKind 'no-credit'(免費層429則為failureKind 'rate-limit', 走上列既有之限流冷卻)。本層處置:
+//   不論有無金鑰(免費池用盡與金鑰無關: providers.mjs檔頭診斷段①載匿名與兩把金鑰皆回同錯; 外審terra #7):
+//     ①內建冷卻觸發新增reason 'quota'(固定視窗cooldownMs, 不動n; 先於coolDetect判定, 亦先於逾時字樣——終止失敗而等到逾時者〔error以TIMEOUT開頭、errorType仍為quota〕
+//       仍以quota之固定視窗冷卻; cooldownMs>0且明給id時; 該條目已在他原因之有效視窗內者依R-COOL-2只更新at〔視窗內重申, renewed:true〕);
+//     ②整組跳過(skip-group): 改派下一條目, 不試組內其他金鑰; ③不計持久連敗(同整組沒額度); ④不判為封頂逾時budget-cut(原因已知);
+//     ⑤不標quotaExhausted(該欄位仍專指「組內每一把金鑰皆實際確認沒額度」, 此處未逐把確認)。
+//   用量門檻之略過(quota-skip, Go與訂閱類)為不送請求之合成結果, 不經此處, 語意不變。
+//
 // 【跨次記憶只有游標】成功後游標推進至下一把, 令額度在同組多把金鑰間自動均攤;
 //   死金鑰的代價也被游標攤平——這輪從key1敗轉key2成功後游標停在key3, 下輪不會先碰key1。
 //
@@ -886,6 +895,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
             order = reorderKeysByCooling(order, fpOf, state, cooldownMs, saveState)
         }
         let noCreditIdx = new Set() //本組內已知沒額度之金鑰索引(本次嘗試失敗者，或本次呼叫內已知而略過者)
+        let adapterQuota = false //本組之實際嘗試由轉接器回報額度用盡(errorType 'quota'、failureKind 'no-credit'; 見檔頭【轉接器回報之額度用盡】)
         let skipGroup = false
         let groupStart = tried.length //本組於tried之起點, 供組盡事件取本組各次嘗試
         for (let a = 0; a < order.length && !skipGroup; a++) {
@@ -1097,7 +1107,8 @@ async function dispatchAiFallback(prompt, opt = {}) {
             //封頂逾時budget-cut(見檔頭【封頂逾時】; 帳本R-COOL-1): 嘗試以逾時結束(含驗證等待逾時), 且①整鏈預算確已用盡(剩餘 < minAttemptMs)、
             //②由封頂發生處(轉接器之重試層)標記cutByDeadline(該次逾時由本層期限決定、先前重試未以足額逾時)、③差額(條目逾時 − 實給逾時) ≥ minAttemptMs——
             //屬呼叫端之時間, 非條目之故障: 不寫冷卻(鏈首例外)、不動n與連敗、不發skip-group／group-exhausted, 回budget exhausted(errorType 'budget')
-            if (deadline !== null && judgeBudgetCut({ timeoutLike: isTimeoutLike(r), cutByDeadline, remainingMs: deadline - Date.now(), entryTimeoutMs: entryTimeout, appliedTimeoutMs, minAttemptMs })) {
+            //轉接器已確認之額度用盡(errorType 'quota', 如終止失敗而等到被封頂之逾時)不判為budget-cut: 其原因已知, 照額度處置(外審terra #5)
+            if (deadline !== null && judgeBudgetCut({ timeoutLike: isTimeoutLike(r) && r.errorType !== 'quota', cutByDeadline, remainingMs: deadline - Date.now(), entryTimeoutMs: entryTimeout, appliedTimeoutMs, minAttemptMs })) {
                 let evc = { providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, ...fkOf(r), appliedTimeoutMs, entryTimeoutMs: entryTimeout }
                 emit({ type: 'budget-cut', ...evc, durationMs: r.durationMs })
                 tried.push({ ...evc, outcome: 'budget-cut', stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r), ...gwOf(r) })
@@ -1174,11 +1185,19 @@ async function dispatchAiFallback(prompt, opt = {}) {
             //冷卻觸發: 內建為限流(HTTP 429, 僅api類可偵測; 或failureKind為rate-limit——CLI類帶key者亦可, 不需coolDetect)與逾時(TIMEOUT開頭, CLI與api皆可)——
             //其餘失敗(金鑰無效/服務端錯誤)已有換金鑰換家機制處理, 納入冷卻反而誤傷;
             //CLI類限流簽章經coolDetect注入判定(呼叫端維護, 見檔頭), 拋出例外視同false; 內建先判、coolDetect後判, 兩者為「或」(疊加)
+            //轉接器回報之額度用盡(實際送出之嘗試才有; 不論有無金鑰——免費池用盡與金鑰無關〔providers.mjs檔頭診斷段①: 匿名與兩把金鑰皆同〕, 外審terra #7／#8):
+            //記下, 供冷卻原因(quota)、整組跳過(改派下一條目)與持久連敗之判定
+            let isAdapterQuota = r.errorType === 'quota' && fk === 'no-credit'
+            if (isAdapterQuota) {
+                adapterQuota = true
+            }
             if (cooldownMs > 0 && idExplicit) {
                 //限流: 有failureKind者只認'rate-limit'(月花費上限之429是沒額度，不是限流——2026-10-25外審#11, 與CLI路徑對稱); 無failureKind之其他kind維持HTTP 429判準
+                //額度用盡(轉接器回報): reason 'quota'(固定視窗, 同整組沒額度; 2026-11-15 wda156), 內建觸發先於coolDetect;
+                //先於逾時判定——終止失敗而等到逾時者(error以TIMEOUT開頭但errorType為quota)仍以額度之固定視窗冷卻, 不降格為可加長之timeout(外審agy-hydrogen #9)
                 let isRateLimit = (fk !== '') ? (fk === 'rate-limit') : (r.code === 429)
                 let isTimeout = isestr(r.error) && r.error.indexOf('TIMEOUT') === 0
-                let coolReason = isRateLimit ? 'rate-limit' : (isTimeout ? 'timeout' : '')
+                let coolReason = isRateLimit ? 'rate-limit' : (isAdapterQuota ? 'quota' : (isTimeout ? 'timeout' : ''))
                 if (coolReason === '' && coolDetect !== null) {
                     let h = callHookSync(() => coolDetect(r)) //同步契約: 拋錯或回傳Promise(承接其rejection)皆視同false
                     coolReason = (h.state === 'value' && h.value === true) ? 'detect' : ''
@@ -1196,9 +1215,9 @@ async function dispatchAiFallback(prompt, opt = {}) {
 
             //失敗事件與tried一併帶被拒回覆(stdout)與錯誤輸出(stderr), 供呼叫端診斷失敗原因
             //(如驗證失敗時模型究竟回了什麼); 兩者於失敗路徑已由轉接器截斷(≤500/1000字元), 不會過大
-            if (isKeyIndependentFail(r)) {
+            if (isKeyIndependentFail(r) || isAdapterQuota) {
 
-                //與金鑰無關, 整組跳過
+                //與金鑰無關, 整組跳過(含轉接器回報之額度用盡: 改派下一條目, 不試組內其他金鑰)
                 emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr })
                 tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r), ...gwOf(r) })
                 skipGroup = true
@@ -1248,8 +1267,9 @@ async function dispatchAiFallback(prompt, opt = {}) {
 
         //持久連敗(見檔頭【持久連敗】; 帳本R-COOL-3): 組盡且實際送出之嘗試數>0、各次型別不全為params、非整組沒額度者+1(存於store, 跨行程累計);
         //達coolAfterFails即以reason 'streak'觸發冷卻(本次已有內建觸發之cooled者只累計不再發); 觸發後不歸零, 其後每次再敗皆重申
+        //轉接器回報額度用盡(adapterQuota)同整組沒額度, 不計連敗(額度用盡逐日發生, 計入會令其後之一般失敗被加長視窗)
         let counted = att.map((t) => t.errorType).filter((t) => t !== 'params')
-        if (cooldownMs > 0 && coolAfterFails > 0 && idExplicit && att.length > 0 && counted.length > 0 && !quotaExhausted) {
+        if (cooldownMs > 0 && coolAfterFails > 0 && idExplicit && att.length > 0 && counted.length > 0 && !quotaExhausted && !adapterQuota) {
             let s = incStreak(state, id, Date.now())
             if (s !== null) {
                 incK.set(id, (incK.get(id) || 0) + 1)

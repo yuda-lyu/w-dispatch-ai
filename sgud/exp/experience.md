@@ -10,6 +10,20 @@
 
 > 2026-11-08 再整理(檔約 34KB,超過約 30KB 門檻):2026-10-23～11-05 之遞補與錯誤型別、CLI spawn 守門與 Go 用量冷卻(da67)、opencode 單次輸出上限與截斷偵測(da78)、放行最小間隔與暫時性重試(da320)等四節,已抽出至 `experience_20261108.md`(逐字搬移,節號與標題不變);需要時再調閱.
 
+## opencode 免費池用盡／免費層 429:run 不結束,讀 stderr 錯誤列即樹狀終止(2026-11-15 wda156,Gitea #156;帳本 `rulebook_oclimit.md` R-OCLIMIT-1)
+
+- **`--print-logs` 會令 opencode 不寫日誌檔**:同一匿名成功呼叫(beam-free,opencode 1.19.5),帶 `--print-logs --log-level ERROR` 者 `opencode.log` 增 0 位元組、不帶者增 17490 位元組(58 行 INFO).凡自動補此旗標者,原本「失敗後讀日誌檔對時擷取」之路徑對本行程即失效(讀到的只會是他行程之列),上游原因須改由 stderr 之 ERROR 列取.反過來也說明:**要偵測就讀 stderr、不讀日誌檔**——日誌檔是多行程共用之累積檔,同模型並行時無從歸屬,據以終止行程會誤殺他人.
+- **實際錯誤列形狀以本機日誌檔統計為準,不憑建議檔轉述**:以 `grep … | awk -F'level=' … | sort | uniq -c` 統計本機 opencode.log 之 124 筆,得 build／title 兩類各兩種字樣(`AI_APICallError: Free usage limit reached. …`／`Rate limit exceeded. …`;title 為 `AI_RetryError: Failed after 3 attempts. Last error: …`、`small=true`),且皆 `providerID=opencode`.免費池此刻未用盡時,真實 CLI 無從重現,測試字樣即取自這些實際列.
+- **wsemi `execCli` 之內部重試無法中途喊停**:被 taskkill 之子行程離開碼為 1(屬其可重試者),只有 ENOENT／離開碼 2／啟動失敗不重試.要「判中即不重試」只能由本套件接管重試(交 `execCli` 之 `maxRetries` 為 0)——沿用 R-COOL-4 已有之接管迴圈,`maxRetries` 為 0 時不接管,逐位元同修前;接管迴圈無期限時要沿用首次之逾時、不重新守門,才與 `execCli` 內部重試等價(以事件序列比對測試釘住).
+- **Windows 上「只殺根行程」常看起來像「樹狀終止」**:Node(libuv)把非 detached 之子行程放進「父行程結束即殺」之 job 物件,根 node 行程一死,其所起之子行程隨之結束——變異「taskkill 去掉 /T」初版全綠(等價變異).測試之孫行程須 `detached: true`(不入 job),才分辨得出 `/T` 之有無;真實 opencode.exe 自行另起之子行程是否在 job 內未查證,故仍以 `/T` 為準.
+- **wsemi `execProcessKillPid`(tree-kill)於 Windows 以 `exec('taskkill …')` 執行、未設 windowsHide**:本套件主動終止改用自寫之 `execFile('taskkill', [...], { windowsHide: true })`;execCli 逾時樹殺仍走 wsemi 之路徑(既有,未改,已列回饋).
+- **跨區塊之確定性測試**:假 CLI 印出前半段後等「閘門檔」,測試在 `onStderr` 收到前半段後才建閘門檔——區塊必然被切開,且以「沒有任何單一區塊含完整字樣」斷言之;不以延時排序.並行案亦同:b 先起並停在閘門前,a 判中終止回傳後才開 b 之閘門.
+- **假 CLI 與孫行程一律設存活上限**(60～120 秒自行結束):變異「只殺根行程」等情形下孤兒不會永久殘留.
+- **「修前紅」之測試本身也要有上界**:新增之並行案在修前程式上無限等待一個永不出現之事件(b 之 title 列),整輪修前紅被 quiet-run 之 900 秒上限截斷、結果全失;等待事件一律與「被等者已結束」取先到者(`Promise.race([事件, 行程結束])`).
+- **以 key=value 日誌判讀時,要解析頂層欄位,不可用 `(?:^|\s)key=` 正規式取第一個出現**:引號內之文字(如 `message="… agent=build …"`)會被誤取,令附帶請求之列被當主要請求(外審 terra 指出).
+- **「接管 execCli 之重試」要逐項比照其行為**:除間隔公式與不重試判準外,還有①無效 `maxRetries`(`Infinity` 等)execCli 改用 0、本套件之 `isp0int`＋`cint` 則轉成極大有限數——接管即近乎無限重試;②暫時性重試輪在修前是單獨一次 execCli 呼叫,其失敗不再一般重試;③有驗證路徑之事件序列與暫時性重試先後.兩位外審分別找出這些破口,皆以「stopOnLimit:false 對照」之等價測試釘住.
+- **wsemi 之 tree-kill 於非 Windows 只監聽 `close`**:`ps`／`pgrep` 不存在時 ENOENT 成為未處理之 `'error'`,呼叫端行程崩潰——主動終止改自寫 `execFile('ps')`(callback 承接錯誤).
+
 ## `timeoutMs` 判定單一來源與 Hydrogen 條目(2026-11-13 da-hy,排程第 438 項與 Gitea #137;帳本 `rulebook_timeout.md` R-TIMEOUT-1、`rulebook_agy.md` R-AGY-1／R-AGY-2)
 
 - **wsemi 升版後「相容」之假象**:wsemi 1.9.59 起 `execCli` 對 `timeoutMs` 改 `iseint` 判定(超過上限者用自有預設 120000),本套件舊之 `castPintOr`(`ispint` 通過後 `cint`)把 `Infinity`→1.8e308、`'0x10'`→16、`new Number(5000)`→5000、超過上限者原樣轉交——測試全綠(只測有效值):1.8e308 與超過上限者被 `execCli` 判無效而用 120 秒(與套件預設 300 秒不一致),`'0x10'`(16 毫秒)與包裝物件(5000)則被當有效而得非預期值.外審#18 指出初稿把後兩者也寫成「落入 120 秒」(誤述,已更正).**升級被呼叫之自有套件後,對「它把非預期值改成預設」之輸入格,逐入口以記錄替身觀察「實際交給它之值」**,不能只看既有測試綠.

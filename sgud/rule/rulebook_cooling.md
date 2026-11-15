@@ -20,7 +20,7 @@
 3. 成交刪紀錄(n 歸零);讀到過期不刪(保留 n);重排前 `sweepCooling` 掃整表:畸形紀錄(`at` 非正數、`n` 非正整數)與「現在 − at ≥ 有效視窗＋`cooldownMaxMs`」者刪除,舊格式數字改寫為 `{ at, n: 1, reason: 'timeout' }`,`at` 晚於現在者改寫為現在。
 4. 選項:`cooldownGrowth`(≥1 之數字或數字字串,非預期之值 1)、`cooldownMaxMs`(正整數,非預期之值 24 小時,小於 `cooldownMs` 取 `cooldownMs`)。預設下視窗恆為 `cooldownMs`(排序同修前)。
 5. 事件:條目層 `cooled` 每次呼叫每條目至多一則(`cooledIds`;內建觸發優先於 streak),`cooldownMs` 為本次有效視窗,另帶 `n`、`reason`、**布林 `renewed`(第 10 點)**;整組沒額度者仍帶 `scope: 'entry'`、`failureKind: 'no-credit'`。金鑰層 `keyCooling` 不在此列,維持固定視窗(`scope: 'key'`)。
-6. 寫者全集(單一寫法 `applyCool`):遞補層內建觸發(逾時、限流、`coolDetect`)、整組沒額度(`quota`)、鏈首封頂(`budget`)、持久連敗(`streak`)、呼叫端經 `coolEntry`(如免費池,`quota`)。盤點:`rg -n "state\.cooling\[|\.cooling\[" src`(應只見 `cooling.mjs` 之寫入、`dispatchAiFallback.mjs` 之成交刪除與 envDown 還原)。
+6. 寫者全集(單一寫法 `applyCool`):遞補層內建觸發(逾時、限流、`coolDetect`;2026-11-15 起另含無金鑰條目之轉接器回報額度用盡 `quota`,見 `rulebook_oclimit.md` R-OCLIMIT-1 第 8 點)、整組沒額度(`quota`)、鏈首封頂(`budget`)、持久連敗(`streak`)、呼叫端經 `coolEntry`(如免費池,`quota`)。盤點:`rg -n "state\.cooling\[|\.cooling\[" src`(應只見 `cooling.mjs` 之寫入、`dispatchAiFallback.mjs` 之成交刪除與 envDown 還原)。
 7. 匯出:`coolEntry(stateOrStore, id, { cooldownMs, reason, cooldownGrowth, cooldownMaxMs, now })` → `{ at, n, reason, cooldownMs, until, renewed }`(第 10 點)或 null(寫不進);`coolingOf(stateOrStore, id, opt?)` → `{ at, n, reason }`(給 `cooldownMs` 另帶 `cooldownMs`、`until`、`cooling`)或 null;`streakOf(stateOrStore, id)` → k(無則 0)。一般參數無效同步 throw(K2)。
 8. **相容性**:修前版本讀到新格式會當過期而刪除——共用同一份持久 store 之所有使用者須同一次升版(README〈Breaking changes〉第 72 條)。
 9. 測試:`test/unit-dispatchAiFallbackCoolGrowth.test.mjs`(預寫 store 紀錄模擬時間經過,429 快速觸發)、`test/unit-cooling.test.mjs`(同一組表格經 `coolEntry` 與經遞補層之 429)。

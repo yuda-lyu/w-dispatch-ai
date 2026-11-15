@@ -231,8 +231,8 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             }
             let perm = { permission: { edit: 'deny', bash: 'ask' } }
             assert.strict.deepEqual(rs, [
-                [true, 'ocgo:opencode-go/glm-5.3-flash', ['run', '--agent', 'build', '-m', 'opencode-go/glm-5.3-flash', '--format', 'json', '--variant', 'high'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
-                [true, 'ocgo:opencode-go/mimo-v2.6-flash', ['run', '--agent', 'build', '-m', 'opencode-go/mimo-v2.6-flash', '--format', 'json'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
+                [true, 'ocgo:opencode-go/glm-5.3-flash', ['run', '--agent', 'build', '-m', 'opencode-go/glm-5.3-flash', '--format', 'json', '--print-logs', '--log-level', 'ERROR', '--variant', 'high'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
+                [true, 'ocgo:opencode-go/mimo-v2.6-flash', ['run', '--agent', 'build', '-m', 'opencode-go/mimo-v2.6-flash', '--format', 'json', '--print-logs', '--log-level', 'ERROR'], { 'opencode-go': { type: 'api', key: 'oc_sk_go_test_key' } }, perm, 'hello'],
             ])
         })
 

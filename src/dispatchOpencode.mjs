@@ -13,8 +13,11 @@ import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import parseOpencodeEvents from './parseOpencodeEvents.mjs'
 import { applyOutputTokenMax } from './outputTokenMax.mjs'
-import { addUpstream, finishOf } from './failureDiag.mjs'
-import { readOpencodeUpstream } from './opencodeUpstream.mjs'
+import getTrace from 'wsemi/src/getTrace.mjs'
+import { addUpstream, addErrorDetail, finishOf, maskDiag, upstreamClassOf } from './failureDiag.mjs'
+import { readOpencodeUpstream, UPSTREAM_MAX } from './opencodeUpstream.mjs'
+import { logFlagsToAdd, printLogsOn, createLimitWatch, upstreamFromLines } from './opencodeLimit.mjs'
+import killProcessTree from './killProcessTree.mjs'
 
 
 // dispatchOpencode.mjs — 以opencode CLI呼叫AI模型
@@ -60,13 +63,36 @@ import { readOpencodeUpstream } from './opencodeUpstream.mjs'
 //   少了bash即被判非opencode而403; 改permission.bash:'ask'則通過, 且非互動run下ask自動拒絕, 仍為機械防寫。
 //   詳見providers.mjs檔頭【Zen免費層閘門】與OC_READONLY常數。
 //
-// 【Zen免費層429限流時run不會結束(2026-09-23實測, 1.18.32)】REST探測0.7s即回429 FreeUsageLimitError
-//   (Rate limit exceeded), 但`opencode run`收到同一錯誤後不退出: 預設stderr只有session標頭, 直到呼叫端逾時;
-//   帶--print-logs --log-level DEBUG可見`stream error ... AI_APICallError: Rate limit exceeded`, 其後再無輸出。
-//   不經本套件直接跑原始CLI亦同, 非本轉接器所致。對本套件之意義: 此情形以TIMEOUT回報(errorType 'timeout'),
-//   dispatchAiFallback內建之TIMEOUT冷卻觸發可涵蓋, 但每次嘗試都耗滿timeoutMs——免費oc:條目宜以
-//   resolveProviders之patch給較短timeoutMs; 需在stderr看到字樣(供coolDetect)時於extraArgs加
-//   --print-logs --log-level ERROR。
+// 【免費池用盡與免費層429: run不結束, 本轉接器讀到主要請求之錯誤列即樹狀終止(2026-11-15 wda156, Gitea #156; 帳本R-OCLIMIT-1)】
+//   CLI行為(不經本套件直接跑原始CLI亦同, 非本轉接器所致): 免費池用盡(`Free usage limit reached`, 2026-11-03起本機與使用端多次見)與免費層429(`Rate limit exceeded`
+//   之FreeUsageLimitError, 2026-09-23實測1.18.32: REST探測0.7s即回429)時, `opencode run`收到錯誤後不退出——預設stderr只有session標頭, 直到呼叫端逾時;
+//   錯誤原因只在日誌列(預設寫入日誌檔; 帶--print-logs改印到stderr: `… level=ERROR … providerID=opencode … agent=build … error.error="AI_APICallError: Free usage limit reached. …"`)。
+//   修前: 以TIMEOUT回報(errorType 'timeout'), 每次嘗試都耗滿timeoutMs(使用端實況: 節點逾時120分鐘, 兩個節點各空等7,202秒)。
+//   現行(opt.stopOnLimit預設true):
+//   ①呼叫端未給任何--print-logs形式之旗標時, 本轉接器補`--print-logs --log-level ERROR`(呼叫端已給--log-level者只補--print-logs; 已給--print-logs／--print-logs=…／--no-print-logs者一律不補),
+//     置於固定旗標之後、extraArgs之前; 呼叫端不必知道這些旗標。不採「讀日誌檔」: 日誌檔為多行程共用之累積檔, 同模型並行時無從歸屬(會誤殺), stderr為本行程專屬。
+//   ②逐行監看stderr(跨區塊之行於收到換行時才判; 頂層key=value解析), 主要請求之錯誤列(agent欄存在且非title——標題用小模型之附帶請求同時段常見同字樣, 其失敗不代表主要請求失敗;
+//     mode欄存在時須為primary; providerID為opencode——訂閱opencode-go到頂之字樣與行為無實例, 不臆測、不判)含`Free usage limit reached`, 或modelID以`-free`結尾且含
+//     `Rate limit exceeded`(按量模型之429無實例, 不判)即發觀察事件'limit-stop' { kind, pid }(經opt.onTrace)並樹狀終止該次子行程(Windows: execFile taskkill /F /T /PID, windowsHide;
+//     其他平台: execFile ps列舉後由深至淺SIGKILL, ps不可用時只終止根; 限制見killProcessTree.mjs檔頭), 等終止完成後回傳(使用端實測: 判中約3.1秒、終止後3.2～4.3秒回失敗)。
+//     判準細節見opencodeLimit.mjs檔頭。
+//   ③結果: 免費池用盡 → ok:false、errorType 'quota'、failureKind 'no-credit'; 429 → errorType依既有判定(被終止之子行程為非零離開, 即'exec')、failureKind 'rate-limit';
+//     皆帶failureDetail(遮蔽後之原因, 至多200字元)與errorDetail.upstream(該錯誤列之原因), error為`Exit code 1 [Free usage limit]: <stderr尾段>`／`Exit code 1 [rate limit]: …`
+//     (Windows經taskkill之離開碼為1; POSIX為`Signal: SIGKILL [...]`)。該次不重試: maxRetries不再跑、暫時性重試(database is locked)不觸發(runExecCli之stopRetryIf, 見其檔頭【命中即不重試】)。
+//     子行程於終止前已自行以0結束者亦回失敗(主要請求已失敗; 不等validate, error為`Exit code 0 [分類]: …`; 外審terra #1)。上游原因即觸發終止之該列。
+//     呼叫端判定「因額度而未完成」: r.ok === false && r.errorType === 'quota'(不必讀stderr、不必自行終止)。
+//     已知限制(外審terra #2／#3): 樹狀終止失敗(taskkill回錯)時須等execCli之逾時; execCli之「樹殺後3秒仍未close即定案」路徑之後若重試, 舊行程遲到之stderr仍會進入監看(execCli之onStderr不分嘗試),
+//     理論上可令新一次嘗試被誤判——兩者皆須終止失敗在先, 本機與測試皆未見, 未處理。
+//   ④遞補層(dispatchAiFallback)對無金鑰條目之errorType 'quota'以reason 'quota'(固定視窗)冷卻並改派下一條目, 429走既有rate-limit冷卻, 見其檔頭【轉接器回報之額度用盡】。
+//   ⑤對既有結果欄之影響(stderr多了ERROR級日誌列; 成功呼叫之stderr實測不變〔只有session標頭〕):
+//     a. stderr欄位: 失敗時可含ERROR列(execCli之失敗結果只留前1000字元〔逾時500〕, 原樣);
+//     b. error尾段與errorDetail.stderrTail: 取stderr最後300字元, 子行程自行失敗而其最後輸出為ERROR列時, 尾段會是該列(而非修前之`Error: …`行)——內容更具體, 非分類依據;
+//     c. errorDetail.upstream: 日誌列印到stderr時opencode不寫入日誌檔(本機實測: 同一匿名成功呼叫, 帶旗標者opencode.log增0位元組、不帶者增17490位元組), 故改由本次嘗試之stderr ERROR列取
+//        (擇一規則同日誌檔: 非title優先、其次最後一筆、provider/model相符), 不再讀日誌檔(opt.opencodeLog只管讀檔, 此時不作用); 修前之讀檔在並行時可能取到他行程之列, 改後無此問題;
+//     d. errorType／failureKind: 只新增上列兩種情形, 其餘失敗之判定不變(錯誤列未判中者照舊為exec／timeout且無failureKind);
+//     e. 呼叫端自給--log-level DEBUG／INFO等而未給--print-logs者: 該層級之日誌由日誌檔改印到stderr(該層級原樣保留)。
+//   opt.stopOnLimit:false: 不補旗標、不監看、上游原因照舊讀日誌檔, 與修前逐位元相同(此時run不結束之情形仍以TIMEOUT回報)。
+//   呼叫端以--print-logs=false或--no-print-logs明示關閉時無從監看, 行為同stopOnLimit:false。
 //
 // 【不讀auth.json之匿名呼叫: useStoredAuth:false(2026-09-17實測後新增)】
 //   未注入金鑰時opencode會自動沿用auth.json之登入; 該帳號工作區若未開某免費模型(如union-alpha),
@@ -90,11 +116,13 @@ import { readOpencodeUpstream } from './opencodeUpstream.mjs'
 //   錯誤字樣對照〔本機實測 2026-11-03, opencode 1.19.5〕:
 //     未訂閱Go之金鑰 → stderr「Upstream request failed: An active OpenCode Go subscription is required to use Go models.」, opencode內部重試約77秒才exit 1(errorType 'exec');
 //     id不在Go型錄 → 「ProviderModelNotFoundError: Model not found: opencode-go/<id>.」, 約1.7秒即exit 1;
-//     「Free usage limit reached…subscribe to OpenCode Go to keep going」＝ provider opencode之免費池用盡, 不影響opencode-go/之模型(同一分鐘內opencode-go/beam-free 6.1s成功); 此時run不結束(見上【429限流時run不會結束】), 以TIMEOUT回報。
+//     「Free usage limit reached…subscribe to OpenCode Go to keep going」＝ provider opencode之免費池用盡, 不影響opencode-go/之模型(同一分鐘內opencode-go/beam-free 6.1s成功); 此時run不結束,
+//     本轉接器讀到該錯誤列(providerID=opencode、主要請求)即樹狀終止並回errorType 'quota'(見上【免費池用盡與免費層429】; 2026-11-15起, 修前以TIMEOUT回報)。
 //   〔issue #65提出端自述, 本機未重現〕隱私開關未開: 「This Go model requires Global regions. Select Global in your workspace's Privacy settings to use it.」(DeepSeek)、
 //     「This Go model trains on request data. Allow paid endpoints that train on request data in your workspace's Privacy settings to use it.」(Muse／Iceman Contributor);
 //     付費id錯用opencode/前綴 → 「Upstream request failed: Model access is disabled」; 以OPENCODE_CONFIG_CONTENT補定義Go專屬id後 → 「Model is unavailable」。
-//   Go額度到頂時run之行為與字樣未查明(免費池到頂時run不結束; Go是否同樣不返回, 本機與提出端皆未撞到), 呼叫端宜以timeoutMs封頂, 並可先以opencodeGoUsage(src/opencodeGoUsage.mjs)查三視窗(該端點官方文件未載, 為實測所得); 經dispatchAiFallback時預設已由quotaGate(src/goQuotaGate.mjs)於用量≥95%時略過該把金鑰。
+//   Go額度到頂時run之行為與字樣未查明(免費池到頂時run不結束; Go是否同樣不返回, 本機與提出端皆未撞到), 故【免費池用盡與免費層429】之即時終止只認providerID=opencode之錯誤列、
+//   不涵蓋opencode-go(不臆測字樣); 呼叫端宜以timeoutMs封頂, 並可先以opencodeGoUsage(src/opencodeGoUsage.mjs)查三視窗(該端點官方文件未載, 為實測所得); 經dispatchAiFallback時預設已由quotaGate(src/goQuotaGate.mjs)於用量≥95%時略過該把金鑰。
 //
 // 【spawnGate: 機器級守門(預設啟用, 2026-11-04 Gitea #67)】每次spawn前查機器上opencode.exe行程數(預設上限 max(1, 核心數-1))與RAM(已用>0.85)、CPU(>0.90), 達上限即等(每10秒再查, 等逾10分鐘放行), 計數或取樣失敗亦放行;
 //   等待不計入timeoutMs; spawnGate:false關閉; 預設只守exe為真的opencode(假CLI與包裝腳本不守, 明給spawnGate才守); 詳見cliSpawnGate.mjs檔頭(含opencode.exe單次占約1.1核心之實測、成本量測、跨行程預約票)。
@@ -118,6 +146,7 @@ import { readOpencodeUpstream } from './opencodeUpstream.mjs'
 //
 // 【失敗原因帶回與日誌對時擷取(opt.opencodeLog, 2026-11-08 da110, Gitea #110)】失敗(離開碼非零、逾時)時error帶stderr尾段並加errorDetail(共用邏輯在runExecCli.mjs／failureDiag.mjs);
 //   opencode另在失敗後讀其日誌檔一次, 取失敗時刻±60秒內providerID／modelID相符之ERROR行的原因附入errorDetail.upstream並把簡短分類放進error文字(實查日誌格式與位置見opencodeUpstream.mjs檔頭)。
+//   (2026-11-15 wda156)日誌列印到stderr者(預設補--print-logs, 見上【免費池用盡與免費層429】⑤c)改由本次嘗試之stderr ERROR列取, 不讀日誌檔; 讀日誌檔只在stopOnLimit:false或呼叫端明示關閉--print-logs時。
 //   本機實查(opencode 1.19.5): 不存在之model令run離開碼1, stderr為帶ANSI色碼之`Error: {pretty JSON UnknownError「Unexpected server error. Check server logs for details.」, ref}`——通稱字樣, 真因只在日誌;
 //   detectTruncation(--format json)時錯誤改為stdout之error事件, stderr空, 本轉接器還原為`Error: 訊息`後交runExecCli取尾段(reshapeResult以diagStderr／diagStdout傳遞, runExecCli取用後移除)。
 //   另: 成功結果之finish取自事件流最後一步之終止原因(僅detectTruncation為true時可得, 否則由runExecCli補'unknown')。
@@ -137,7 +166,15 @@ let DEFAULT_AGENT = 'build'
 
 
 //本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli(acceptTruncated由runExecCli讀取, 見其檔頭; reshapeResult為本轉接器內部傳給runExecCli之接縫, 呼叫端給的一律剔除)
-let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'config', 'extraArgs', 'input', 'env', 'outputTokenMax', 'detectTruncation', 'reshapeResult', 'opencodeLog', 'diagSecrets']
+let OWN_KEYS = ['exe', 'model', 'key', 'provider', 'useStoredAuth', 'agent', 'config', 'extraArgs', 'input', 'env', 'outputTokenMax', 'detectTruncation', 'reshapeResult', 'opencodeLog', 'diagSecrets', 'stopOnLimit', 'stopRetryIf']
+
+
+//免費池用盡／免費層429判中時之failureDetail上限(字元), 同failureKind.mjs之detail慣例
+let LIMIT_DETAIL_MAX = 200
+
+
+//等待樹狀終止完成之上限(毫秒): taskkill本身另有15秒逾時(killProcessTree.mjs), 此為最後防線
+let KILL_WAIT_MS = 20000
 
 
 //accumulate上限(字元), 偵測截斷時累積子進程stdout全文以供解析, 超出部分不再累積
@@ -196,8 +233,10 @@ function getFormatArg(args) {
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0；另有不佔此次數之暫時性錯誤重試(失敗訊息含`database is locked`、非逾時且耗時<15秒者多重試一次，每次呼叫至多一次，attempts照實累計)
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(opencode預設啟用：機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等，每10秒再查，等逾10分鐘或計數取樣失敗即放行；且只守exe為真的opencode)，false關閉，true取預設且不受exe比對限制，物件可覆寫maxCli、ramUsedMax、cpuMax、minGapMs(放行最小間隔，預設1500毫秒，false關閉)、pollMs、gateWaitMaxMs等；等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
- * @param {String|Boolean} [opt.opencodeLog=undefined] 輸入opencode日誌檔路徑字串(覆寫預設)或false(不讀)，失敗(離開碼非零、訊號結束、逾時)時才讀一次(檔尾至多2MiB)，取失敗時刻前後各60秒內providerID／modelID與model(須為`provider/model`形式)相符之level=ERROR行的原因，遮蔽後附入errorDetail.upstream並把簡短分類放進error文字(如`Exit code 1 [overloaded]: …`)；找不到、檔案不存在或不可讀皆略過、不影響成敗、不拋錯；預設undefined代表依平台推得`<XDG_DATA_HOME(opt.env優先於process.env)或~/.local/share>/opencode/log/opencode.log`(找不到時退用同資料夾最新之*.log)，見opencodeUpstream.mjs檔頭
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；detectTruncation為true且最後一步被輸出上限截斷時另帶truncated(true)、finishReason('length')、tokens(最後一步之token用量物件{ total, input, output, reasoning, cache })，未截斷者不加此三欄；失敗(離開碼非零、訊號結束、逾時)時error為`Exit code N[ [分類]]: <stderr尾段>`(尾段至多300字元，已遮蔽金鑰權杖；stderr空時Exit code退用stdout尾段)並另帶errorDetail({ exitCode(數字或null), stderrTail, stdoutTail(僅stdout非空), upstream(僅日誌擷取到時) })；成功時另帶finish(終止原因簡值：detectTruncation為true時取最後一步之終止原因，如'stop'、'length'，否則'unknown')與outputChars(stdout字元數)；incomplete(截斷)失敗結果不加errorDetail、finish、outputChars；本函數不會reject
+ * @param {Boolean} [opt.stopOnLimit=true] 輸入是否於主要請求之免費池用盡(`Free usage limit reached`)或免費層429(`Rate limit exceeded`)時樹狀終止子行程布林值(opencode此時run不結束，見檔頭【免費池用盡與免費層429】)，true代表呼叫端未給`--print-logs`類旗標時自動補`--print-logs --log-level ERROR`(已給者不重複、不覆寫)並逐行監看stderr，讀到providerID為opencode且agent非title之該類錯誤列即發觀察事件'limit-stop'並終止，回errorType 'quota'(免費池用盡，failureKind 'no-credit')或failureKind 'rate-limit'(429)，該次不重試；false代表不補旗標、不監看(同修前，以逾時回報)，預設true
+ * @param {Function} [opt.onTrace=null] 輸入觀察回調函數(同wsemi execCli之onTrace：同步呼叫、事件為凍結物件、拋錯與回傳值皆忽略)，除execCli之事件與runExecCli之'transient-retry'外，本轉接器另發'limit-stop'事件{ kind('quota'或'rate-limit'), pid(該次子行程pid，無則null) }——stopOnLimit為true且判中主要請求之免費池用盡或免費層429錯誤列、即將樹狀終止該次子行程時，每次嘗試至多一則，預設null
+ * @param {String|Boolean} [opt.opencodeLog=undefined] 輸入opencode日誌檔路徑字串(覆寫預設)或false(不讀)，失敗(離開碼非零、訊號結束、逾時)時才讀一次；日誌列印到stderr者(stopOnLimit預設true時)不讀日誌檔、改取本次stderr之ERROR列(opencode此時不寫入日誌檔)，本選項不作用(檔尾至多2MiB)，取失敗時刻前後各60秒內providerID／modelID與model(須為`provider/model`形式)相符之level=ERROR行的原因，遮蔽後附入errorDetail.upstream並把簡短分類放進error文字(如`Exit code 1 [overloaded]: …`)；找不到、檔案不存在或不可讀皆略過、不影響成敗、不拋錯；預設undefined代表依平台推得`<XDG_DATA_HOME(opt.env優先於process.env)或~/.local/share>/opencode/log/opencode.log`(找不到時退用同資料夾最新之*.log)，見opencodeUpstream.mjs檔頭
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；detectTruncation為true且最後一步被輸出上限截斷時另帶truncated(true)、finishReason('length')、tokens(最後一步之token用量物件{ total, input, output, reasoning, cache })，未截斷者不加此三欄；失敗(離開碼非零、訊號結束、逾時)時error為`Exit code N[ [分類]]: <stderr尾段>`(尾段至多300字元，已遮蔽金鑰權杖；stderr空時Exit code退用stdout尾段)並另帶errorDetail({ exitCode(數字或null), stderrTail, stdoutTail(僅stdout非空), upstream(僅日誌擷取到時) })；成功時另帶finish(終止原因簡值：detectTruncation為true時取最後一步之終止原因，如'stop'、'length'，否則'unknown')與outputChars(stdout字元數)；incomplete(截斷)失敗結果不加errorDetail、finish、outputChars；stopOnLimit為true且主要請求遇免費池用盡時errorType為'quota'並帶failureKind('no-credit')與failureDetail(遮蔽後之原因)，遇免費層429時帶failureKind('rate-limit')與failureDetail(errorType依既有判定)，兩者error皆含分類(如`Exit code 1 [Free usage limit]: …`)且errorDetail帶upstream；本函數不會reject
  * @example
  * //need opencode cli in system PATH
  *
@@ -277,14 +316,23 @@ async function dispatchOpencode(prompt, opt = {}) {
     let rewrite = detectTruncation && fmtUser === ''
     let detect = rewrite || (detectTruncation && fmtUser === 'json')
 
+    //免費池用盡／免費層429即終止(stopOnLimit, 預設true; 見檔頭【免費池用盡與免費層429】): 呼叫端未給之日誌旗標由本轉接器補上(已給者不重複、不覆寫), 令ERROR列印到本行程之stderr;
+    //false則不補旗標、不監看(與修前逐位元相同)
+    let stopOn = get(opt, 'stopOnLimit', null) !== false
+    let logArgs = stopOn ? logFlagsToAdd(getCliArgs(extraArgs)) : []
+
     //args
     let args = getCliArgs(
         'run',
         ['--agent', agent],
         isestr(model) ? ['-m', model] : [],
         rewrite ? ['--format', 'json'] : [],
+        logArgs,
         extraArgs,
     )
+
+    //日誌列實際印到stderr(呼叫端以--print-logs=false或--no-print-logs明示關閉者否): 才監看stderr, 且失敗時之上游原因改由stderr之ERROR列取(此時日誌檔不寫入本行程之列)
+    let logsOnStderr = stopOn && printLogsOn(args)
 
     //env, 呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 不reject; 可讀者取物化之淺層副本(只讀一次, 與另三家經runExecCli同一helper); 非物件回退undefined代表不覆寫任何變數
     let renv = readCallerObj(get(opt, 'env', null), 'env')
@@ -401,6 +449,50 @@ async function dispatchOpencode(prompt, opt = {}) {
         }
     }
 
+    //免費池用盡／免費層429之監看與終止(見檔頭【免費池用盡與免費層429】; 判準見opencodeLimit.mjs): 包onTrace取每次嘗試之pid(spawn事件, 同時重置監看),
+    //包onStderr逐行判讀(跨區塊之行於收到換行時才判); 判中即發觀察事件'limit-stop'{ kind, pid }並樹狀終止該次子行程, 並以stopRetryIf令runExecCli不再重試;
+    //呼叫端自給之onStderr／onTrace照常呼叫(先監看後轉交, 呼叫端回調拋錯不影響監看)
+    let lim = null
+    if (logsOnStderr) {
+        let pidNow = null
+        let killP = null
+        let limTrace = getTrace({ onTrace: get(optCli, 'onTrace', null) })
+        let watch = createLimitWatch({
+            onHit: (h) => {
+                if (limTrace) {
+                    limTrace('limit-stop', { kind: h.kind, pid: pidNow })
+                }
+                if (pidNow !== null) {
+                    killP = killProcessTree(pidNow)
+                }
+            },
+        })
+        let userOnStderr = get(optCli, 'onStderr', null)
+        optCli.onStderr = (str) => {
+            try {
+                watch.push(str)
+            }
+            catch {} //監看為最佳努力, 不得影響輸出累積
+            if (isfun(userOnStderr)) {
+                return userOnStderr(str) //呼叫端回調拋錯由execCli的callUser承接
+            }
+        }
+        let userOnTrace = get(optCli, 'onTrace', null)
+        optCli.onTrace = (ev) => {
+            if (get(ev, 'type', '') === 'spawn') {
+                let p = get(ev, 'pid', null)
+                pidNow = (typeof p === 'number' && p > 0) ? p : null
+                killP = null
+                watch.reset()
+            }
+            if (isfun(userOnTrace)) {
+                return userOnTrace(ev)
+            }
+        }
+        optCli.stopRetryIf = () => watch.hit() !== null
+        lim = { watch, killing: () => killP }
+    }
+
     //execCli(經runExecCli: 自訂validate拋錯視同驗證失敗、失敗結果補上機器可讀之errorType, 見runExecCli.mjs), prompt一律走stdin
     //spawnGate(使用端給之守門設定, 原樣留在optCli)與spawnGateKind交runExecCli於每次spawn前守門(見cliSpawnGate.mjs; opencode預設啟用)
     //diagSecrets: 本次注入之金鑰, 失敗診斷尾段(errorDetail、error文字)據以精確遮蔽(見failureDiag.mjs)
@@ -413,18 +505,64 @@ async function dispatchOpencode(prompt, opt = {}) {
         diagSecrets: isestr(key) ? [key] : [],
     })
 
-    //失敗(exec或逾時, 即runExecCli已加errorDetail者)時對時擷取opencode日誌中的上游原因(見opencodeUpstream.mjs): 只讀一次、讀檔失敗或無相符不影響結果、永不拋錯;
-    //opencodeLog為false關閉, 字串為日誌檔路徑(覆寫預設), 未給依平台推得
+    //免費池用盡／免費層429(最後一次嘗試判中者): 先等樹狀終止完成(令回傳時子孫行程已不在; 上限KILL_WAIT_MS), 失敗結果改標分類——
+    //免費池用盡: errorType 'quota'、failureKind 'no-credit'; 免費層429: errorType不動(依既有判定, 通常'exec')、failureKind 'rate-limit'; 皆帶failureDetail(遮蔽後之原因)。
+    //子行程於終止前已自行以0結束者亦為失敗(主要請求已失敗, 需求為「讀到錯誤列即回失敗」; runExecCli此時不驗證、原樣回傳——外審terra #1): 改為失敗之形狀
+    //(error `Exit code 0`＋分類與尾段、stdout裁500同execCli、去掉成功專屬之finish／outputChars、加errorDetail)
+    let secrets = isestr(key) ? [key] : []
+    let hit = lim !== null ? lim.watch.hit() : null
+    if (lim !== null && lim.killing() !== null) {
+        let tk = null
+        await Promise.race([lim.killing(), new Promise((resolve) => {
+            tk = setTimeout(resolve, KILL_WAIT_MS)
+        })])
+        clearTimeout(tk)
+    }
+    if (hit !== null && r.ok === true) {
+        let rf = { ...r, ok: false, stdout: strTruncate(String(get(r, 'stdout', '') || ''), 500, optTruncate), error: 'Exit code 0', errorType: 'exec' }
+        delete rf.finish
+        delete rf.outputChars
+        delete rf.truncated
+        delete rf.finishReason
+        delete rf.tokens
+        r = addErrorDetail(rf, { stderr: String(get(r, 'stderr', '') || ''), stdout: String(get(r, 'stdout', '') || ''), secrets })
+    }
+    if (hit !== null && r.ok !== true) {
+        let d = maskDiag(hit.text, secrets).replace(/\s+/g, ' ').trim()
+        let failureDetail = d.length > LIMIT_DETAIL_MAX ? `${d.slice(0, LIMIT_DETAIL_MAX - 1)}…` : d
+        if (hit.kind === 'quota') {
+            r = { ...r, errorType: 'quota', failureKind: 'no-credit', failureDetail }
+        }
+        else {
+            r = { ...r, failureKind: 'rate-limit', failureDetail }
+        }
+    }
+
+    //失敗(exec或逾時, 即runExecCli已加errorDetail者)時取opencode之上游原因: 日誌列印到stderr者(logsOnStderr)由本次嘗試之stderr ERROR列取(此時日誌檔不寫入本行程之列, 讀檔只會取到他行程者);
+    //否則對時擷取opencode日誌檔(見opencodeUpstream.mjs): 只讀一次、讀檔失敗或無相符不影響結果、永不拋錯; opencodeLog為false關閉讀檔, 字串為日誌檔路徑(覆寫預設), 未給依平台推得
     let logOpt = get(opt, 'opencodeLog', null)
-    if (r.ok !== true && isobj(r.errorDetail) && logOpt !== false) {
-        let up = await readOpencodeUpstream({
-            model,
-            tFailMs: Date.now(),
-            durationMs: r.durationMs,
-            file: isestr(logOpt) ? logOpt : '',
-            env,
-            secrets: isestr(key) ? [key] : [],
-        })
+    if (r.ok !== true && isobj(r.errorDetail)) {
+        let up = null
+        if (hit !== null) {
+            //判中者: 上游原因即觸發終止之該列(同區塊其後之他列不得取代, 令upstream、error分類與failureKind一致; 外審terra #14)
+            let u = maskDiag(hit.text, secrets).replace(/\s+/g, ' ').trim()
+            u = u.length > UPSTREAM_MAX ? `${u.slice(0, UPSTREAM_MAX - 1)}…` : u
+            up = u !== '' ? { upstream: u, class: upstreamClassOf(u) } : null
+        }
+        else if (lim !== null) {
+            let u = upstreamFromLines(lim.watch.errorLines(), { model, secrets })
+            up = u !== null ? { upstream: u.upstream, class: upstreamClassOf(u.upstream) } : null
+        }
+        else if (logOpt !== false) {
+            up = await readOpencodeUpstream({
+                model,
+                tFailMs: Date.now(),
+                durationMs: r.durationMs,
+                file: isestr(logOpt) ? logOpt : '',
+                env,
+                secrets,
+            })
+        }
         r = addUpstream(r, up)
     }
     return r

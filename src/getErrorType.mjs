@@ -49,13 +49,16 @@ import { baseErrorOf } from './failureDiag.mjs'
 //                      stdout為已輸出之部分文字、stderr為stop_details; 屬模型/請求性質, 同請求換金鑰必然再被拒, 不重試且遞補層整組跳過
 //   'aborted'          shouldStop中止(dispatchAiFallback; 2026-11-04起CLI類spawnGate守門等待中被shouldStop中止亦為此類, error為'ABORTED', attempts 0, 見cliSpawnGate.mjs)
 //   'quota'            OpenCode Go用量達門檻(quotaGate)而略過該把金鑰(僅dispatchAiFallback之合成失敗結果, error以'QUOTA_COOLDOWN'開頭, 帶failureKind 'no-credit'; 2026-11-04起, 見goQuotaGate.mjs);
-//                      2026-11-07起(Gitea #93)訂閱類條目〔claude無金鑰者、codex、antigravity〕用量達門檻、或額度帳(store.quota)記載重置前亦同形(另帶source 'usage-api'／'ledger'; 見subQuotaGate.mjs)
+//                      2026-11-07起(Gitea #93)訂閱類條目〔claude無金鑰者、codex、antigravity〕用量達門檻、或額度帳(store.quota)記載重置前亦同形(另帶source 'usage-api'／'ledger'; 見subQuotaGate.mjs);
+//                      2026-11-15起(Gitea #156)CLI類之dispatchOpencode於主要請求之免費池用盡(`Free usage limit reached`)時亦回此類(樹狀終止子行程後, 帶failureKind 'no-credit'、failureDetail;
+//                      error保留execCli原生形狀加分類, 如`Exit code 1 [Free usage limit]: …`; 由dispatchOpencode直接給定, 非本函數推導; 見其檔頭【免費池用盡與免費層429】)
 //   'budget'           時間預算用盡(僅dispatchAiFallback)
 //
 // 【failureKind: 與errorType並存之另一欄位(2026-10-25 dispatch-run01)】errorType只機械分「http/exec/fetch…」, 同為HTTP 400就分不出「沒額度」與「脈絡過長」,
 //   故api-anthropic之全部失敗結果與claude在API金鑰在場(key，或opt.env.ANTHROPIC_API_KEY)且已進入執行階段之失敗結果另帶failureKind
 //   ('no-credit'｜'context-too-long'｜'rate-limit'｜'overloaded'｜'key-invalid'｜'no-permission'｜'network'｜'env-error'｜'other')與failureDetail,
-//   判準、依據與未實測者見failureKind.mjs檔頭。errorType之值域與判準不因此改變(本檔一覽仍適用); 其他kind與成功結果無failureKind。
+//   判準、依據與未實測者見failureKind.mjs檔頭。errorType之值域與判準不因此改變(本檔一覽仍適用); 其他kind與成功結果無failureKind——
+//   例外(2026-11-15 Gitea #156): dispatchOpencode於主要請求之免費池用盡／免費層429而終止子行程時帶failureKind('no-credit'／'rate-limit', 判準見opencodeLimit.mjs), 其餘opencode失敗無此欄。
 //   遞補層(dispatchAiFallback)依failureKind處置(見其檔頭【failureKind處置】), 本檔getErrorType不產生failureKind。
 
 
