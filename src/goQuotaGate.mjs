@@ -14,7 +14,8 @@ import castTimerMs from './castTimerMs.mjs'
 //
 // 【做什麼】遞補層選到 provider 'opencode-go' 之條目(kind 'opencode', 即providers.mjs之`ocgo:`條目)之某把金鑰前, 查一次opencodeGoUsage(該金鑰所屬工作區之三視窗用量):
 //   任一視窗percent ≥ 該視窗門檻(rollingMax／weeklyMax／monthlyMax, 預設各95), 或端點明說該視窗被限(status 'rate-limited'), 本輪略過該把金鑰、不派;
-//   為何不等到頂: Go額度到頂時 `opencode run` 之行為與字樣未查明(免費池到頂時 run 不結束只到逾時, 見dispatchOpencode.mjs檔頭), 整批派下去恐全部耗滿逾時照耗時間與token,
+//   為何不等到頂: Go額度到頂時 `opencode run` 不結束(2026-11-16使用端實測; 本建立時〔2026-11-04〕尚未查明, 見dispatchOpencode.mjs檔頭【OpenCode Go】段; 現由dispatchOpencode讀到錯誤列即終止並回quota,
+//   但仍須等錯誤列出現〔約數秒至25秒〕且只救「該次呼叫」), 整批派下去仍是每個呼叫各耗一次到頂之偵測時間與token,
 //   「到頂才知道」之代價高於「提前一點停」。
 //
 // 【用量端點之限制(2026-11-07 Gitea #92補記; 不改行為)】用量端點只回「整把金鑰」之三視窗(rolling／weekly／monthly)百分比, 沒有逐模型分項,
@@ -23,7 +24,7 @@ import castTimerMs from './castTimerMs.mjs'
 //   使用端若以為「其他模型仍有額度」卻整組被略過, 即此限制所致; 需要單獨放行者以條目或呼叫層的`quotaGate: false`(或調高門檻)處理。
 //
 // 【Unlimited免費期條目之連坐(2026-11-07 ke340評估, Gitea #93; 不改行為)】被擋的是「整把金鑰」, 故該金鑰因付費模型用量達門檻時, 免費期條目(beam-free、iceman-contributor-free)亦被略過。
-//   曾評估「內建之免費期條目不受該金鑰用量門檻約束」而不採: 缺證據——金鑰用量達門檻或到頂時, 免費期模型是否仍可呼叫從未實測(本層存在的前提即「Go額度到頂時run之行為與字樣未查明」,
+//   曾評估「內建之免費期條目不受該金鑰用量門檻約束」而不採: 缺證據——金鑰用量達門檻或到頂時, 免費期模型是否仍可呼叫從未實測(本層建立時之前提「Go額度到頂時run之行為與字樣未查明」於2026-11-16已有使用端實例〔run不結束, 見上〕, 但免費期模型於到頂金鑰上是否仍可呼叫仍未實測,
 //   免費池到頂時run不結束只到逾時), 繞過門檻會把「略過一次」換成「可能整個逾時(預設300秒)」, 與本層目的相反; 且此項不得以真模型呼叫驗證。要放行者以條目或呼叫層的quotaGate: false逐條處理、自擔風險;
 //   待實證(在用量≥門檻之金鑰上以quotaGate: false對一條免費期條目做一次短逾時呼叫)後再決定是否內建, 見規則帳本R-OCGO-5。
 //

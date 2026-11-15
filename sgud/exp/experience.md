@@ -10,6 +10,18 @@
 
 > 2026-11-08 再整理(檔約 34KB,超過約 30KB 門檻):2026-10-23～11-05 之遞補與錯誤型別、CLI spawn 守門與 Go 用量冷卻(da67)、opencode 單次輸出上限與截斷偵測(da78)、放行最小間隔與暫時性重試(da320)等四節,已抽出至 `experience_20261108.md`(逐字搬移,節號與標題不變);需要時再調閱.
 
+## 訂閱 `opencode-go` 到頂:同樣不結束,判準加專屬字樣、遞補層依 `limitScope` 分流(2026-11-16 wda158,Gitea #158;帳本 `rulebook_oclimit.md` R-OCLIMIT-2)
+
+- **「額度綁誰」決定遞補層怎麼分流**:免費池用盡與金鑰無關(換金鑰、匿名皆同錯)⇒ 整組跳過;訂閱到頂綁「該金鑰所屬之訂閱」⇒ 換組內下一把才對.轉接器以結果欄(`limitScope: 'key'`)把這個區別交給遞補層,遞補層**不新增語意**,只讓它走既有 `failureKind 'no-credit'` 之「該把沒額度 → 換下一把」路徑(併入 `noCreditIdx`、組盡才 `quotaExhausted`／`reason 'quota'` 條目冷卻);要避免的是「每次嘗試即寫條目冷卻」(他把可能成交,且成交會刪冷卻、徒生 `cooled` 事件)與「經 `coolDetect`」(no-credit 之既有語意不經它).
+- **既有「沒額度之金鑰冷卻／跨條目共享略過」只屬 Anthropic 官方端點(`scoped`)**,不隨手擴到 Go:同一把 Console 金鑰另可走 `opencode/`(免費池或按量)條目,指紋鍵會把不同額度池混在一起;且 Go 金鑰到頂時其他 `ocgo:` 模型是否亦不可用無實證.要擴須另立命名空間與證據,列待辦不做.
+- **派工要求「若已涵蓋/極小改動才做」之項,先查帳鍵是否存在**:額度帳(`store.quota`)之鍵只有讀者家族與 `entry:<id>`,Go 之快取是行程內記憶體(指紋鍵)且刻意不盲信 `resetsAt`——「與既有 Go 金鑰之帳鍵一致」無對象 ⇒ 須新設計(帳號比對、升級／Extra Usage 令金鑰於重置前復用之作廢、`forgetQuota`),不做;用量端點到頂同一秒即回 `limited`,入帳只省一次查詢.
+- **變異存活常是冗餘條件之訊號**:初擬變異「去掉 `nk > 0`」存活——因 `trusted` 已含 `nk > 0`.處置是刪冗餘條件、改變異為「去掉 `trusted`」(無金鑰案轉紅),不是為等價變異補測試.
+- **假 CLI 依注入之金鑰子字串分流**(讀環境 `OPENCODE_AUTH_CONTENT` 含 `LIMITED`／`BAD`／否則成功),即可用真實之 `dispatchAiFallback`＋真實 `dispatchOpencode` 證明「第一把到頂換第二把成功」;Go 條目另須 `quotaGate: false` 或注入 `usage`,否則預設會對假金鑰打真實用量端點.
+- **假 CLI 之小陷阱**:`{ a: 'x', bare: '' }[name] || 預設` 遇空字串值會退回預設(`bare` 變體首次紅即此);改以 `hasOwnProperty` 判.
+- **修前紅與變異都在 `./tmp/wda158/` 副本做,不動 repo**:`git archive HEAD src` 解到 `./tmp/…/before/src`,測試副本置同層 `test/`;副本在 repo 之下,Node 沿父層找得到 repo 之 `node_modules`,不必 junction.修前跑(全部新測試)時 README 守門案因副本無 README 而假紅,須與真紅分開判讀.
+- **工作區代號屬帳號識別而非金鑰**:遮蔽以 `DIAG_PATTERNS` 宣告具名樣式交 wsemi `maskDiagText` 執行(診斷輸出與遮罩規格 D1,不另寫遮罩);有長度下限(8 碼以上)以免誤遮短詞;結果 `stderr` 欄原樣不遮(同既有).
+- **舊文件之「未查明／未知」要隨實例改**:`providers.mjs`、`dispatchOpencode.mjs`、`goQuotaGate.mjs`、`opencodeGoUsage.mjs` 檔頭與 README、`rulebook_opencodego.md`、`rulebook_spawngate.md` 各有一句「Go 到頂未知」,且有文件守門測試釘住該句——改實例時守門案同改(守新敘述並斷言舊句不再出現),不是刪守門.
+
 ## opencode 免費池用盡／免費層 429:run 不結束,讀 stderr 錯誤列即樹狀終止(2026-11-15 wda156,Gitea #156;帳本 `rulebook_oclimit.md` R-OCLIMIT-1)
 
 - **`--print-logs` 會令 opencode 不寫日誌檔**:同一匿名成功呼叫(beam-free,opencode 1.19.5),帶 `--print-logs --log-level ERROR` 者 `opencode.log` 增 0 位元組、不帶者增 17490 位元組(58 行 INFO).凡自動補此旗標者,原本「失敗後讀日誌檔對時擷取」之路徑對本行程即失效(讀到的只會是他行程之列),上游原因須改由 stderr 之 ERROR 列取.反過來也說明:**要偵測就讀 stderr、不讀日誌檔**——日誌檔是多行程共用之累積檔,同模型並行時無從歸屬,據以終止行程會誤殺他人.

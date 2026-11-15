@@ -189,6 +189,106 @@ describe('dispatchOpencode 免費池用盡／免費層429即終止', function() 
         assert.strict.deepEqual(rr, [false, 1, 'exec', undefined, 0])
     })
 
+    it('訂閱opencode-go到頂(主要請求之`OpenCode Go usage limit reached`列): 樹狀終止子行程與孫行程, 回errorType \'quota\'、failureKind \'no-credit\', 另帶limitScope／limitWindow／limitResetsInMs／limitUntil; 工作區代號不外流(failureDetail、errorDetail、error)', async function() {
+        //spec: src/opencodeLimit.mjs檔頭【訂閱(opencode-go)到頂】(真實CLI之錯誤列; run不結束); dispatchOpencode檔頭【免費池用盡與免費層429】③「訂閱到頂 → 同免費池用盡之形狀,
+        //  error之分類詞為[Go usage limit], 另帶limitScope 'key'與可解析時之limitWindow／limitResetsInMs／limitUntil; failureDetail與errorDetail.upstream內之工作區代號一律遮蔽」
+        let events = []
+        let t0 = Date.now()
+        let tStop = 0
+        let r = await dispatchOpencode('abc', {
+            exe: fake.exe,
+            model: 'opencode-go/deepseek-v4.1-flash',
+            extraArgs: ['--fake-limit=go-limit'],
+            timeoutMs: LIMIT_TMO,
+            onTrace: (ev) => {
+                events.push(ev)
+                if (ev.type === 'limit-stop') {
+                    tStop = Date.now() //判中事件(limitUntil之基準時刻hitAt先於此事件記下, 且早於樹狀終止完成與結果組裝)
+                }
+            },
+        })
+        let gc = gcPidOf(r)
+        let until = Date.parse(r.limitUntil)
+        let hitAt = until - r.limitResetsInMs //limitUntil減重置所餘 = 判中時刻
+        let rr = {
+            ok: r.ok,
+            errorType: r.errorType,
+            failureKind: r.failureKind,
+            notTimeout: String(r.error).indexOf('TIMEOUT') !== 0,
+            errorClass: String(r.error).includes('[Go usage limit]'),
+            detail: /OpenCode Go usage limit reached \(weekly, resets in 5h 3m\)/.test(r.failureDetail),
+            upstream: /OpenCode Go usage limit reached/.test(r.errorDetail.upstream),
+            noWorkspaceId: !/wrk_/.test(JSON.stringify([r.failureDetail, r.errorDetail, r.error])),
+            urlMasked: r.failureDetail.includes('https://opencode.ai/console/***/go'),
+            limitScope: r.limitScope,
+            limitWindow: r.limitWindow,
+            limitResetsInMs: r.limitResetsInMs,
+            hitAtOk: hitAt >= t0 && hitAt <= tStop, //以判中事件時刻(非結果回傳時刻)為基準: 回傳時刻須等樹狀終止完成, 必晚於tStop
+            attempts: r.attempts,
+            stops: events.filter((e) => e.type === 'limit-stop').map((e) => [e.kind, typeof e.pid]),
+            rootGone: await waitGone(r.pid),
+            gcGone: gc !== null && await waitGone(gc),
+        }
+        assert.strict.deepEqual(rr, {
+            ok: false,
+            errorType: 'quota',
+            failureKind: 'no-credit',
+            notTimeout: true,
+            errorClass: true,
+            detail: true,
+            upstream: true,
+            noWorkspaceId: true,
+            urlMasked: true,
+            limitScope: 'key',
+            limitWindow: 'weekly',
+            limitResetsInMs: 18180000,
+            hitAtOk: true,
+            attempts: 1,
+            stops: [['quota', 'number']],
+            rootGone: true,
+            gcGone: true,
+        })
+    })
+
+    it('訂閱到頂之字樣變體: 月視窗(window monthly、resetsInMs 17d6h)、無括號(只帶limitScope, 不帶window／resetsInMs／limitUntil)——判定不依賴字樣之解析', async function() {
+        //spec: opencodeLimit.mjs檔頭「不以視窗名為判準, 括號內解析不到只是不帶該兩欄」; dispatchOpencode檔頭③「字樣內可解析時之limitWindow、limitResetsInMs、limitUntil」
+        let run = async (name) => {
+            let r = await dispatchOpencode('abc', { exe: fake.exe, model: 'opencode-go/deepseek-v4.1-flash', extraArgs: ['--fake-limit=go-limit', `--fake-go-text=${name}`], timeoutMs: LIMIT_TMO })
+            return [r.ok, r.errorType, r.failureKind, r.limitScope, r.limitWindow, r.limitResetsInMs, 'limitUntil' in r]
+        }
+        assert.strict.deepEqual([await run('monthly'), await run('bare')], [
+            [false, 'quota', 'no-credit', 'key', 'monthly', (17 * 86400000) + (6 * 3600000), true],
+            [false, 'quota', 'no-credit', 'key', undefined, undefined, false],
+        ])
+    })
+
+    it('免費池用盡之結果不帶訂閱到頂專屬之欄(limitScope／limitWindow／limitResetsInMs／limitUntil)', async function() {
+        //spec: dispatchOpencode檔頭③「limitScope…免費池用盡無此欄」(既有結果形狀不變; 遞補層以此欄區分整組跳過與換鑰)
+        let r = await dispatchOpencode('abc', { exe: fake.exe, model: 'opencode/beam-free', extraArgs: ['--fake-limit=quota'], timeoutMs: LIMIT_TMO })
+        let rr = [r.errorType, r.failureKind, ['limitScope', 'limitWindow', 'limitResetsInMs', 'limitUntil'].filter((k) => k in r)]
+        assert.strict.deepEqual(rr, ['quota', 'no-credit', []])
+    })
+
+    it('訂閱到頂: 不重試(maxRetries 2只spawn一次); stopOnLimit:false退回修前(不補旗標、不監看, 等到逾時: errorType \'timeout\'、無limit欄)', async function() {
+        //spec: runExecCli檔頭【命中即不重試】(判中即最終結果, 含訂閱到頂); 選項stopOnLimit之退回路徑
+        let spawns = 0
+        let r = await dispatchOpencode('abc', {
+            exe: fake.exe,
+            model: 'opencode-go/deepseek-v4.1-flash',
+            extraArgs: ['--fake-limit=go-limit'],
+            timeoutMs: LIMIT_TMO,
+            maxRetries: 2,
+            retryDelayMs: 50,
+            onTrace: (e) => {
+                if (e.type === 'spawn') {
+                    spawns++
+                }
+            },
+        })
+        let off = await dispatchOpencode('abc', { exe: fake.exe, model: 'opencode-go/deepseek-v4.1-flash', extraArgs: ['--fake-limit=go-limit'], timeoutMs: 3000, stopOnLimit: false, opencodeLog: false })
+        assert.strict.deepEqual([[r.errorType, r.attempts, spawns], [off.ok, off.errorType, off.failureKind, 'limitScope' in off]], [['quota', 1, 1], [false, 'timeout', undefined, false]])
+    })
+
     it('其餘上游錯誤(主要請求之[overloaded]列後子行程自行以1結束): 不終止、errorType \'exec\'、無failureKind; errorDetail.upstream改由stderr之ERROR列取(日誌印到stderr時日誌檔不寫入)', async function() {
         //spec: 既有errorType／failureKind之值與判定不變(派工〈不得改變〉); da110之errorDetail.upstream不因--print-logs而遺失
         let events = []

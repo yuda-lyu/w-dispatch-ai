@@ -40,13 +40,16 @@ let DIAG_TAIL_MAX = 300
 let DIAG_KEEP = 4096
 
 //本套件宣告之金鑰樣式, 交wsemi maskDiagText以opt.patterns執行(re自動加g旗標)
-//sk-ant-(Anthropic金鑰, 沿用redactText.mjs之樣式單一來源)、sk-／oc_sk_(OpenAI相容與OpenCode金鑰)、AIza(Google API金鑰)、ghp_等(GitHub權杖)、JWT(eyJ…三段)
+//sk-ant-(Anthropic金鑰, 沿用redactText.mjs之樣式單一來源)、sk-／oc_sk_(OpenAI相容與OpenCode金鑰)、AIza(Google API金鑰)、ghp_等(GitHub權杖)、JWT(eyJ…三段)、
+//wrk_(opencode Console工作區代號, 帳號識別; 有長度下限, `wrk_ab12`等短詞不遮)
 let DIAG_PATTERNS = [
     { re: new RegExp(API_KEY_PATTERN.source) },
     { re: /\b(?:sk|oc_sk|pk|rk)[-_][A-Za-z0-9_-]{12,}/ },
     { re: /\bAIza[0-9A-Za-z_-]{30,}/ },
     { re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/ },
     { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
+    //opencode Console之工作區代號(wrk_ + 8碼以上英數; 訂閱到頂之錯誤文字內之網址帶此代號: https://opencode.ai/console/wrk_…/go)——非金鑰, 屬帳號識別, 不隨診斷文字外流(2026-11-16 wda158, Gitea #158)
+    { re: /\bwrk_[A-Za-z0-9]{8,}/ },
 ]
 
 //ANSI控制序列(刻意比對控制字元ESC)
@@ -59,6 +62,7 @@ let RE_NATIVE_ERROR = /^(Exit code -?\d+|Signal: [A-Za-z0-9_]+|TIMEOUT after [\d
 //上游原因分類(依序比對, 先中先用); 方括號詞(如`[overloaded]`)優先於此表
 let UPSTREAM_CLASSES = [
     [/Free usage limit/i, 'Free usage limit'],
+    [/OpenCode Go usage limit/i, 'Go usage limit'],
     [/Model access is disabled/i, 'Model access is disabled'],
     [/Model is disabled/i, 'Model is disabled'],
     [/Model is unavailable/i, 'Model is unavailable'],

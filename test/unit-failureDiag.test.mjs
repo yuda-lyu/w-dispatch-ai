@@ -56,6 +56,23 @@ describe('failureDiag: 遮罩與尾段', function() {
         assert.strict.deepEqual([maskDiag(null, []), maskDiag(undefined), maskDiag(123, ['x']), maskDiag({}, null)], ['', '', '', ''])
     })
 
+    it('maskDiag: opencode Console之工作區代號(wrk_ + 8碼以上英數; 訂閱到頂之錯誤文字內之網址)遮蔽、短於8碼與不合形狀者不遮; upstreamClassOf: 訂閱到頂字樣歸為Go usage limit(免費池用盡之分類不變)', function() {
+        //spec: failureDiag.mjs之DIAG_PATTERNS「工作區代號——非金鑰, 屬帳號識別, 不隨診斷文字外流」(由wsemi maskDiagText執行, 診斷輸出與遮罩規格D1); UPSTREAM_CLASSES「OpenCode Go usage limit → Go usage limit」(工作區代號為假值)
+        let text = 'AI_APICallError: OpenCode Go usage limit reached (weekly, resets in 5h 3m). To keep going now, turn on Extra Usage or upgrade to Go Plus at https://opencode.ai/console/wrk_FAKE0WORKSPACE0ID0000000001/go.'
+        let out = maskDiag(text, [])
+        let two = maskDiag('a wrk_FAKE0WORKSPACE0ID0000000001 b wrk_FAKE0WORKSPACE0ID0000000002', [])
+        let rr = [
+            out.includes('wrk_'),
+            out.includes('https://opencode.ai/console/***/go.'),
+            out.includes('(weekly, resets in 5h 3m)'),
+            two,
+            maskDiag('wrk_ab12 workflow wrk-dash wrk_1234567 awrk_FAKE0WORKSPACE0ID', []),
+            upstreamClassOf(text),
+            upstreamClassOf('AI_APICallError: Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go'),
+        ]
+        assert.strict.deepEqual(rr, [false, true, true, 'a *** b ***', 'wrk_ab12 workflow wrk-dash wrk_1234567 awrk_FAKE0WORKSPACE0ID', 'Go usage limit', 'Free usage limit'])
+    })
+
     it('tailOf: 去ANSI色碼、CRLF正規化、折疊空白、略過空白行; 超過300字元只留尾端並以…接頭(R2: 約300字元)', function() {
         assert.strict.deepEqual(tailOf('\u001b[91m\u001b[1mError: \u001b[0m{\r\n  "name": "UnknownError"\r\n}\r\n\r\n'), 'Error: {\n"name": "UnknownError"\n}')
         let long = `${'A'.repeat(500)}\nTHE-END-MARK`

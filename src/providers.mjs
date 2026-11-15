@@ -204,7 +204,8 @@
 //     三視窗之查詢端點「官方文件未載」, 為實測所得、非官方承諾: GET https://opencode.ai/inference/go/v1/usage ＋ Authorization: Bearer, 見opencodeGoUsage.mjs檔頭。
 //     本套件處置: 匯出opencodeGoUsage供呼叫端排程; 遞補層(dispatchAiFallback)另於選到Go條目之某把金鑰前以quotaGate(src/goQuotaGate.mjs, 2026-11-04 Gitea #67)查該金鑰之三視窗用量,
 //     任一視窗percent≥95(rollingMax／weeklyMax／monthlyMax可調)或端點明說被限即略過該把金鑰、不派, 快取60秒, 端點失敗與欄位缺少一律不擋(預設開, quotaGate:false關閉)——
-//     「到頂前即停」, 不倚賴Go到頂時 `opencode run` 之行為(該行為仍未查明: 免費池到頂時run不結束只到逾時, 見dispatchOpencode.mjs檔頭; Go到頂是否同樣不返回, 提出端與本機皆未撞到); 呼叫端仍宜以timeoutMs封頂。
+//     「到頂前即停」, 不倚賴Go到頂時 `opencode run` 之行為(該行為於2026-11-16由使用端實測: 週視窗到頂後run同樣不結束, 本轉接器讀到錯誤列即終止並回errorType 'quota'＋limitScope 'key'——
+//     見dispatchOpencode.mjs檔頭【OpenCode Go】段與opencodeLimit.mjs檔頭【訂閱(opencode-go)到頂】; 遞補層對該結果改換組內下一把金鑰, 見dispatchAiFallback檔頭【轉接器回報之額度用盡】); 呼叫端仍宜以timeoutMs封頂。
 //     CLI條目(含ocgo:)之實際併發另受cliSpawnGate限制(預設只對opencode: 機器上opencode.exe數達max(1, 核心數-1)、RAM已用>0.85或CPU>0.90即等, spawnGate:false關閉; 見cliSpawnGate.mjs檔頭)。
 //
 //   ★ 隱私前提〔官方Go頁〈Enable restricted models〉〈Privacy〉; 工作區Settings›Privacy, 僅owner／admin可改〕 ★
@@ -223,7 +224,8 @@
 //     上列隱私兩句〔提出端〕: 工作區未開對應隱私開關。
 //     「Free usage limit reached…subscribe to OpenCode Go to keep going」〔本機實測〕＝ opencode/* 免費池用盡, 不是Go額度, Go路徑之模型不受影響。
 //     400 MissingSessionID: 直打REST Go基底未帶x-opencode-session。
-//     Go額度到頂之字樣與CLI行為: 未撞到, 未知。
+//     「AI_APICallError: OpenCode Go usage limit reached (weekly, resets in 5h 3m). To keep going now, turn on Extra Usage or upgrade to Go Plus at …」〔使用端實測, 2026-11-16〕Go額度到頂(週視窗100%): run不結束、不重試、不再輸出;
+//       其他視窗(5小時、月)到頂之字樣未見, 未知; 用量端點於到頂之同一秒即回limited。
 //
 //   ★ 條目與收錄(帳本R-OCGO-1) ★
 //     ocgo:共8條, 置於oc:opencode/*之後、agy:之前: beam-free、deepseek-v4.1-flash、minimax-m3.1-flash、qwen3.8-flash、glm-5.3-flash、mimo-v2.6-flash,

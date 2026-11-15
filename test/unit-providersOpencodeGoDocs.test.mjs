@@ -98,14 +98,16 @@ describe('providers.mjs檔頭【OpenCode Go】段', function() {
         assert.strict.deepEqual(r, [true, true, true])
     })
 
-    it('用量端點標明為實測所得、非官方承諾; 遞補層以quotaGate於用量≥95%時略過(到頂前即停, 不倚賴Go到頂時run之行為, 該行為仍未查明; 2026-11-04 Gitea #67)', function() {
+    it('用量端點標明為實測所得、非官方承諾; 遞補層以quotaGate於用量≥95%時略過(到頂前即停, 不倚賴Go到頂時run之行為; 到頂行為已於2026-11-16由使用端實測, 見dispatchOpencode【OpenCode Go】段; 2026-11-04 Gitea #67)', function() {
+        //2026-11-16(wda158, Gitea #158): 原斷言「該行為仍未查明」已由使用端實例取代, 改守新敘述並斷言舊句不再出現
         let r = [
             goHead.includes('三視窗之查詢端點「官方文件未載」, 為實測所得、非官方承諾: GET https://opencode.ai/inference/go/v1/usage'),
             goHead.includes('遞補層(dispatchAiFallback)另於選到Go條目之某把金鑰前以quotaGate(src/goQuotaGate.mjs, 2026-11-04 Gitea #67)查該金鑰之三視窗用量'),
-            goHead.includes('不倚賴Go到頂時 `opencode run` 之行為(該行為仍未查明'),
+            goHead.includes('不倚賴Go到頂時 `opencode run` 之行為(該行為於2026-11-16由使用端實測: 週視窗到頂後run同樣不結束'),
+            !goHead.includes('該行為仍未查明'),
             !goHead.includes('遞補層(dispatchAiFallback)不查用量、不依用量冷卻'),
         ]
-        assert.strict.deepEqual(r, [true, true, true, true])
+        assert.strict.deepEqual(r, [true, true, true, true, true])
     })
 
     it('隱私前提: 預設擋train-on-data與地區、DeepSeek須Global、Muse／Iceman須開關; iceman／muse訓練Yes; 附兩句原文字樣', function() {
@@ -119,14 +121,18 @@ describe('providers.mjs檔頭【OpenCode Go】段', function() {
         assert.strict.deepEqual(r, [true, true, true, true, true])
     })
 
-    it('錯誤字樣對照: 本機實測兩句(無訂閱、id不在型錄)與免費池用盡之辨別; 提出端自述者標明本機未重現; Go到頂未知', function() {
+    it('錯誤字樣對照: 本機實測兩句(無訂閱、id不在型錄)與免費池用盡之辨別; 提出端自述者標明本機未重現; Go到頂字樣為使用端實測(2026-11-16), 其他視窗未知', function() {
+        //2026-11-16(wda158, Gitea #158): 原斷言「Go額度到頂之字樣與CLI行為: 未撞到, 未知。」已由使用端實例取代, 改守新敘述並斷言舊句不再出現
         let r = [
             goHead.includes('「ProviderModelNotFoundError: Model not found: opencode-go/<id>」〔本機實測, 1.7秒〕'),
             goHead.includes('「Free usage limit reached…subscribe to OpenCode Go to keep going」〔本機實測〕＝ opencode/* 免費池用盡, 不是Go額度'),
             goHead.includes('「Model is unavailable」〔提出端〕'),
-            goHead.includes('Go額度到頂之字樣與CLI行為: 未撞到, 未知。'),
+            goHead.includes('「AI_APICallError: OpenCode Go usage limit reached (weekly, resets in 5h 3m).'),
+            goHead.includes('〔使用端實測, 2026-11-16〕Go額度到頂(週視窗100%): run不結束、不重試、不再輸出'),
+            goHead.includes('其他視窗(5小時、月)到頂之字樣未見, 未知'),
+            !goHead.includes('Go額度到頂之字樣與CLI行為: 未撞到, 未知。'),
         ]
-        assert.strict.deepEqual(r, [true, true, true, true])
+        assert.strict.deepEqual(r, [true, true, true, true, true, true, true])
     })
 
     it('收錄範圍: 8條與未收之22個及理由(提出端未測、本機不得多次發付費請求; 依R-OCFREE-2「實測不到者不收」)', function() {
@@ -232,13 +238,17 @@ describe('dispatchOpencode.mjs檔頭【OpenCode Go】段', function() {
         assert.strict.deepEqual(r, [true, true, true, true])
     })
 
-    it('隱私前提與Go到頂行為未查明', function() {
+    it('隱私前提與Go到頂之行為(2026-11-16使用端實例: run不結束, 本轉接器讀到專屬字樣即終止並回quota, 帶limitScope)', function() {
+        //原斷言「Go額度到頂時run之行為與字樣未查明」之敘述已由使用端實例取代(wda158, Gitea #158; 帳本R-OCLIMIT-2); 改守新敘述之要點並斷言該段不再含「未查明」
         let r = [
             sec.includes('隱私前提: Go繼承工作區Settings›Privacy'),
             sec.includes('iceman與muse會以提示詞訓練模型, 敏感內容勿走'),
-            sec.includes('Go額度到頂時run之行為與字樣未查明'),
+            sec.includes('Go額度到頂(週視窗100%)時run同樣不結束、不重試、不再輸出'),
+            sec.includes('OpenCode Go usage limit reached'),
+            sec.includes('回errorType \'quota\'、failureKind \'no-credit\', 另帶limitScope \'key\''),
+            sec.includes('未查明'),
         ]
-        assert.strict.deepEqual(r, [true, true, true])
+        assert.strict.deepEqual(r, [true, true, true, true, true, false])
     })
 
 })

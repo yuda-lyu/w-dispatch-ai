@@ -1,11 +1,12 @@
 import assert from 'assert'
-import { parseLogFields, classifyLimitLine, printLogsOn, logFlagsToAdd, createLimitWatch, upstreamFromLines, LINE_MAX, KEEP_LINES } from '../src/opencodeLimit.mjs'
+import { parseLogFields, parseGoLimit, classifyLimitLine, printLogsOn, logFlagsToAdd, createLimitWatch, upstreamFromLines, LINE_MAX, KEEP_LINES } from '../src/opencodeLimit.mjs'
 
 
-// unit-opencodeLimit.test.mjs — opencode免費池用盡／免費層429之錯誤列判讀(wda156, Gitea #156; 帳本R-OCLIMIT-1)
+// unit-opencodeLimit.test.mjs — opencode免費池用盡／免費層429之錯誤列判讀(wda156, Gitea #156; 帳本R-OCLIMIT-1)與訂閱(opencode-go)到頂之判讀(wda158, Gitea #158; 帳本R-OCLIMIT-2)
 //
 // spec: src/opencodeLimit.mjs檔頭【判準】(①level=ERROR ②agent存在且非title ③providerID為opencode ④原因含Free usage limit reached為quota、Rate limit exceeded為rate-limit)、
 //   【逐行】(只判完整行、跨區塊、每次嘗試至多一次、reset); 字樣取自本機opencode.log之實際列(見檔頭)。
+//   【訂閱(opencode-go)到頂】: providerID為opencode-go且原因含`OpenCode Go usage limit reached`為quota, 另帶scope 'key'與可解析時之window／resetsInMs(字樣取自使用端真實CLI實測)。
 
 
 //本機opencode.log之實際列形狀(session與run以假值代替)
@@ -14,6 +15,9 @@ let QUOTA = 'AI_APICallError: Free usage limit reached. Subscribe to OpenCode Go
 let QUOTA2 = 'AI_APICallError: Free usage limit reached. Free models work in OpenCode (https://opencode.ai); subscribe to OpenCode Go to keep going: https://opencode.ai/go'
 let QUOTA_TITLE = 'AI_RetryError: Failed after 3 attempts. Last error: Free usage limit reached. Subscribe to OpenCode Go to keep going: https://opencode.ai/go'
 let RATE = 'AI_APICallError: Rate limit exceeded. Please try again later.'
+//訂閱(opencode-go)到頂之實際字樣(2026-11-16使用端實測; 工作區代號以假值代替)
+let GO_LIMIT = 'AI_APICallError: OpenCode Go usage limit reached (weekly, resets in 5h 3m). To keep going now, turn on Extra Usage or upgrade to Go Plus at https://opencode.ai/console/wrk_FAKE0WORKSPACE0ID0000000001/go.'
+let GO_LIMIT_TITLE = 'AI_RetryError: Failed after 3 attempts. Last error: OpenCode Go usage limit reached (weekly, resets in 5h 3m). To keep going now, turn on Extra Usage or upgrade to Go Plus at https://opencode.ai/console/wrk_FAKE0WORKSPACE0ID0000000001/go.'
 
 
 describe('opencodeLimit', function() {
@@ -53,6 +57,86 @@ describe('opencodeLimit', function() {
             123,
         ]
         assert.strict.deepEqual(cases.map((c) => classifyLimitLine(c)), cases.map(() => null))
+    })
+
+    it('classifyLimitLine: 訂閱(opencode-go)到頂之主要請求列為quota, 帶scope \'key\'與window／resetsInMs; 免費池用盡之回傳不帶此三欄(鍵集合不變)', function() {
+        //spec: 檔頭【訂閱(opencode-go)到頂】判準: providerID為opencode-go且原因含`OpenCode Go usage limit reached`為'quota', 另帶scope 'key'與可解析時之window、resetsInMs
+        let c = classifyLimitLine(L({ e: GO_LIMIT, p: 'opencode-go', m: 'deepseek-v4.1-flash' }))
+        let free = classifyLimitLine(L({ e: QUOTA }))
+        let upper = classifyLimitLine(L({ e: GO_LIMIT.toUpperCase(), p: 'opencode-go', agent: 'plan' })) //字樣比對不分大小寫(同RE_QUOTA)
+        assert.strict.deepEqual([c, Object.keys(free).sort(), [upper.kind, upper.scope, upper.agent]], [
+            { kind: 'quota', text: GO_LIMIT, agent: 'build', providerID: 'opencode-go', modelID: 'deepseek-v4.1-flash', scope: 'key', window: 'weekly', resetsInMs: 18180000 },
+            ['agent', 'kind', 'modelID', 'providerID', 'text'],
+            ['quota', 'key', 'plan'],
+        ])
+    })
+
+    it('classifyLimitLine: 訂閱到頂字樣之不判者——agent=title之附帶請求、providerID為opencode(免費池)、mode非primary、非ERROR級、opencode-go之他種原因(429、免費池字樣、不含完整字樣)', function() {
+        //spec: 檔頭【訂閱(opencode-go)到頂】「標題用小模型之列不算」「opencode-go之429與免費池字樣、providerID為opencode而出現訂閱字樣者仍不判」; 判準①②③沿用
+        let cases = [
+            L({ e: GO_LIMIT_TITLE, p: 'opencode-go', m: 'deepseek-v4.1-flash', agent: 'title', small: 'true' }),
+            L({ e: GO_LIMIT, p: 'opencode' }),
+            L({ e: GO_LIMIT, p: 'opencode-go', mode: 'subagent', agent: 'explore' }),
+            L({ e: GO_LIMIT, p: 'opencode-go', level: 'WARN' }),
+            L({ e: GO_LIMIT, p: 'opencode-go' }).replace(' agent=build', ''),
+            L({ e: RATE, p: 'opencode-go', m: 'glm-5.3-flash' }),
+            L({ e: QUOTA, p: 'opencode-go', m: 'glm-5.3-flash' }),
+            L({ e: 'AI_APICallError: usage limit reached (weekly, resets in 5h 3m).', p: 'opencode-go' }),
+            L({ e: 'AI_APICallError: Upstream request failed: [overloaded]', p: 'opencode-go' }),
+        ]
+        assert.strict.deepEqual(cases.map((c) => classifyLimitLine(c)), cases.map(() => null))
+    })
+
+    it('parseGoLimit: 視窗名與重置所餘時間之解析; 不合形狀者不帶對應之欄; 判定不依賴解析結果', function() {
+        //spec: 檔頭【訂閱(opencode-go)到頂】「不以視窗名為判準, 括號內解析不到只是不帶該兩欄」
+        let P = (s) => parseGoLimit(`AI_APICallError: OpenCode Go usage limit reached ${s}. To keep going now, turn on Extra Usage.`)
+        let noParen = classifyLimitLine(L({ e: 'AI_APICallError: OpenCode Go usage limit reached. To keep going now, turn on Extra Usage.', p: 'opencode-go' }))
+        assert.strict.deepEqual([
+            P('(weekly, resets in 5h 3m)'),
+            P('(weekly, resets in 45m)'),
+            P('(Monthly, resets in 17d 6h)'),
+            P('(5-hour, resets in 30s)'),
+            P('(weekly, resets in 2 days)'),
+            P('(weekly, resets in 2h soon)'),
+            P('(weekly, resets in 0m)'),
+            P('(weekly)'),
+            P(''),
+            parseGoLimit(null),
+            parseGoLimit(123),
+            parseGoLimit('AI_APICallError: OpenCode Go usage limit reached. Backup usage limit reached (monthly, resets in 17d)'), //專屬字樣之後無括號者不得取到文字內他處之括號(外審terra #5)
+            parseGoLimit('AI_APICallError: OpenCode Go usage limit reached (weekly wrk_abcdef123456, resets in 3m). x'), //視窗名經遮罩, 工作區代號不外流(外審terra #7)
+            [noParen.kind, noParen.scope, 'window' in noParen, 'resetsInMs' in noParen],
+        ], [
+            { window: 'weekly', resetsInMs: 18180000 },
+            { window: 'weekly', resetsInMs: 2700000 },
+            { window: 'monthly', resetsInMs: (17 * 86400000) + (6 * 3600000) },
+            { window: '5-hour', resetsInMs: 30000 },
+            { window: 'weekly' },
+            { window: 'weekly' }, //有一詞不合「整數+單位」即整段不採(不取其中合形狀之詞)
+            { window: 'weekly' },
+            {},
+            {},
+            {},
+            {},
+            {},
+            { window: 'weekly ***', resetsInMs: 180000 },
+            ['quota', 'key', false, false],
+        ])
+    })
+
+    it('createLimitWatch: 訂閱到頂列跨區塊送達亦只判一次(title附帶列先到不算), hit帶scope／window／resetsInMs; reset後清除', function() {
+        //spec: 檔頭【逐行】(跨區塊、每次嘗試至多一次、reset)與【訂閱(opencode-go)到頂】
+        let hits = []
+        let w = createLimitWatch({ onHit: (h) => hits.push(h) })
+        let titleLine = L({ e: GO_LIMIT_TITLE, p: 'opencode-go', agent: 'title', small: 'true' })
+        let mainLine = L({ e: GO_LIMIT, p: 'opencode-go', m: 'deepseek-v4.1-flash' })
+        let k = mainLine.indexOf('OpenCode Go usage li') + 'OpenCode Go usage li'.length
+        w.push(`${titleLine}\n${mainLine.slice(0, k)}`)
+        let before = w.hit()
+        w.push(`${mainLine.slice(k)}\n${mainLine}\n`)
+        let h = w.hit()
+        let afterReset = (w.reset(), w.hit())
+        assert.strict.deepEqual([before, hits.length, [h.kind, h.scope, h.window, h.resetsInMs, h.providerID], afterReset], [null, 1, ['quota', 'key', 'weekly', 18180000, 'opencode-go'], null])
     })
 
     it('parseLogFields: 頂層key=value(引號內文字不當欄位、反斜線跳脫、同名取第一個、非key=value之詞略過); 無mode欄者不受mode限制', function() {

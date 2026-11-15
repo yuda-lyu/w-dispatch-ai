@@ -74,6 +74,18 @@ import { isTimeoutLike } from './attemptDeadline.mjs'
 //     ②整組跳過(skip-group): 改派下一條目, 不試組內其他金鑰; ③不計持久連敗(同整組沒額度); ④不判為封頂逾時budget-cut(原因已知);
 //     ⑤不標quotaExhausted(該欄位仍專指「組內每一把金鑰皆實際確認沒額度」, 此處未逐把確認)。
 //   用量門檻之略過(quota-skip, Go與訂閱類)為不送請求之合成結果, 不經此處, 語意不變。
+//   例外——訂閱(opencode-go)到頂(2026-11-16 wda158, Gitea #158; 帳本R-OCLIMIT-2): 結果帶limitScope 'key'(額度綁該金鑰所屬之訂閱, 與免費池用盡「與金鑰無關」不同)且條目有金鑰(keys[]即實際認證)者,
+//   走上段failureKind 'no-credit'之既有路徑「該把沒額度 → 換組內下一把」(事件next-key、tried outcome 'next-key'), 不整組跳過、不單獨寫條目冷卻、不用adapterQuota之連敗排除:
+//     ①該把併入noCreditIdx, 組內每一把皆到頂(或本次呼叫內已被quotaGate略過)才為quotaExhausted——組盡事件帶quotaExhausted:true(by 'all-keys')、cooldownMs>0且明給id時以reason 'quota'寫條目冷卻
+//       (同既有整組沒額度之寫法coolNow(id, 'quota'): 固定視窗、不動n; 該條目已在他原因〔如timeout〕之有效視窗內者依R-COOL-2只更新at、reason與n不變; scope 'entry'之cooled事件)、
+//       最終error為QUOTA_EXHAUSTED: …、結果帶quotaExhausted清單, 與整組沒額度之處置同既有;
+//     ②每次嘗試不單獨寫條目冷卻(他把可能成交, 同no-credit之既有語意), 不經coolDetect(同no-credit); 組內部分到頂而他把另有一般失敗者(未達整組沒額度), 依既有no-credit之處置計入連敗;
+//       此判定(isKeyQuota)先於isKeyIndependentFail: 該結果由錯誤列確認為該把訂閱之額度, 即使error因樹狀終止失敗而等到逾時(TIMEOUT開頭)或帶截斷旗標, 仍換下一把
+//       (他把為不同訂閱, 非「同服務卡住」或「換鑰結果必然相同」), 不當逾時冷卻;
+//       另須條目給了provider(金鑰只在key與provider皆有效時才注入; 未給者各把金鑰沿用同一份登入態, 換鑰無意義, 維持整組跳過);
+//     ③不做金鑰層級之跨條目共享略過(deadKeys／skip-key)與金鑰冷卻(keyCooling): 兩者之範圍限Anthropic官方端點(scoped), 且Go金鑰到頂時是否令其他ocgo條目之模型亦不可用無實證(goQuotaGate.mjs檔頭);
+//       跨呼叫之略過仍由quotaGate(預設開, 查用量端點; 用量端點於到頂之同一秒即回limited, 但有cacheMs〔預設60秒〕快取且查詢失敗一律不擋〔fail-open〕, 故中途到頂後快取期內仍可能再派該把一次)負責。
+//   無金鑰條目(nk=0, 如登入態)、金鑰身分不可信或條目未給provider者之limitScope 'key'結果, 以及免費池用盡(無limitScope), 維持上列①～⑤之整組跳過。
 //
 // 【跨次記憶只有游標】成功後游標推進至下一把, 令額度在同組多把金鑰間自動均攤;
 //   死金鑰的代價也被游標攤平——這輪從key1敗轉key2成功後游標停在key3, 下輪不會先碰key1。
@@ -1188,17 +1200,24 @@ async function dispatchAiFallback(prompt, opt = {}) {
             //轉接器回報之額度用盡(實際送出之嘗試才有; 不論有無金鑰——免費池用盡與金鑰無關〔providers.mjs檔頭診斷段①: 匿名與兩把金鑰皆同〕, 外審terra #7／#8):
             //記下, 供冷卻原因(quota)、整組跳過(改派下一條目)與持久連敗之判定
             let isAdapterQuota = r.errorType === 'quota' && fk === 'no-credit'
-            if (isAdapterQuota) {
+
+            //訂閱(opencode-go)到頂(結果帶limitScope 'key'): 額度綁該把金鑰所屬之訂閱, 條目有金鑰且金鑰即實際認證(trusted)者走「該把沒額度 → 換組內下一把」(上方fk為no-credit之既有處置已併入noCreditIdx),
+            //不整組跳過、不單獨寫條目冷卻(組內每一把皆到頂時由下方組盡處置寫reason 'quota')、不經coolDetect(同no-credit); 免費池用盡(無limitScope)與無金鑰條目維持整組跳過(見檔頭【轉接器回報之額度用盡】)
+            //條件: trusted已含nk > 0(無金鑰條目無「下一把」可換); 另須條目給了provider(金鑰只在key與provider皆有效時才注入, 見dispatchOpencode【provider與model必須配對】——
+            //未給provider者各把金鑰皆沿用同一份登入態, 換鑰只會再試同一個訂閱; 外審terra #1)
+            let isKeyQuota = isAdapterQuota && r.limitScope === 'key' && trusted && isestr(get(attemptOpt, 'provider', null))
+            if (isAdapterQuota && !isKeyQuota) {
                 adapterQuota = true
             }
             if (cooldownMs > 0 && idExplicit) {
                 //限流: 有failureKind者只認'rate-limit'(月花費上限之429是沒額度，不是限流——2026-10-25外審#11, 與CLI路徑對稱); 無failureKind之其他kind維持HTTP 429判準
                 //額度用盡(轉接器回報): reason 'quota'(固定視窗, 同整組沒額度; 2026-11-15 wda156), 內建觸發先於coolDetect;
                 //先於逾時判定——終止失敗而等到逾時者(error以TIMEOUT開頭但errorType為quota)仍以額度之固定視窗冷卻, 不降格為可加長之timeout(外審agy-hydrogen #9)
+                //金鑰層級之額度用盡(isKeyQuota)不在此冷卻條目(原因見上), 亦不降格為timeout
                 let isRateLimit = (fk !== '') ? (fk === 'rate-limit') : (r.code === 429)
                 let isTimeout = isestr(r.error) && r.error.indexOf('TIMEOUT') === 0
-                let coolReason = isRateLimit ? 'rate-limit' : (isAdapterQuota ? 'quota' : (isTimeout ? 'timeout' : ''))
-                if (coolReason === '' && coolDetect !== null) {
+                let coolReason = isRateLimit ? 'rate-limit' : (isKeyQuota ? '' : (isAdapterQuota ? 'quota' : (isTimeout ? 'timeout' : '')))
+                if (coolReason === '' && coolDetect !== null && !isKeyQuota) {
                     let h = callHookSync(() => coolDetect(r)) //同步契約: 拋錯或回傳Promise(承接其rejection)皆視同false
                     coolReason = (h.state === 'value' && h.value === true) ? 'detect' : ''
                 }
@@ -1215,9 +1234,11 @@ async function dispatchAiFallback(prompt, opt = {}) {
 
             //失敗事件與tried一併帶被拒回覆(stdout)與錯誤輸出(stderr), 供呼叫端診斷失敗原因
             //(如驗證失敗時模型究竟回了什麼); 兩者於失敗路徑已由轉接器截斷(≤500/1000字元), 不會過大
-            if (isKeyIndependentFail(r) || isAdapterQuota) {
+            if (!isKeyQuota && (isKeyIndependentFail(r) || isAdapterQuota)) {
 
-                //與金鑰無關, 整組跳過(含轉接器回報之額度用盡: 改派下一條目, 不試組內其他金鑰)
+                //與金鑰無關, 整組跳過(含轉接器回報之免費池用盡: 改派下一條目, 不試組內其他金鑰);
+                //金鑰層級之額度用盡(isKeyQuota, 訂閱到頂)先於上列判定、不在此, 走下方換下一把——該結果已由錯誤列確認為該把訂閱之額度, 即使error因終止失敗而以TIMEOUT開頭
+                //或帶截斷旗標, 其成因亦非「同服務卡住」或「換鑰結果必然相同」(外審terra #2／#4)
                 emit({ type: 'skip-group', providerId: id, keyIndex, keyId, error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr })
                 tried.push({ providerId: id, keyIndex, keyId, outcome: 'skip-group', error: r.error, errorType: r.errorType, ...fkOf(r), stdout: r.stdout, stderr: r.stderr, durationMs: r.durationMs, ...(r.usage !== undefined ? { usage: r.usage } : {}), ...finOf(r), ...gwOf(r) })
                 skipGroup = true

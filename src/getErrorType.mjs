@@ -51,7 +51,8 @@ import { baseErrorOf } from './failureDiag.mjs'
 //   'quota'            OpenCode Go用量達門檻(quotaGate)而略過該把金鑰(僅dispatchAiFallback之合成失敗結果, error以'QUOTA_COOLDOWN'開頭, 帶failureKind 'no-credit'; 2026-11-04起, 見goQuotaGate.mjs);
 //                      2026-11-07起(Gitea #93)訂閱類條目〔claude無金鑰者、codex、antigravity〕用量達門檻、或額度帳(store.quota)記載重置前亦同形(另帶source 'usage-api'／'ledger'; 見subQuotaGate.mjs);
 //                      2026-11-15起(Gitea #156)CLI類之dispatchOpencode於主要請求之免費池用盡(`Free usage limit reached`)時亦回此類(樹狀終止子行程後, 帶failureKind 'no-credit'、failureDetail;
-//                      error保留execCli原生形狀加分類, 如`Exit code 1 [Free usage limit]: …`; 由dispatchOpencode直接給定, 非本函數推導; 見其檔頭【免費池用盡與免費層429】)
+//                      error保留execCli原生形狀加分類, 如`Exit code 1 [Free usage limit]: …`; 由dispatchOpencode直接給定, 非本函數推導; 見其檔頭【免費池用盡與免費層429】);
+//                      2026-11-16起(Gitea #158)訂閱(opencode-go)到頂(`OpenCode Go usage limit reached`)時同形(分類詞`[Go usage limit]`, 另帶limitScope 'key'與可解析時之limitWindow／limitResetsInMs／limitUntil)
 //   'budget'           時間預算用盡(僅dispatchAiFallback)
 //
 // 【failureKind: 與errorType並存之另一欄位(2026-10-25 dispatch-run01)】errorType只機械分「http/exec/fetch…」, 同為HTTP 400就分不出「沒額度」與「脈絡過長」,

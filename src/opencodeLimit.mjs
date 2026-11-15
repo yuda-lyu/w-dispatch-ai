@@ -18,10 +18,20 @@ import { maskDiag } from './failureDiag.mjs'
 //
 // 【判準(classifyLimitLine)】去ANSI色碼與行尾CR後, 以頂層key=value解析(parseLogFields; 引號內之文字不當成欄位——外審terra #16: message內含`agent=build`者不得被誤取):
 //   ①level為ERROR; ②有agent欄且其值不為title(附帶請求); ③mode欄若存在須為primary(子agent〔mode=subagent等〕之錯誤列不代表主要請求; 實際列皆為mode=primary, 外審terra #17);
-//   ④providerID為opencode(免費池與免費層之供應商; 訂閱opencode-go到頂之字樣與行為無實例, 不臆測、不判); ⑤原因(error.error, 其次error、message)含`Free usage limit reached`為'quota'
+//   ④providerID為opencode(免費池與免費層之供應商; 訂閱opencode-go另依下段【訂閱(opencode-go)到頂】只認其專屬字樣); ⑤原因(error.error, 其次error、message)含`Free usage limit reached`為'quota'
 //   (該字樣本身即免費池), 含`Rate limit exceeded`且modelID以`-free`結尾者為'rate-limit'——本機日誌之429列皆為`-free`免費模型, 同provider之按量模型遇429時opencode是否同樣不結束
 //   (或會自行退避重試)無實例, 不臆測而不判(外審terra #18; 無`-free`後綴之免費模型如big-pickle之429因而不涵蓋, 退回修前)。
 //   其餘(含舊版非key=value格式之日誌列)一律不判, 退回修前行為(等到逾時)——安全方向。
+//
+// 【訂閱(opencode-go)到頂(2026-11-16 wda158, Gitea #158; 使用端以真實CLI實測: opencode 1.19.5、opencode-go/deepseek-v4.1-flash、週視窗打到100%; 帳本R-OCLIMIT-2)】錯誤列(工作區代號以<…>代替):
+//     … level=ERROR … message="stream error" providerID=opencode-go modelID=deepseek-v4.1-flash … small=false agent=build mode=primary error.error="AI_APICallError: OpenCode Go usage limit reached (weekly, resets in 5h 3m). To keep going now, turn on Extra Usage or upgrade to Go Plus at https://opencode.ai/console/<工作區代號>/go."
+//   新開之session另有標題用小模型之列(small=true agent=title, error.error="AI_RetryError: Failed after 3 attempts. Last error: OpenCode Go usage limit reached (…)")——附帶請求, 不算。
+//   行為同免費池用盡: run不結束、不重試、不再輸出(實測: 到頂當下進行中之3個請求、到頂後另起之2次極小請求、以及一個工作到第16步之agent, 皆無後續輸出;
+//   前5者等滿240秒逾時, 後者10分鐘無紀錄後由使用端終止)。帶`--print-logs --log-level ERROR`者該列約25秒出現於stderr; 不帶者stdout為空、stderr只有session標頭。
+//   判準(④之延伸; ①②③沿用): providerID為opencode-go且原因含`OpenCode Go usage limit reached`(不分大小寫)為'quota', 回傳另帶scope 'key'(額度綁該金鑰所屬之訂閱——與免費池用盡「與金鑰無關」不同,
+//   換一把已訂閱之金鑰可能可用; 遞補層據此走「該把沒額度 → 換組內下一把」, 見dispatchAiFallback檔頭【轉接器回報之額度用盡】), 以及可解析時之window(括號內之視窗名, 實例為weekly)與
+//   resetsInMs(`resets in 5h 3m`; parseGoLimit)。其他視窗(5小時、月)之字樣無實例: 不以視窗名為判準, 括號內解析不到只是不帶該兩欄, 判定不依賴解析。
+//   opencode-go之429與免費池字樣、providerID為opencode而出現訂閱字樣者仍不判(無實例, 不臆測)。
 // 【逐行】stderr以區塊送達, 錯誤列可能跨兩個區塊: 只判斷已收到換行之完整行; 超過LINE_MAX字元之行不論是否跨區塊一律捨棄、不判(外審terra #9: 判定不隨區塊切法而異)。
 //   每次嘗試(spawn)重置; 每次嘗試至多觸發一次。另保留本次嘗試之ERROR列(至多KEEP_LINES行、每行至多KEEP_LINE_MAX字元)供失敗時擷取上游原因(upstreamFromLines)。
 
@@ -31,8 +41,17 @@ let RE_QUOTA = /Free usage limit reached/i
 let RE_RATE = /Rate limit exceeded/i
 let RE_FREE_MODEL = /-free$/ //429之即時終止只認免費模型(見檔頭⑤)
 
+//訂閱到頂之專屬字樣(見檔頭【訂閱(opencode-go)到頂】)
+let RE_GO_LIMIT = /OpenCode Go usage limit reached/i
+
 //供應商: 免費池與免費層之provider id(訂閱opencode-go不在此列)
 let LIMIT_PROVIDER = 'opencode'
+
+//供應商: 訂閱(OpenCode Go)之provider id——只認訂閱到頂之專屬字樣
+let GO_PROVIDER = 'opencode-go'
+
+//訂閱到頂字樣內「resets in …」之時間單位(毫秒)
+let GO_RESET_UNIT = { d: 86400000, h: 3600000, m: 60000, s: 1000 }
 
 //未完之行之保留上限、保留ERROR列之行數與每行字元上限
 let LINE_MAX = 64 * 1024
@@ -122,10 +141,49 @@ function cleanLine(raw) {
 
 
 /**
- * 判讀一行opencode日誌列是否為主要請求之免費池用盡或免費層429(判準見檔頭)
+ * 由訂閱到頂之原因文字解析視窗名與重置所餘時間：`… usage limit reached (weekly, resets in 5h 3m). …` → { window: 'weekly', resetsInMs: 18180000 }；
+ * 括號內不合此形狀者回空物件，時間部分有任一詞不是「整數+d／h／m／s」者只回window(不臆測其他寫法)
+ *
+ * @param {String} text 輸入原因文字
+ * @returns {Object} 回傳{ window(小寫視窗名), resetsInMs(正整數毫秒) }，解析不到之欄不帶
+ * @example
+ *
+ * import { parseGoLimit } from './src/opencodeLimit.mjs'
+ *
+ * console.log(parseGoLimit('AI_APICallError: OpenCode Go usage limit reached (weekly, resets in 5h 3m). To keep going now, …'))
+ * // => { window: 'weekly', resetsInMs: 18180000 }
+ *
+ */
+function parseGoLimit(text) {
+    let o = {}
+    //以完整之專屬字樣錨定其後之括號(字樣之後無括號者不得取到文字內他處之「usage limit reached (…)」; 外審terra #5)
+    let m = /OpenCode Go usage limit reached\s*\(\s*([A-Za-z0-9][A-Za-z0-9 _-]{0,30}?)\s*,\s*resets in ([^)]{1,40})\)/i.exec(isestr(text) ? text : '')
+    if (!m) {
+        return o
+    }
+    o.window = maskDiag(m[1], []).toLowerCase() //視窗名亦屬診斷輸出, 同failureDetail經遮罩(含工作區代號樣式; 外審terra #7)
+    let ms = 0
+    let ok = true
+    for (let tok of m[2].trim().split(/\s+/)) {
+        let t = /^(\d{1,6})([dhms])$/i.exec(tok)
+        if (!t) {
+            ok = false
+            break
+        }
+        ms += Number(t[1]) * GO_RESET_UNIT[t[2].toLowerCase()]
+    }
+    if (ok && ms > 0) {
+        o.resetsInMs = ms
+    }
+    return o
+}
+
+
+/**
+ * 判讀一行opencode日誌列是否為主要請求之免費池用盡、免費層429或訂閱(opencode-go)到頂(判準見檔頭)
  *
  * @param {String} raw 輸入一行文字(可含ANSI色碼與行尾CR)
- * @returns {Object|null} 回傳{ kind('quota'或'rate-limit'), text(原因原文), agent, providerID, modelID }；不符者回傳null
+ * @returns {Object|null} 回傳{ kind('quota'或'rate-limit'), text(原因原文), agent, providerID, modelID }，訂閱到頂者另帶scope('key')與可解析時之window、resetsInMs；不符者回傳null
  * @example
  *
  * import { classifyLimitLine } from './src/opencodeLimit.mjs'
@@ -154,11 +212,18 @@ function classifyLimitLine(raw) {
         return null
     }
     let providerID = f.providerID || ''
-    if (providerID !== LIMIT_PROVIDER) {
+    if (providerID !== LIMIT_PROVIDER && providerID !== GO_PROVIDER) {
         return null
     }
     let modelID = f.modelID || ''
     let text = reasonOf(f)
+    if (providerID === GO_PROVIDER) {
+        //訂閱: 只認訂閱到頂之專屬字樣(免費池字樣與429於訂閱之行為無實例, 不判)
+        if (!RE_GO_LIMIT.test(text)) {
+            return null
+        }
+        return { kind: 'quota', text, agent, providerID, modelID, scope: 'key', ...parseGoLimit(text) }
+    }
     let kind = ''
     if (RE_QUOTA.test(text)) {
         kind = 'quota'
@@ -356,4 +421,4 @@ function upstreamFromLines(lines, q = {}) {
 }
 
 
-export { LIMIT_PROVIDER, LINE_MAX, KEEP_LINES, parseLogFields, classifyLimitLine, printLogsOn, logFlagsToAdd, createLimitWatch, upstreamFromLines }
+export { LIMIT_PROVIDER, GO_PROVIDER, LINE_MAX, KEEP_LINES, parseLogFields, parseGoLimit, classifyLimitLine, printLogsOn, logFlagsToAdd, createLimitWatch, upstreamFromLines }
