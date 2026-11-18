@@ -404,6 +404,14 @@
 //     單價0者(cost.text.input／output皆0)共12個(含big-pickle), 目錄免費池之8個oc:opencode/*皆仍在清單內;
 //     未收者4個——longcat-2.5-free(新)、iceman-free、inkling-2-small-free、minimax-m3.1-flash-free(2026-10-30自目錄移除後重現於清單): 皆未做R-OCFREE-2②實測, 不收。
 //     以`/zen/v1/models`單價欄位核對, 未跑filterOpencodeFree; oc:／zen:條目零增刪、零改動。
+//   2026-11-18之漂移(opencode 1.19.5; 主控任務20261118202733之wda530; 起因: 連網守門test/api-providersOpencodeFree.test.mjs於全庫連動跟跑轉紅):
+//     移除oc:opencode/glm-5.3-flash-free: 當日重查(`opencode models opencode --refresh`列11個, 無此id; `filterOpencodeFree(providers, { refresh: true })`回removed恰此1條,
+//     available為其餘7個oc:opencode/*——big-pickle、mimo-v2.6-flash-free、beam-free、deepseek-v4.1-flash-free、flint-40b-free、nemotron-3.5-lightning-free、nemotron-3.5-super-vl-free皆仍在清單內;
+//     依條目欄位以dispatchOpencode呼叫2次[匿名、variant high、OC_READONLY], 皆3.0~5.2s即回Exit code 1之UnknownError「Unexpected server error」; 直呼`opencode run -m opencode/glm-5.3-flash-free`亦同)——
+//     「已自CLI清單消失」與「依條目呼叫數秒內即回UnknownError」兩條件同時滿足(同先例)。內建providers 38 → 37條(oc:opencode/*由8 → 7條); 其餘條目內容與排序零改動。
+//     不受影響: 付費Go路徑之同名ocgo:opencode-go/glm-5.3-flash(不同供應商、不同金鑰變數, 不在本案)。
+//     清單有列而目錄未收者4個(opencode/hy4-flash-free、iceman-free、inkling-2-small-free、longcat-2.5-free): 皆未做R-OCFREE-2②實測, 不收(其中iceman-free、inkling-2-small-free、longcat-2.5-free同11-10紀錄之未收者; hy4-flash-free未見於11-10紀錄、為本輪`filterOpencodeFree`之uncatalogued, 未做任何實測; 11-10紀錄之minimax-m3.1-flash-free本輪CLI清單已不列)。
+//     日後免費變體重新上架且實測可通時, 依收錄檢核重收即可。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
@@ -585,7 +593,8 @@ let providers = [
         //「maximum context length is 1048576 tokens」——與型錄一致, 故不覆寫limit。opencode每次自帶約3.2萬token之系統提示。
         //證據: opensrcOper dhist/20261023185913
     },
-    //以下兩條2026-10-18新增(使用者指示): 官方文件〈Models〉〈Pricing〉皆列Free(另有同名付費版deepseek-v4.1-flash、glm-5.3-flash,
+    //以下兩條2026-10-18新增(使用者指示; 其中glm-5.3-flash-free已於2026-11-18下架並移除, 見下方與檔頭漂移紀錄, 現僅存deepseek-v4.1-flash-free):
+    //官方文件〈Models〉〈Pricing〉皆列Free(另有同名付費版deepseek-v4.1-flash、glm-5.3-flash,
     //id不帶-free, 未收)、端點/chat/completions, CLI清單(--refresh)有; REST不收zen:版——同日匿名與第1把金鑰各2次皆403 FreeTierError。
     //官方說明皆為限時免費、供應商零保留且不以資料訓練。匿名CLI實測皆以opencode 1.19.3、variant high
     {
@@ -608,22 +617,8 @@ let providers = [
         //provider.opencode.models['deepseek-v4.1-flash-free'].limit.context(上限勿超過約230000, 須留輸出空間);
         //本條目不覆寫(維持型錄值, 免伺服器日後下調時由壓縮變為溢出錯誤)。證據: opensrcOper dhist/20261019203639
     },
-    {
-        id: 'oc:opencode/glm-5.3-flash-free',
-        model: 'opencode/glm-5.3-flash-free',
-        kind: 'opencode',
-        provider: 'opencode',
-        useStoredAuth: false,
-        config: {
-            permission: OC_READONLY,
-        },
-        extraArgs: OC_EFFORT,
-        //CLI目錄release_date 2026-08-26; 推理模型, context 200000、輸出上限32000、可輸入圖片/影片/PDF; 檔位low/high/max。
-        //實測: 簡答9.5~20.6s、推理題14.3s答對、讀檔10.2~22.0s正確、寫檔金絲雀97.8s被OC_READONLY擋下未落地。
-        //【注意: 上游不穩】同日共10次中4次於75~81s後失敗(stderr: Upstream request failed: Endpoint is unavailable, exec失敗),
-        //屬暫時失敗故仍收錄(依檔頭之保留哲學), 並排在opencode免費條目後段(其後僅nemotron三條); 全取者遇此每次約多耗80s才換家
-    },
-    //flint-40b-free(2026-10-30新增, 見檔頭漂移紀錄): 置於上游不穩之glm之後、額度少且慢之nemotron兩條之前。
+    //(oc:opencode/glm-5.3-flash-free已於2026-11-18下架並移除, 見檔頭漂移紀錄; 付費Go路徑之同名ocgo:opencode-go/glm-5.3-flash不受影響)
+    //flint-40b-free(2026-10-30新增, 見檔頭漂移紀錄): 置於deepseek-v4.1-flash-free之後、額度少且慢之nemotron兩條之前(2026-11-18前原置於上游不穩之glm之後)。
     //官方說明未查(本輪未讀官方文件, 以CLI目錄與實測為準); CLI目錄(`opencode models opencode --verbose`, opencode 1.19.5)有, status active、cost全0、
     //release_date 2026-10-21; 推理模型(capabilities.reasoning)、context 262144、輸出上限65536、僅文字輸入(無圖片/影片/PDF); 檔位low/medium/high/xhigh/max(有high)。
     //匿名CLI實測(2026-10-30, opencode 1.19.5、variant high、OC_READONLY): 簡答6.2s與5.1s(皆回「完成」)、推理題9.5s答對(variant low 6.8s亦答對, 兩檔位推理token皆為0、
@@ -770,7 +765,8 @@ let providers = [
         //〔本機實測〕本條為本輪唯一一次付費簡答(variant high、OC_READONLY): 36.7s成功、回「完成」; 前後各查一次用量端點, rolling 10%→11%、weekly 4%、monthly 2%不變——
         //單次簡答不足以令整數百分比變動, 此+1%來自同時段該工作區其他使用(他人亦在用), 無法歸因於這1次, 故「用量計入」未能由此證明。推理題／read／寫檔金絲雀／脈絡長度皆未測。
         //〔提出端〕簡答9.5s成功; 提出端另報首臂以本條跑提煉流程時起草棒逾時600s與輸出驗證失敗(模型速度與格式問題, 非額度)——本機單次簡答36.7s亦明顯慢於提出端之9.5s, 呼叫端宜給足timeoutMs。
-        //同名免費版oc:opencode/glm-5.3-flash-free有上游不穩之紀錄(見該條), 本條為付費Go路徑, 是否同樣不穩未測。
+        //同名免費版oc:opencode/glm-5.3-flash-free曾有上游不穩之紀錄(同日10次中4次於75~81s後失敗), 且已於2026-11-18自CLI清單消失而自目錄移除(見檔頭漂移紀錄);
+        //本條為付費Go路徑(不同供應商), 是否同樣不穩未測, 且不受該免費版下架影響。
     },
     {
         id: 'ocgo:opencode-go/mimo-v2.6-flash',

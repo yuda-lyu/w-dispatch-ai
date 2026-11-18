@@ -135,3 +135,10 @@
 - **真時間案的預算要留裕度(外審 terra #13)**:`budgetMs` 太小時,排程停頓超過「預算 − minAttemptMs」就會在嘗試前直接 `budget-out`,不會有預期之 `budget-cut`。417／421 的真時間案預算取 1.5～3 秒(容忍停頓至 1.4～2.7 秒);「呼叫端略早於遞補層」之判別案,`minAttemptMs` 取大(600)使「整鏈已用盡」在取時差 < 500ms 內皆成立,誤標記才會紅。
 - **「只加欄位」以鍵集合釘住**:既有事件鍵集合用 `Object.keys().sort()` 斷言 = 既有欄位 + `renewed`,比逐一比對值更能抓到誤刪或改名;`error`、`keyId` 這類不決定的值另取型別。
 - **變異驗證用副本 + 單一鎖**:`tmp/d417/mutate.mjs` 複製 src 與要跑的測試到 `tmp/d417/mut`,逐一套用變異跑 mocha(20 個約 8 分鐘,經 `quiet-run --lock` 一次包住),repo 不受影響;單一變異重跑加 `--only=<名稱前綴>`。
+
+## 連網守門紅燈:下架 `oc:opencode/glm-5.3-flash-free`(2026-11-18 wda530;帳本 `rulebook_opencodefree.md` R-OCFREE-2①⑤)
+
+- **處置次序**:①`opencode models opencode --refresh` 看清單有無該 id,並以 `filterOpencodeFree(providers, { refresh: true })` 之 `removed`／`uncatalogued` 核對其餘條目(本次 `removed` 恰 1 條、`uncatalogued` 4 個);②依條目欄位以 `dispatchOpencode` 呼叫 2 次並直呼 `opencode run -m <model>` 1 次,取失敗形狀與耗時(本次 3.0～5.2 秒、離開碼 1、`UnknownError`「Unexpected server error」;先例記「約 2 秒」,實務上數秒內即回,判準看「清單消失＋呼叫即回 UnknownError」兩條件而非精確秒數);③再改碼。
+- **下架一條 `oc:opencode/*` 條目要同步之站點**(`Grep "(^|[^0-9.])N([^0-9.]|$)"` 於 `src`／`test`／`README.md`／`sgud` 配合 `Grep "<id>"` 盤點;ripgrep 預設不支援 look-around,數字邊界要用 `(^|[^0-9.])N([^0-9.]|$)`):`providers.mjs` 之條目區塊與鄰近註解(「以下兩條」群註解、被移除條目前後之位置註解、同名付費條目之註解)＋檔頭漂移紀錄;`resolveProviders.mjs` JSDoc 範例條數;README「量級感受」(條數 N×300s、3 階段×3,兩組條數都要重算)＋行為變更新增一條;測試端釘死條數之三處(`unit-providersOpencodeFreeEntries` 之 pulse 條數案與順序案、`unit-providersOpencodeGoDocs` 之條數案、`unit-providersOpencodeGoEntries` 之共 N 條案);sgud 之現況敘述.**歷史敘述不改**(README 舊行為變更條、檔頭舊漂移紀錄、`unit-providersHydrogenDocs` 之「37 → 38」皆是當時事實).
+- **修前紅取證**:`git archive HEAD src README.md test package.json | tar -x -C ./tmp/<案>/head`,再把改過之測試檔覆蓋進 `./tmp/<案>/head/test/` 跑(node 自 `tmp/` 往上解析得 repo 之 `node_modules`,不必連結或另裝);本次 9 案紅、修後全綠.
+- **`unit-filterOpencodeFree` 之合成條目沿用已下架 id 為夾具**(`oc('glm-5.3-flash-free')` 與其 `opencode models` 輸出樣本):該檔以注入之 `query` 與自備目錄測過濾邏輯(僅「預設目錄」一案動態取內建目錄之免費條目,不釘 id),不依賴內建目錄收錄該條,故不動;日後 Grep 該 id 見此處命中屬預期。
