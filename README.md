@@ -358,6 +358,9 @@ await test()
 **未發布（上游下架對齊，2026-11-18；`oc:` 免費條目與 `opencode models` 不一致，連網守門 `test/api-providersOpencodeFree.test.mjs` 紅燈。**含條目移除**：指名該 id 者見下）**：
 76. ①**移除內建條目 `oc:opencode/glm-5.3-flash-free`**（第 37 條 2026-10-18 所增）：2026-11-18 `opencode models opencode --refresh`（opencode 1.19.5）列 11 個，已無此 id（`filterOpencodeFree(providers, { refresh: true })` 回 `removed` 恰此 1 條，其餘 7 個 `oc:opencode/*` 皆仍在清單內）；依條目欄位（匿名、`--variant high`、唯讀鎖）呼叫 2 次皆 3.0～5.2 秒即回離開碼 1 之 `UnknownError`「Unexpected server error」，直呼 `opencode run -m opencode/glm-5.3-flash-free` 亦同——「已自 CLI 清單消失」與「依條目呼叫數秒內即回 `UnknownError`」兩條件同時滿足（同 `providers.mjs` 檔頭先例），依帳本 R-OCFREE-1／R-OCFREE-2 自目錄移除。內建 providers 38 → 37 條（`oc:opencode/*` 由 8 → 7 條；其餘條目內容與順序不變；付費 Go 路徑之同名 `ocgo:opencode-go/glm-5.3-flash` 為不同供應商，不受影響）。②**升版後的行為變化**：`resolveProviders` 的 `pick` 指名 `oc:opencode/glm-5.3-flash-free` 者，該 id 列入 `missing`（不拋錯、附拼寫提示 `hints`）；`patch` 指名此 id 者靜默無作用；全取者遞補鏈少 1 條（此條無 `envVar`，故 `providers.length` 不論 `.env` 內容皆少 1）；已以 `extraProviders` 自帶同名條目者不受影響（可否呼叫以上游為準，目前已不在清單）；下游若自備免費名單（如評比工具之預設免費模型清單），請同步剔除。③`providers.mjs` 檔頭新增 2026-11-18 漂移紀錄。內建條目共 37 條。
 
+**未發布（wsemi 1.9.69 之下游配合；金鑰型 opt 收嚴。**含行為變更**：`key`／`keys` 給了而無效即拒絕）**：
+77. ①**金鑰型 opt「給了而無效」即以 `params` 拒絕，不再靜默改走另一種計費**（金鑰屬影響計費之 opt）：修前 `key`／`keys` 給了非字串（數字、物件、陣列、`String` 包裝物件、已撤銷之 `Proxy` 等）而濾後無有效字串時，視同未給——`claude` 條目起一個不帶 `ANTHROPIC_API_KEY` 之子進程（改走登入態／訂閱，或繼承之環境值），REST 條目送出不帶認證標頭之請求；現改為**該條目回 `errorType: 'params'`、`attempts: 0`，不起子進程、不送請求**（`dispatchAiFallback` 對該條目整組跳過、續試下一組；用量查詢亦不起）。判定：`key`——`undefined`、`null`、`''` 視為未給（登入態／預設認證），非空原始字串有效，其餘為給了而無效；`keys`——`undefined`、`null`、`[]` 視為未給，陣列內之 `''`、`null`、`undefined` 元素略過，**含有效字串者無效元素照舊略過（混合不拒絕）**，**非陣列之定義值（含字串 `'sk-…'`、`''`）、不可讀之陣列、含「非空且非原始字串」之元素而濾後無有效字串者**為給了而無效。適用 `dispatchClaude`、`dispatchOpencode`、`dispatchApiOpenaiCompat`／`Responses`／`Anthropic`／`TypesafeSystemone` 之 `key` 與 `dispatchAiFallback` 條目之 `keys`／`key`（`codex`、`antigravity` 無金鑰概念，不受影響；有 `keys` 時各把金鑰覆寫 `opt.key`，故不判 `opt.key`）；錯誤訊息只寫型別與個數，不回顯值。**依賴「給了無效金鑰即沿用登入態」者請改為不給該欄**（缺環境變數時傳 `undefined`／`null`／`''` 或 `[]` 皆仍為未給）。②**呼叫端給之物件／陣列不可讀（已撤銷之 `Proxy`、`Symbol.toStringTag` 或 `ownKeys` 陷阱拋錯）之偵測改為本套件內部之可讀性探針**，不再借 wsemi 判斷函數（`isobj`、`isarr` 等）對敵意輸入拋錯來成立防線——wsemi 1.9.69 起判斷函數對任何輸入皆不拋錯而回 `false`，修前依賴其拋錯之站點（`env`／`headers`／`body`／`questions`／`config`／providers 條目與陣列／`spec.fallback`／工作流規格／`store.get()` 之回傳狀態等）於 1.9.69 下把不可讀之輸入當成「非物件」而放行或靜默略過（含 1 案實際 reject）；現一律以 `params` 回報（`store.get()` 回傳不可讀者本次以全新狀態執行且不回寫；函數型之已撤銷 `Proxy` 亦視為不可讀）；同步函數 `resolveProviders`／`resolveCatalogue`／`createAiCaller` 之不可讀 `env`／`pick`／`exes`／`patch`／`catalogue`／`providers` 等**同步 throw** `<名稱> is not readable: …`（修前亦 throw；1.9.69 下曾靜默改用 `process.env`、全取），`filterOpencodeFree` 之不可讀 `env` 回 `params`；以上不可讀之輸入皆不再被當成「非物件／未給」而放行（失敗通道與 wsemi 1.9.68 以前相同；`filterOpencodeFree` 原為 `other`、改為更明確之 `params`）。**`keys` 陣列元素數上限 10000**（超過視為給了而無效）。③`opencode` 之 `extraArgs` 內 `String` 包裝物件旗標視同非字串元素略過（`--print-logs`／`--log-level` 之判定與 `getCliArgs` 一致）；`prompt`／`task` 為 `String` 包裝物件者照舊取其原始字串（轉型取文字，不改）。
+
 #### Options shared by all dispatch functions:
 | key | type | default | description |
 | --- | --- | --- | --- |
@@ -375,7 +378,7 @@ await test()
 #### Options only for dispatchOpencode:
 | key | type | default | description |
 | --- | --- | --- | --- |
-| `key` | String | `''` | 該provider之API key，須與`provider`同時給予才會以`OPENCODE_AUTH_CONTENT`注入 |
+| `key` | String | `''` | 該provider之API key，須與`provider`同時給予才會以`OPENCODE_AUTH_CONTENT`注入；未給（`undefined`、`null`、`''`）沿用登入狀態，**給了非字串之值＝`params`拒絕、不起子進程**（不靜默改沿用`auth.json`） |
 | `provider` | String | `''` | `key`所屬provider名稱，須與`model`為同一組 |
 | `useStoredAuth` | Boolean | `true` | 未注入金鑰時是否沿用本機`auth.json`之登入。`false`代表以空憑證（`OPENCODE_AUTH_CONTENT='{}'`）匿名存取，用於opencode免費模型，避免結果隨本機登入帳號而異（登入帳號之工作區未開該模型時會回`Model is disabled`）；已同時給`key`與`provider`時不作用 |
 | `config` | Object\|String | `null` | opencode設定內容，將以`OPENCODE_CONFIG_CONTENT`注入，供補上第三方provider之定義 |
@@ -389,7 +392,7 @@ await test()
 #### Options only for dispatchClaude:
 | key | type | default | description |
 | --- | --- | --- | --- |
-| `key` | String | `''` | Anthropic Console之API金鑰（`sk-ant-…`）。**給予有效字串即以API金鑰計費**（與Claude訂閱額度分開計費）：只在**該次子進程**之環境設`ANTHROPIC_API_KEY`（不寫入`process.env`、不進命令列），並自該子進程環境移除會優先於它或與之衝突之憑證變數（`ANTHROPIC_AUTH_TOKEN`、`CLAUDE_CODE_USE_BEDROCK`／`VERTEX`／`FOUNDRY`／`MANTLE`／`ANTHROPIC_AWS`、`CLAUDE_CODE_OAUTH_TOKEN`、`ANTHROPIC_PROFILE`、`ANTHROPIC_FEDERATION_RULE_ID`；`opt.env`中同名者亦移除），**另移除繼承自`process.env`之父Claude Code session連結變數**（前綴`CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_`與`CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`；保留`CLAUDE_CODE_GIT_BASH_PATH`；`opt.env`明確傳入者保留，見下方「在 Claude Code 工作階段內呼叫時」），結果之`stdout`／`stderr`／`error`與`onStdout`／`onStderr`回調收到之文字遮蔽該key（`stderr`／`error`／stderr 回調與失敗之`stdout`另遮蔽`sk-ant-`樣式）；key 含 NUL 字元回`INVALID_KEY`。未給或非有效字串＝沿用登入態，行為與無此參數時完全相同。經`dispatchAiFallback`時由條目之`keys`逐把注入（`claude-api:`條目）。詳見下方「Claude以API金鑰計費」 |
+| `key` | String | `''` | Anthropic Console之API金鑰（`sk-ant-…`）。**給予有效字串即以API金鑰計費**（與Claude訂閱額度分開計費）：只在**該次子進程**之環境設`ANTHROPIC_API_KEY`（不寫入`process.env`、不進命令列），並自該子進程環境移除會優先於它或與之衝突之憑證變數（`ANTHROPIC_AUTH_TOKEN`、`CLAUDE_CODE_USE_BEDROCK`／`VERTEX`／`FOUNDRY`／`MANTLE`／`ANTHROPIC_AWS`、`CLAUDE_CODE_OAUTH_TOKEN`、`ANTHROPIC_PROFILE`、`ANTHROPIC_FEDERATION_RULE_ID`；`opt.env`中同名者亦移除），**另移除繼承自`process.env`之父Claude Code session連結變數**（前綴`CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_`與`CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`；保留`CLAUDE_CODE_GIT_BASH_PATH`；`opt.env`明確傳入者保留，見下方「在 Claude Code 工作階段內呼叫時」），結果之`stdout`／`stderr`／`error`與`onStdout`／`onStderr`回調收到之文字遮蔽該key（`stderr`／`error`／stderr 回調與失敗之`stdout`另遮蔽`sk-ant-`樣式）；key 含 NUL 字元回`INVALID_KEY`。未給（`undefined`、`null`、`''`）＝沿用登入態，行為與無此參數時完全相同；**給了而無效（非字串：數字、物件、陣列、`String`包裝物件、已撤銷之`Proxy`等）＝`params`拒絕、不起子進程**（不靜默改走登入態或繼承之環境金鑰；未發布，見行為變更紀錄第77項）。經`dispatchAiFallback`時由條目之`keys`逐把注入（`claude-api:`條目）。詳見下方「Claude以API金鑰計費」 |
 | `crossCheck`／`fetch`／`crossCheckBaseURL`／`crossCheckModel` | Boolean／Function／String／String | `true`／全域`fetch`／`https://api.anthropic.com`／`claude-haiku-5-5` | **「沒額度」交叉確認**（僅 API 金鑰在場時有意義：`key`有效，或不建議的`opt.env.ANTHROPIC_API_KEY`）：CLI 失敗且字樣判為沒額度（`failureKind: 'no-credit'`）時，以同一把金鑰對 REST 送極小請求（`max_tokens: 1`）確認——REST 亦沒額度才判`no-credit`；REST 成功判`env-error`（呼叫方式或環境錯誤，**不得當成沒額度**）；其餘結果判`other`。`crossCheck: false`＝只憑 CLI 字樣（誤判風險自負）；`fetch`可注入（測試不發真實請求）。失敗結果另帶`failureKind`、`failureDetail`、`crossCheck`（`{ done, restKind, restStatus }`）；成功結果與訂閱路徑不帶。詳見下方「失敗細分類 `failureKind`」 |
 | `skipPermissions` | Boolean | `true` | 是否帶`--dangerously-skip-permissions`旗標，`false`代表保留CLI權限閘門（見上方Security說明）。`extraArgs` **勿帶 `--bare`**：bare 模式不讀 OAuth 登入會直接認證失敗，且官方預告 `--bare` 將成為 `-p` 之預設（屆時訂閱條目會一併失效，見 `dispatchClaude.mjs` 檔頭）；帶 `--restricted` 時本欄須為 `false`（restricted 拒絕 bypassPermissions，2026-09-23 實測同時帶即報錯） |
 
@@ -456,7 +459,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | --- | --- | --- | --- |
 | `baseURL` | String | 必填 | API基底網址，將於尾端接上`/chat/completions` |
 | `model` | String | 必填 | 模型ID（Console 之模型名不帶`opencode/`前綴） |
-| `key` | String | `''` | API key，以`Bearer`置於`Authorization`標頭，省略代表不帶認證 |
+| `key` | String | `''` | API key，以`Bearer`置於`Authorization`標頭，省略（`undefined`、`null`、`''`）代表不帶認證；**給了非字串之值＝`params`拒絕、不送請求**（不靜默改送不帶認證之請求） |
 | `system` | String | `''` | system提示詞，置於messages首位 |
 | `body` | Object | `{}` | 額外請求本體（`temperature`、`max_tokens`、`response_format`等），同名鍵覆寫預設 |
 | `headers` | Object | `{}` | 額外請求標頭，同名鍵覆寫預設。**預設帶 `Accept-Encoding: identity`**：伺服器若壓縮了回應卻漏標 `Content-Encoding`，Node 內建 fetch 不會解壓，本轉接器只拿到亂碼而回 `INVALID_RESPONSE`（三個 REST 轉接器同步）。重現條件：安裝方 2026-09-24 於 Zen 長回應（約 35 秒）實測，fetch 所見標頭為 0 個、本體 9,224 bytes 為 brotli，改帶 identity 則為 22,124 bytes 之 JSON；本機同日取樣 7 次未重現，推測漏標只在特定條件（長回應）出現。要改回允許壓縮可給 `{ 'Accept-Encoding': 'gzip, deflate, br' }` |
@@ -493,7 +496,7 @@ Codex 0.149 起 Windows 預設走 elevated 沙箱（專用使用者 `CodexSandbo
 | key | type | default | description |
 | --- | --- | --- | --- |
 | `model` | String | 必填 | 模型ID，如`claude-opus-5-5`、`claude-sonnet-5-5`、`claude-haiku-5-5`（完整ID，不加日期後綴） |
-| `key` | String | `''` | API金鑰（`sk-ant-…`，`.env`慣用`ANTHROPIC_KEYS`），置於`x-api-key`標頭，省略代表不帶（直連官方端點會401） |
+| `key` | String | `''` | API金鑰（`sk-ant-…`，`.env`慣用`ANTHROPIC_KEYS`），置於`x-api-key`標頭，省略（`undefined`、`null`、`''`）代表不帶（直連官方端點會401）；**給了非字串之值＝`params`拒絕、不送請求** |
 | `baseURL` | String | `https://api.anthropic.com` | 基底網址（不含`/v1`，尾端`/v1`會被去除），將接上`/v1/messages` |
 | `system` | String | `''` | system提示詞，置於頂層`system`欄位 |
 | `effort` | String | `''` | `low`／`medium`／`high`／`xhigh`／`max`，以`output_config.effort`送出；其他值視為未給。未給時API依模型預設（Opus 5.5與Haiku 5.5為`medium`、Sonnet 5.5為`high`），內建`anthropic:`條目明給`high` |
@@ -638,7 +641,7 @@ console.log(r.results[0])
 
 **金鑰不外洩的範圍與已知限制**：key 只置於該次子進程環境（CLI）或`x-api-key`標頭（REST）；回傳物件（`stdout`／`stderr`／`error`）、`tried`、事件、`FETCH_ERROR`訊息、HTTP 錯誤本體、非 JSON 診斷之回應標頭值、呼叫端`validate`之例外訊息、啟動前 params 錯誤之外來例外訊息一律遮蔽 key 本身，並遮蔽`sk-ant-`樣式（殘段與他把金鑰）；成功之`stdout`為模型輸出，只遮蔽 key 本身（REST 為本次全部機密標頭值），不動合法出現的`sk-ant-…`範例字樣。**CLI 之`onStdout`／`onStderr`回調**（例如把串流寫入`stdout.log`）在 key 模式下收到的是已遮蔽文字：key 被切在兩塊之間以「尾端保留」處理，故尾端可能晚一塊、於結束時補送（stdout 回調只遮蔽 key，stderr 回調另遮蔽`sk-ant-`樣式）。**不在遮蔽範圍／已知限制**：`validate`函數收到的是未遮蔽之原始輸出（它需要原文判斷）；長度不足 6 字元之 key 不遮蔽；`usage`、`finishReason`為伺服器回傳值原樣透傳；CLI 子進程（模型）自身若能讀取其環境（如以 Read 工具讀`/proc/self/environ`，Windows 無此檔）則可能在其輸出中帶出 key，輸出經上述遮蔽不會回到呼叫端，但 CLI 自己的 session 紀錄（`~/.claude/projects`）可能含該輸出——唯讀白名單（`--tools Read,Glob,Grep`）下風險限於讀檔類工具。另：key 含 NUL 字元時 CLI 回`INVALID_KEY`（`errorType: 'exec'`，遞補層換下一把）。
 
-**計費來源的無聲切換（已知限制，不修）**：`dispatchAiFallback`／`resolveProviders` 既有契約是「條目沒有有效`keys`＝沿用登入態」（`keys: []`、全為無效元素，或`resolveProviders`之`patch`把`keys`設空）。內建`claude-api:`條目若被呼叫端以這種方式清空金鑰，會等同`claude:`訂閱條目（改耗訂閱額度）而非失敗；缺`ANTHROPIC_KEYS`時則由`resolveProviders`正確地 skipped。`claude-api:`（CLI）與`anthropic:`（REST）共用同一組`ANTHROPIC_KEYS`與同一 Console 額度，遞補層之游標與冷卻按條目 id 各自獨立：一條遇 429 冷卻，不會自動冷卻其餘五條。
+**計費來源的無聲切換（已知限制，部分收嚴）**：`dispatchAiFallback`／`resolveProviders` 之契約是「條目**未給**金鑰＝沿用登入態」，未給＝`keys`為`undefined`、`null`、`[]`（陣列內之`''`、`null`、`undefined`元素略過）或`resolveProviders`之`patch`把`keys`設空。內建`claude-api:`條目若被呼叫端以這種方式清空金鑰，會等同`claude:`訂閱條目（改耗訂閱額度）而非失敗；缺`ANTHROPIC_KEYS`時則由`resolveProviders`正確地 skipped。**給了而無效者不再靜默改走登入態**（未發布，行為變更紀錄第77項）：`keys`為非陣列之定義值、不可讀之陣列、或含「非空且非原始字串」之元素（數字、物件、`String`包裝物件、已撤銷之`Proxy`等）而濾後無有效字串者，該條目以`params`整組跳過、不起子進程、不送請求（含有效字串者，無效元素照舊略過）。`claude-api:`（CLI）與`anthropic:`（REST）共用同一組`ANTHROPIC_KEYS`與同一 Console 額度，遞補層之游標與冷卻按條目 id 各自獨立：一條遇 429 冷卻，不會自動冷卻其餘五條。
 
 #### Options only for dispatchApiTypesafeSystemone:
 [TypeSafe](https://typesafe.ai) 的 **jev** 是「System One」決策模型：**不產生文字**，而是對一段內容（state）回答你定義的型別化問題，每題回傳受限於你給的選項之答案與機率。官方只提供 API 與 Python／JavaScript SDK，**沒有 CLI**，故本套件只有 API 版（`kind: 'api-typesafe-systemone'`）。權威文件：[API reference](https://docs.typesafe.ai/api)。
@@ -648,7 +651,7 @@ console.log(r.results[0])
 | `questions` | Object | 必填 | 題目物件，鍵為自訂題目 id，值為下表三型之一；題型與欄位由伺服器驗證（不合規回 422） |
 | `baseURL` | String | `'https://api.typesafe.ai/v1'` | 將於尾端接上`/systemone` |
 | `model` | String | `'jev-latest'` | 另有`'jev-preview'`；回應之實際版本見結果之`modelResolved`（如`'jev-1.13.0'`） |
-| `key` | String | `''` | API key（`.env` 慣用 `TYPESAFE_KEYS`），以`Bearer`置於`Authorization`標頭 |
+| `key` | String | `''` | API key（`.env` 慣用 `TYPESAFE_KEYS`），以`Bearer`置於`Authorization`標頭；省略（`undefined`、`null`、`''`）代表不帶認證，**給了非字串之值＝`params`拒絕、不送請求** |
 | `body`／`headers` | Object | `{}` | 額外請求本體／標頭，同名鍵覆寫預設（標頭預設同 `dispatchApiOpenaiCompat` 帶 `Accept-Encoding: identity`） |
 | `timeoutMs`／`validate`／`maxRetries`／`retryDelayMs` | | | 同 `dispatchApiOpenaiCompat`（4xx 除 429 外不重試） |
 
@@ -698,7 +701,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | --- | --- | --- | --- |
 | `providers` | Array | 必填 | 供應商條目陣列，**順序即優先序**。條目除`id`、`keys`外即該次調用之opt，原樣透傳對應轉接器（`kind`、`model`、`exe`、`provider`、`config`、`sandbox`、`timeoutMs`等皆放條目內） |
 | `providers[].id` | String | 條目索引 | 群組識別，游標以此為鍵、亦為日誌標籤；本套件不解讀其內容，命名規則見下方 |
-| `providers[].keys` | Array | `[]` | 同一服務之多把API key，逐次注入輪替（`kind`為`opencode`時須同時給`provider`）；省略代表沿用CLI登入狀態 |
+| `providers[].keys` | Array | `[]` | 同一服務之多把API key，逐次注入輪替（`kind`為`opencode`時須同時給`provider`）；省略（`undefined`、`null`、`[]`，陣列內之`''`、`null`、`undefined`元素略過）代表沿用CLI登入狀態；**給了而無效（非陣列之定義值、不可讀之陣列、含非空且非原始字串之元素而濾後無有效字串）＝該條目`params`整組跳過、不起子進程、不送請求**（不靜默改走登入態；含有效字串者無效元素照舊略過）。條目層／共用層之單一`key`給了非字串之值（無`keys`時）同此 |
 | `providers[].meta` | any | 無 | **保留鍵，保證永不轉傳**轉接器。條目其餘鍵一律原樣轉傳——呼叫端要在條目上掛自有資訊（分類、標籤、註記）一律放`meta`，與轉傳機制永久絕緣（頂層opt與工作流各層規格物件同此約定） |
 | `budgetMs` | Integer | 不限 | 整輪遞補之時間上限，剩餘預算會壓進每次呼叫之`timeoutMs`（非同步之`validate`與該次嘗試共用此時限，故亦受預算約束；CLI類之`spawnGate`守門等待與Go用量查詢耗時**亦計入**此預算）。值為**執行期之剩餘時間**（2026-11-11 起，`castBudgetMs`）：有限數或數字字串有效，**≤0 為已無時間（不送出、回`budget exhausted`）**、小數向下取整，`+Infinity`／未給／非數值為不限。**重試受期限約束**（2026-11-11 起，解除修前「`maxRetries`>0 時整輪可超出」之已知限制）：期限以內部提示傳給所有轉接器，每次重試之逾時以剩餘預算封頂，「剩餘 − 退避 < `minAttemptMs`」即不再重試。被本預算封頂之逾時（整鏈已用盡且差額 ≥ `minAttemptMs`）記為 `budget-cut`、不記冷卻與組盡（見 Timeout 總覽「封頂逾時」） |
 | `minAttemptMs` | Integer | `20000` | 單次嘗試之最低剩餘預算，低於此值即停止並回報`budget exhausted` |

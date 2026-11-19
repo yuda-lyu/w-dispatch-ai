@@ -56,7 +56,7 @@
 | F26 | 範圍判定忽略crossCheckBaseURL | 1 |
 | F27 | 顯式官方網址被當成自訂端點(不共享) | 2 |
 | F28 | 範圍判定忽略headers覆寫認證標頭 | 1 |
-| F29 | String包裝物件金鑰指紋不先取原始字串(與原始字串金鑰指紋不一致) | 1 |
+| F29 | String包裝物件金鑰指紋不先取原始字串(與原始字串金鑰指紋不一致)〔2026-11-19 起不可達:wsemi 1.9.69 之 `isestr` 不收包裝物件,`keys` 入口濾除之,`keyFingerprint` 只收原始字串;改以「包裝金鑰被算作金鑰」之副本變異驗證,2 個測試案皆轉紅〕 | 1 |
 | F30 | 範圍檢查執行env內ANTHROPIC_BASE_URL之getter(多讀一次呼叫端物件) | 1 |
 | F31 | headers覆寫認證標頭仍視為keys[]即實際認證(累計quotaExhausted並共享) | 2 |
 | F32 | 脈絡過長提前返回遺失先前已確認之quotaExhausted | 1 |

@@ -8,7 +8,8 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli, { optTruncate } from './runExecCli.mjs'
-import { readCallerObj, errMsg, asText } from './callUserFn.mjs'
+import { readCallerObj, probeReadable, errMsg, asText } from './callUserFn.mjs'
+import { readKey } from './readKeyOpt.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import parseOpencodeEvents from './parseOpencodeEvents.mjs'
@@ -226,7 +227,7 @@ function getFormatArg(args) {
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'opencode'
  * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/beam-free'，預設''代表不帶`-m`旗標
- * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，預設''代表沿用CLI既有登入狀態
+ * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，未給(undefined、null、'')代表沿用CLI既有登入狀態；給了非字串之值回params且不起子進程(帳本R-KEYOPT-1)
  * @param {String} [opt.provider=''] 輸入key所屬provider名稱字串，須與key同時給予才會注入，且須與model為同一組，預設''
  * @param {Boolean} [opt.useStoredAuth=true] 輸入未注入金鑰時是否沿用本機auth.json之登入布林值，false代表注入空憑證令本次以匿名存取(適用opencode之免費模型，避免結果隨本機登入帳號而異)；已同時給key與provider時不作用，預設true
  * @param {Object|String} [opt.config=null] 輸入opencode設定內容物件或其JSON字串，將以OPENCODE_CONFIG_CONTENT逐次注入，供補上第三方provider之定義，預設null代表沿用使用者既有設定檔
@@ -355,6 +356,10 @@ async function dispatchOpencode(prompt, opt = {}) {
     //config有效才注入, 否則沿用使用者既有設定檔, 物件則序列化為JSON字串;
     //不可序列化(BigInt、循環參照、toJSON或getter拋錯)或不可判型(已撤銷之Proxy)以錯誤結果物件回報, 不reject(呼叫無法開始, 與金鑰無關故為params)
     let config = get(opt, 'config', null)
+    let pc = probeReadable(config, 'config') //可讀性先經探針(帳本R-USERFN-4): isobj對已撤銷之Proxy不再拋錯而回false, 會使不可讀之config被靜默當成未給而沿用使用者既有設定檔
+    if (!pc.ok) {
+        return getErrorResult(`config is not JSON-serializable: ${pc.reason}`) //訊息同修前(不可判型之config落同一訊息)
+    }
     try {
         if (isobj(config)) {
             config = JSON.stringify(config)
@@ -372,7 +377,12 @@ async function dispatchOpencode(prompt, opt = {}) {
 
     //key與provider皆有效才注入, 否則沿用auth.json既有登入狀態(單金鑰時即為原有行為);
     //useStoredAuth為false且未注入金鑰時, 注入'{}'令opencode本次不讀auth.json(匿名, 見檔頭)
-    let key = get(opt, 'key', null)
+    //key給了而無效(非字串)以params回報、不起子進程: 不靜默改沿用auth.json既有登入狀態(帳本R-KEYOPT-1); 未給(undefined、null、'')照舊
+    let rkey = readKey(get(opt, 'key', null))
+    if (rkey.err !== '') {
+        return getErrorResult(rkey.err)
+    }
+    let key = rkey.key === '' ? null : rkey.key
     let provider = get(opt, 'provider', null)
     let useStoredAuth = get(opt, 'useStoredAuth', null) !== false
     if (isestr(key) && isestr(provider)) {

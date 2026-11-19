@@ -214,21 +214,35 @@ describe('dispatchClaude key(Anthropic API金鑰計費)', function() {
         assert.strict.deepEqual(o, oo)
     })
 
-    it('R03 key未給或無效(undefined、null、空字串、非字串)時環境與現行相同: 父環境之ANTHROPIC_API_KEY與其他變數原樣流過、不移除任何變數', async function() {
-        //規格: 「未給時行為與現行完全相同(沿用訂閱登入)」; 無效key視同未給(與全套件「無效回退預設」慣例一致)
+    it('R03 key未給(undefined、null、空字串)時環境與現行相同: 父環境之ANTHROPIC_API_KEY與其他變數原樣流過、不移除任何變數', async function() {
+        //規格: 「未給時行為與現行完全相同(沿用訂閱登入)」; 未給＝undefined、null、''(帳本R-KEYOPT-1; 給了而無效改為拒絕, 見下案)
         let parent = cleanParent()
         parent.ANTHROPIC_API_KEY = 'parent-api-key'
         parent.ANTHROPIC_AUTH_TOKEN = 'parent-token'
         parent.CLAUDE_CODE_OAUTH_TOKEN = 'parent-oauth'
         let r = []
         await withEnv(parent, async () => {
-            for (let key of [undefined, null, '', 123, {}, []]) {
+            for (let key of [undefined, null, '']) {
                 let { rep } = await run({ key })
                 r.push([rep.env.ANTHROPIC_API_KEY, rep.env.ANTHROPIC_AUTH_TOKEN, rep.env.CLAUDE_CODE_OAUTH_TOKEN])
             }
         })
-        let rr = [1, 2, 3, 4, 5, 6].map(() => ['parent-api-key', 'parent-token', 'parent-oauth'])
+        let rr = [1, 2, 3].map(() => ['parent-api-key', 'parent-token', 'parent-oauth'])
         assert.strict.deepEqual(r, rr)
+    })
+
+    it('R03 key給了而無效(數字、物件、陣列、包裝物件)時以params拒絕、不起子進程: 不靜默改走父環境之ANTHROPIC_API_KEY或登入態(帳本R-KEYOPT-1; 修前視同未給)', async function() {
+        //規格: 金鑰屬影響計費之opt, 給了而無效即拒絕, 不靜默改走另一種計費(dspec〈輸入參數之檢測機制〉§11)
+        let parent = cleanParent()
+        parent.ANTHROPIC_API_KEY = 'parent-api-key'
+        let r = []
+        await withEnv(parent, async () => {
+            for (let key of [123, {}, [], Object('sk-wrapped')]) {
+                let { r: t, rep } = await run({ key }) //rep為假CLI寫出之報告; 子進程未被起則無報告(null)
+                r.push([t.ok, t.errorType, t.attempts, rep])
+            }
+        })
+        assert.strict.deepEqual(r, [1, 2, 3, 4].map(() => [false, 'params', 0, null]))
     })
 
     it('R03 key未給時完全不給key之呼叫(opt無key鍵)之argv與有key時相同(固定旗標、model、extraArgs不受key影響)', async function() {
@@ -505,15 +519,15 @@ describe('dispatchClaude key(Anthropic API金鑰計費)', function() {
         assert.strict.deepEqual([rep.env.CLAUDE_CODE_USE_BEDROCK, rep.env.CLAUDE_CODE_OAUTH_TOKEN, rep.env.CLAUDE_CODE_EFFORT_LEVEL], [null, null, 'low'])
     })
 
-    it('R08 key未給或無效(undefined、null、空字串、非字串)時, 繼承之連結變數原樣流入子進程(不移除任何變數), 與現行相同', async function() {
+    it('R08 key未給(undefined、null、空字串)時, 繼承之連結變數原樣流入子進程(不移除任何變數), 與現行相同(給了而無效者改為params拒絕, 見R03)', async function() {
         let r = []
         await withEnv(parentWithLinks(), async () => {
-            for (let key of [undefined, null, '', 123, {}, []]) {
+            for (let key of [undefined, null, '']) {
                 let { rep } = await run({ key })
                 r.push(LINK_VARS.map((n) => rep.env[n]))
             }
         })
-        let rr = [1, 2, 3, 4, 5, 6].map(() => LINK_VARS.map((n) => `parent-${n}`))
+        let rr = [1, 2, 3].map(() => LINK_VARS.map((n) => `parent-${n}`))
         assert.strict.deepEqual(r, rr)
     })
 

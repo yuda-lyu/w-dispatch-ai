@@ -12,6 +12,7 @@ import buildValidator from './buildValidator.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
+import { readKey } from './readKeyOpt.mjs'
 import redactText, { secretHeaderValues } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
@@ -366,7 +367,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} opt.baseURL 輸入API基底網址字串，例如'https://opencode.ai/inference/openai/v1'，將於尾端接上/responses
  * @param {String} opt.model 輸入模型ID字串，例如'gpt-6-luna'
- * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
+ * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，未給(undefined、null、'')代表不帶認證標頭；給了非字串之值回params且不送請求(帳本R-KEYOPT-1)
  * @param {String} [opt.system=''] 輸入system提示詞字串，將置於instructions欄位(Responses API之system管道)，預設''代表不帶
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如temperature、max_output_tokens、reasoning)，將併入預設body(同名鍵以此為準)，預設{}。注意輸出上限欄位名為max_output_tokens而非max_tokens；本轉接器不支援工具，帶入tools而模型回function_call時一律以TOOL_CALLS_UNSUPPORTED回報失敗
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，預設{}
@@ -423,8 +424,12 @@ async function dispatchApiOpenaiResponses(prompt, opt = {}) {
         return getErrorResult('model must be a non-empty string')
     }
 
-    //key, 無效代表不帶認證標頭(部分閘道免認證)
-    let key = get(opt, 'key', null)
+    //key, 未給(undefined、null、'')代表不帶認證標頭(部分閘道免認證); 給了而無效(非字串)以params回報、不送請求(帳本R-KEYOPT-1: 不靜默改送不帶認證之請求)
+    let rkey = readKey(get(opt, 'key', null))
+    if (rkey.err !== '') {
+        return getErrorResult(rkey.err)
+    }
+    let key = rkey.key === '' ? null : rkey.key
 
     //system, Responses API之system管道為instructions
     let system = get(opt, 'system', null)

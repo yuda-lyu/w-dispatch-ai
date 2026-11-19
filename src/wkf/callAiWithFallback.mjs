@@ -9,7 +9,7 @@ import dispatchAiFallback from '../dispatchAiFallback.mjs'
 import dfTimeoutMs from '../dfTimeoutMs.mjs'
 import buildValidator from '../buildValidator.mjs'
 import castTimerMs from '../castTimerMs.mjs'
-import { awaitUserFn, settleUserValue, readCallerObj, errMsg, asText } from '../callUserFn.mjs'
+import { awaitUserFn, settleUserValue, readCallerObj, probeReadable, errMsg, asText } from '../callUserFn.mjs'
 import extractJsonLoose from './extractJsonLoose.mjs'
 import NO_SIDE_EFFECT from './noSideEffectPrefix.mjs'
 
@@ -96,6 +96,10 @@ function buildChain(providers, spec) {
     let missing = []
     for (let name of names) {
         let entry = get(providers, name, null)
+        let pe = probeReadable(entry, 'provider entry') //可讀性先經探針(帳本R-USERFN-4): isobj對已撤銷之Proxy不再拋錯而回false, 會使不可讀之條目被誤報為「查無定義」; 不可讀者拋出(由呼叫端轉params)
+        if (!pe.ok) {
+            throw new Error(pe.reason)
+        }
         if (isobj(entry)) {
             chain.push({ id: name, ...entry }) //id一律用名稱, 令游標與事件可讀
         }
@@ -186,6 +190,10 @@ async function callAiWithFallback(prompt, opt = {}) {
     //spec.fallback, 呼叫端陣列: 先複製名稱(不可讀以spec之params回報), 令下方buildChain之錯誤只可能來自定義表條目
     try {
         let fb = get(spec, 'fallback', null)
+        let pf = probeReadable(fb, 'spec') //可讀性先經探針(帳本R-USERFN-4): isearr對已撤銷之Proxy不再拋錯而回false, 會使不可讀之fallback被靜默當成未給; 訊息同下方catch之'spec is not readable'
+        if (!pf.ok) {
+            return { ok: false, json: null, error: pf.msg, errorType: 'params', ms: 0, tried: [] }
+        }
         spec = { use: get(spec, 'use', ''), fallback: isearr(fb) ? [...fb] : null }
     }
     catch (err) {

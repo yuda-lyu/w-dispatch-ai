@@ -12,6 +12,7 @@ import castTimerMs from './castTimerMs.mjs'
 import buildValidator from './buildValidator.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
+import { readKey } from './readKeyOpt.mjs'
 import redactText, { secretHeaderValues } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { safeValidateAsync } from './checkTruncation.mjs'
@@ -253,7 +254,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
  * @param {Object} opt.questions 輸入題目物件(必填且非空)，鍵為自訂題目id，值為{type:'noul'|'choice'|'score', instructions, criteria}，格式見檔頭與https://docs.typesafe.ai/api
  * @param {String} [opt.baseURL='https://api.typesafe.ai/v1'] 輸入API基底網址字串，將於尾端接上/systemone，預設官方端點
  * @param {String} [opt.model='jev-latest'] 輸入模型名稱字串，預設'jev-latest'(另有'jev-preview')
- * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，預設''代表不帶認證標頭
+ * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，未給(undefined、null、'')代表不帶認證標頭；給了非字串之值回params且不送請求(帳本R-KEYOPT-1)
  * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，預設{}
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
@@ -327,8 +328,12 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
         model = DEFAULT_MODEL
     }
 
-    //key, 無效代表不帶認證標頭
-    let key = get(opt, 'key', null)
+    //key, 未給(undefined、null、'')代表不帶認證標頭; 給了而無效(非字串)以params回報、不送請求(帳本R-KEYOPT-1: 不靜默改送不帶認證之請求)
+    let rkey = readKey(get(opt, 'key', null))
+    if (rkey.err !== '') {
+        return getErrorResult(rkey.err)
+    }
+    let key = rkey.key === '' ? null : rkey.key
 
     //bodyExtra
     let rbody = readCallerObj(get(opt, 'body', null), 'body') //呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 可讀者取物化之淺層副本

@@ -1,4 +1,3 @@
-import isobj from 'wsemi/src/isobj.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorMessage from 'wsemi/src/getErrorMessage.mjs'
 import util from 'util'
@@ -17,6 +16,7 @@ import util from 'util'
 //     同步契約, 回傳thenable視同失敗(由各站點採其既有之安全預設), 並承接其rejection(不使行程崩潰)
 //   readCallerObj: 本套件會展開之呼叫端物件(env、headers、body、providers條目)——不可讀者回錯誤訊息供站點以params回報,
 //     可讀者回物化之淺層副本(自有可列舉屬性, 同物件展開; 只讀一次, 有狀態之getter不會被讀第二次; 巢狀值為同一參照, 一般資料物件之送出內容不變)
+//   probeReadable: 可讀性探針(單一來源, 帳本R-USERFN-4)——呼叫端給的物件／陣列可否讀取(內部標籤＋自有鍵列表, 拋錯即不可讀); 本套件不借wsemi判斷函數(isobj、isarr等)對敵意輸入拋錯來成立防線
 //   皆收thunk(而非fn與參數), 保留呼叫端原有之this綁定(如store.get())
 //
 // 【訊息】取wsemi之getErrorMessage(對null、已撤銷Proxy等不拋錯), 為空者退String(err), 再不行為'unknown error'; 截斷至500字元(同wsemi之execCli)
@@ -57,7 +57,7 @@ function errField(err, path) {
 
 
 /**
- * 取呼叫端函數回傳值之文字(prompt函式、keyOf等)：原始字串原樣；String包裝物件取其字串值(同修前isestr之接受範圍)；其餘或轉換拋錯回空字串，不拋錯
+ * 取呼叫端函數回傳值之文字(prompt函式、keyOf等)：原始字串原樣；String包裝物件取其字串值(此為轉型取文字、不經isestr；wsemi 1.9.69起判斷函數isestr只收原始字串，本函數行為不變)；其餘或轉換拋錯回空字串，不拋錯
  *
  * @param {*} v 輸入呼叫端函數之回傳值(或resolve值)
  * @returns {String} 回傳文字，無法取得時為空字串
@@ -228,17 +228,69 @@ function callHookSync(thunk) {
 
 
 /**
+ * 可讀性探針(本套件內部共用之單一來源；帳本R-USERFN-4)：判定呼叫端給的物件、陣列、函數可否被讀取，不執行呼叫端之回調
+ *
+ * 探針為明確之兩步——取內部標籤(Object.prototype.toString.call，已撤銷之Proxy、Symbol.toStringTag拋錯者拋)與列自有鍵(Reflect.ownKeys，ownKeys陷阱拋錯者拋)，
+ * 拋錯即不可讀，回錯誤訊息供站點依其既有之失敗通道回報(多為params)。
+ * 本套件不再借wsemi判斷函數(isobj、isarr、isstr等)對敵意輸入拋錯來成立防線：wsemi 1.9.69起判斷函數對任何輸入皆不拋錯(拋錯者回false，dspec〈輸入參數之檢測機制〉C2)，
+ * 於是「不可讀」與「不是物件」於判斷函數上不可分，須先經本探針分辨(不可讀者回報，可讀者才交判斷函數判型)。
+ * 純量(含null、undefined)恆可讀；只探針不展開、不讀屬性值(有狀態之getter不被讀取)。
+ *
+ * @param {*} v 輸入呼叫端給予之值
+ * @param {String} [name='value'] 輸入名稱字串，用於錯誤訊息，例如'spec.fallback'
+ * @returns {Object} 回傳物件，內含ok(是否可讀布林值)、tag(可讀時為Object.prototype.toString.call(v)之結果，如'[object Object]'、'[object Array]'；不可讀時為空字串)、msg(不可讀時之訊息'<name> is not readable: <訊息>')、reason(不可讀時之原因訊息，即msg去掉前綴者；可讀時為空字串)
+ */
+function probeReadable(v, name = 'value') {
+    try {
+        let tag = Object.prototype.toString.call(v)
+        if (v !== null && (typeof v === 'object' || typeof v === 'function')) {
+            Reflect.ownKeys(v)
+        }
+        return { ok: true, tag, msg: '', reason: '' }
+    }
+    catch (err) {
+        let reason = errMsg(err)
+        return { ok: false, tag: '', msg: `${name} is not readable: ${reason}`, reason }
+    }
+}
+
+
+/**
+ * 斷言呼叫端給的物件／陣列可讀，不可讀即拋出(供同步函數用，如resolveProviders；其無params結果通道，修前由判斷函數對敵意輸入拋錯而同步throw，改為明確拋出)
+ *
+ * @param {*} v 輸入呼叫端給予之值(純量恆可讀)
+ * @param {String} name 輸入名稱字串，用於錯誤訊息
+ * @returns {undefined} 無回傳值；不可讀時拋出Error，訊息為'<name> is not readable: <原因>'
+ */
+function assertReadable(v, name) {
+    let p = probeReadable(v, name)
+    if (!p.ok) {
+        throw new Error(p.msg)
+    }
+}
+
+
+/**
  * 讀取呼叫端物件(本套件會展開者)：非物件原樣交回；物件回物化之淺層副本；不可讀(拋錯之getter、已撤銷之Proxy)回錯誤訊息
+ *
+ * 可讀性先經probeReadable(不借isobj對敵意輸入拋錯)，含函數型(已撤銷之函數Proxy亦為不可讀)；只有內部標籤為'[object Object]'之物件才展開(函數、陣列、Headers、Map等原樣交回)
  *
  * @param {*} v 輸入呼叫端給予之值
  * @param {String} name 輸入名稱字串，用於錯誤訊息，例如'env'、'headers'
  * @returns {Object} 回傳物件，內含ok(是否可讀布林值)、value(原值或物化之副本)、msg(不可讀時之訊息'<name> is not readable: <訊息>')
  */
 function readCallerObj(v, name) {
+    if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
+        return { ok: true, value: v, msg: '' }
+    }
+    let p = probeReadable(v, name)
+    if (!p.ok) {
+        return { ok: false, value: undefined, msg: p.msg }
+    }
+    if (typeof v !== 'object' || p.tag !== '[object Object]') {
+        return { ok: true, value: v, msg: '' } //函數(可讀者)、陣列、Headers、Map等原樣交回
+    }
     try {
-        if (v === null || typeof v !== 'object' || !isobj(v)) {
-            return { ok: true, value: v, msg: '' }
-        }
         return { ok: true, value: { ...v }, msg: '' }
     }
     catch (err) {
@@ -247,4 +299,4 @@ function readCallerObj(v, name) {
 }
 
 
-export { awaitUserFn, callHookSync, readCallerObj, validateNote, adoptThenable, settleUserValue, asText, errMsg, errField }
+export { awaitUserFn, callHookSync, probeReadable, assertReadable, readCallerObj, validateNote, adoptThenable, settleUserValue, asText, errMsg, errField }

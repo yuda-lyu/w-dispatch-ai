@@ -65,7 +65,7 @@
 
 | 項目 | 測試檔 | 修前(HEAD 之 src) |
 |---|---|---|
-| 判準①～⑤(含引號內欄位、mode、429 限 -free)、parseLogFields、旗標(含字串包裝物件)、printLogsOn、逐行(跨區塊、一次、reset、超長行兩種切法、色碼)、upstreamFromLines | `test/unit-opencodeLimit.test.mjs`(11) | 模組不存在(紅) |
+| 判準①～⑤(含引號內欄位、mode、429 限 -free)、parseLogFields、旗標(字串包裝物件視同未給,2026-11-19 wsemi 1.9.69 起;舊為視同已給)、printLogsOn(同)、逐行(跨區塊、一次、reset、超長行兩種切法、色碼)、upstreamFromLines | `test/unit-opencodeLimit.test.mjs`(11) | 模組不存在(紅) |
 | taskkill 參數與 windowsHide、失敗不 reject、非 Windows 之 ps 列舉與由深至淺、ps 不存在不崩潰、descendantsOf、無效 pid、實際樹殺(detached 孫行程) | `test/unit-killProcessTree.test.mjs`(7) | 模組不存在(紅) |
 | 假 CLI(只在 --print-logs 時印錯誤列、印後不結束、繼承 stdio 之 detached 孫行程):quota、429、跨區塊、title 不終止、opencode-go 不臆測、其他上游錯誤之 upstream 取自 stderr、不重試(兩路)、不做暫時性重試、一般失敗與暫時性重試之順序／事件序列同修前(兩路)、第 2 次才判中、旗標、stopOnLimit:false、自行非 0／0 結束、判中列之 upstream、暫時性重試輪後不接管、無效 maxRetries、日誌列不算暫時性、detectTruncation、並行、呼叫端回調 | `test/unit-dispatchOpencodeLimit.test.mjs`(23) | 13 紅／5 綠為守門(其後所增 5 案見報告) |
 | 遞補:quota 冷卻改派與下次降尾、coolDetect 之後、有期限不重試、cooldownMs 0 仍改派、429 rate-limit 冷卻、不計連敗＋最終 quota、有金鑰整組跳過 | `test/unit-dispatchAiFallbackOpencodeLimit.test.mjs`(7) | 7 紅 |
@@ -73,7 +73,7 @@
 
 ### 變異驗證(證明測試抓得到)
 
-31 個變異全數被抓到(清單與抓到之測試見 `sgud/state/state_oclimit.md`):不終止、title 亦算、不改派、不冷卻、不跨區塊、會重試(兩路)、會暫時性重試、opencode-go 亦判、已帶旗標仍補、windowsHide 缺、只殺根行程、quota 標成 exec、上游仍讀日誌檔、quota 計入連敗、已判中之成功仍驗證、路徑 B 暫時性重試先於 maxRetries、路徑 B 不補 retry、先比對再去色碼、暫時性重試後仍接管、無效 maxRetries 仍接管、日誌列仍算暫時性、引號內欄位被誤取、mode 不限、429 不限 -free、超長完整行仍判、判中之成功仍當成功、upstream 取最後一列、有金鑰仍逐把換鑰、POSIX 子孫由淺至深、字串包裝物件不正規化.**測「樹狀終止」須以 detached 孫行程**(Windows libuv 之 job 物件令根 node 行程結束即連帶結束非 detached 子行程,「只殺根行程」之變異初版為等價變異).
+31 個變異全數被抓到(清單與抓到之測試見 `sgud/state/state_oclimit.md`):不終止、title 亦算、不改派、不冷卻、不跨區塊、會重試(兩路)、會暫時性重試、opencode-go 亦判、已帶旗標仍補、windowsHide 缺、只殺根行程、quota 標成 exec、上游仍讀日誌檔、quota 計入連敗、已判中之成功仍驗證、路徑 B 暫時性重試先於 maxRetries、路徑 B 不補 retry、先比對再去色碼、暫時性重試後仍接管、無效 maxRetries 仍接管、日誌列仍算暫時性、引號內欄位被誤取、mode 不限、429 不限 -free、超長完整行仍判、判中之成功仍當成功、upstream 取最後一列、有金鑰仍逐把換鑰、POSIX 子孫由淺至深、字串包裝物件不正規化(2026-11-19 起語意改為「字串包裝物件視同未給」:該變異改為「字串包裝物件被算作旗標」,以 `printLogsOn`／`logFlagsToAdd` 兩處之副本變異驗證,2 個測試案皆轉紅).**測「樹狀終止」須以 detached 孫行程**(Windows libuv 之 job 物件令根 node 行程結束即連帶結束非 detached 子行程,「只殺根行程」之變異初版為等價變異).
 
 ### 破壞性／行為變更紀錄
 

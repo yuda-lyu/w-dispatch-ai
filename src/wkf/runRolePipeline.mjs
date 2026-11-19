@@ -90,7 +90,7 @@ async function runRolePipeline(opt = {}) {
     }
     let callOpt = rcallOpt.value
 
-    if (!isarr(stages) || stages.length === 0) { //不用isearr: 其於長度恰為1時會判型第0個元素(敵意元素即拋), 元素交下方readCallerObj逐一防護
+    if (!isarr(stages) || stages.length === 0) { //不用isearr: 其於長度恰為1時會判型第0個元素(wsemi 1.9.68以前敵意元素即拋; 1.9.69起回false, 整個陣列被判無效而掩蓋逐元素之params), 元素交下方readCallerObj(經probeReadable)逐一防護
         return { ok: false, result: null, stages: {}, results: {}, order: [], failedStage: null, totalMs: 0, error: 'stages must be a non-empty array' }
     }
 
@@ -132,7 +132,7 @@ async function runRolePipeline(opt = {}) {
             details[id] = { ok: false, error: pr.state === 'timeout' ? `stage[${id}].prompt ${pr.msg}` : `stage[${id}].prompt threw: ${pr.msg}` }
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }
         }
-        let prompt = asText(pr.value) //不拋錯(回傳已撤銷Proxy時isestr會拋錯而reject); String包裝物件照舊接受
+        let prompt = asText(pr.value) //以asText取文字(不經isestr, 不拋錯); String包裝物件取其原始字串
         if (prompt === '') {
             details[id] = { ok: false, error: `stage[${id}].prompt returned empty` }
             return { ok: false, result: null, stages: details, results, order, failedStage: id, totalMs: Date.now() - t0, error: details[id].error }

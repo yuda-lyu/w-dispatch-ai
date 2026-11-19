@@ -13,6 +13,7 @@ import buildValidator from './buildValidator.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
+import { readKey } from './readKeyOpt.mjs'
 import redactText, { secretHeaderValues, redactApiKeyText } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
@@ -375,7 +376,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {String} prompt 輸入提示詞字串，作為user訊息置於HTTP body
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} opt.model 輸入模型ID字串，例如'claude-opus-5-5'、'claude-sonnet-5-5'、'claude-haiku-5-5'(完整ID，不加日期後綴)；Messages API無預設模型故必填
- * @param {String} [opt.key=''] 輸入Anthropic API金鑰字串(sk-ant-…)，置於x-api-key標頭，預設''代表不帶認證標頭(僅供不需金鑰之閘道；直連官方端點會回401)
+ * @param {String} [opt.key=''] 輸入Anthropic API金鑰字串(sk-ant-…)，置於x-api-key標頭，未給(undefined、null、'')代表不帶認證標頭(僅供不需金鑰之閘道；直連官方端點會回401)；給了非字串之值回params且不送請求(帳本R-KEYOPT-1)
  * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串(不含/v1，尾端/v1會被去除)，將於尾端接上/v1/messages，預設官方端點
  * @param {String} [opt.system=''] 輸入system提示詞字串，置於頂層system欄位(非messages內之角色)，預設''代表不帶
  * @param {String} [opt.effort=''] 輸入思考強度字串，'low'、'medium'、'high'、'xhigh'、'max'之一，以output_config.effort送出，其他值視為未給，預設''代表不送(由API依模型決定：Opus 5.5與Haiku 5.5為medium，Sonnet 5.5為high)
@@ -445,8 +446,12 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     }
     let url = baseURL.replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1/messages'
 
-    //key, 無效代表不帶認證標頭
-    let key = get(opt, 'key', null)
+    //key, 未給(undefined、null、'')代表不帶認證標頭; 給了而無效(非字串)以params回報、不送請求(帳本R-KEYOPT-1: 不靜默改送不帶認證之請求)
+    let rkey = readKey(get(opt, 'key', null))
+    if (rkey.err !== '') {
+        return paramsErr(rkey.err)
+    }
+    let key = rkey.key === '' ? null : rkey.key
 
     //redEarly, 啟動前(組本體與標頭階段)之params錯誤訊息含外來例外文字(呼叫端getter、toJSON、toString之例外), 可能夾帶key, 一律先遮蔽
     let redEarly = (s) => redactApiKeyText(s, isestr(key) ? [key] : [])

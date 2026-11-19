@@ -8,6 +8,7 @@ import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli from './runExecCli.mjs'
 import { asText, readCallerObj } from './callUserFn.mjs'
+import { readKey } from './readKeyOpt.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import redactText, { redactApiKeyText, createStreamRedactor } from './redactText.mjs'
@@ -328,7 +329,7 @@ async function addFailureKind(out, raw, ckKey, tap, cc) {
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='claude'] 輸入claude執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'claude'
  * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'claude-opus-5-5'(全名, 固定版本)、'opus'或'sonnet'(別名, 隨CLI指向最新版)，預設''代表不帶`--model`旗標，由CLI依方案決定(2.1.280起Pro/Team Standard亦預設Opus)
- * @param {String} [opt.key=''] 輸入Anthropic Console之API金鑰字串(sk-ant-…)，給予有效字串即以API金鑰計費：只於該次子進程環境設ANTHROPIC_API_KEY並移除ANTHROPIC_AUTH_TOKEN、CLAUDE_CODE_USE_*、CLAUDE_CODE_OAUTH_TOKEN等其他憑證變數(含opt.env中同名者)，另自子進程環境移除繼承自process.env之父session連結變數(前綴CLAUDE_CODE_、CLAUDE_AGENT_SDK_與CLAUDECODE、CLAUDE_PID、CLAUDE_EFFORT、CLAUDE_JOB_DIR，保留CLAUDE_CODE_GIT_BASH_PATH；opt.env明確傳入者保留，要保留某使用者設定如CLAUDE_CODE_EFFORT_LEVEL請由opt.env傳入)，結果之stdout/stderr/error與onStdout／onStderr回調收到之文字遮蔽key(長度不足6字元者不遮蔽；含NUL字元者回INVALID_KEY失敗)；未給或非有效字串代表沿用登入狀態(行為與無此參數時完全相同，不移除任何變數)，預設''。經dispatchAiFallback時由條目之keys逐把注入(providers.mjs之claude-api:條目以envVar ANTHROPIC_KEYS取得)。勿把Console金鑰設為全域環境變數ANTHROPIC_API_KEY，否則本機全部Claude Code皆改走API計費
+ * @param {String} [opt.key=''] 輸入Anthropic Console之API金鑰字串(sk-ant-…)，給予有效字串即以API金鑰計費：只於該次子進程環境設ANTHROPIC_API_KEY並移除ANTHROPIC_AUTH_TOKEN、CLAUDE_CODE_USE_*、CLAUDE_CODE_OAUTH_TOKEN等其他憑證變數(含opt.env中同名者)，另自子進程環境移除繼承自process.env之父session連結變數(前綴CLAUDE_CODE_、CLAUDE_AGENT_SDK_與CLAUDECODE、CLAUDE_PID、CLAUDE_EFFORT、CLAUDE_JOB_DIR，保留CLAUDE_CODE_GIT_BASH_PATH；opt.env明確傳入者保留，要保留某使用者設定如CLAUDE_CODE_EFFORT_LEVEL請由opt.env傳入)，結果之stdout/stderr/error與onStdout／onStderr回調收到之文字遮蔽key(長度不足6字元者不遮蔽；含NUL字元者回INVALID_KEY失敗)；未給(undefined、null、'')代表沿用登入狀態(行為與無此參數時完全相同，不移除任何變數)，預設''；給了而無效(非字串：數字、物件、陣列、String包裝物件、已撤銷之Proxy等)回params失敗且不起子進程，不靜默改走登入態或繼承之環境金鑰(帳本R-KEYOPT-1)。經dispatchAiFallback時由條目之keys逐把注入(providers.mjs之claude-api:條目以envVar ANTHROPIC_KEYS取得)。勿把Console金鑰設為全域環境變數ANTHROPIC_API_KEY，否則本機全部Claude Code皆改走API計費
  * @param {Boolean} [opt.crossCheck=true] 輸入是否啟用「沒額度」交叉確認布林值(僅API金鑰在場時有意義：opt.key有效，或opt.env.ANTHROPIC_API_KEY有效字串)：CLI失敗且字樣判為沒額度時，以同一把金鑰對REST送極小請求(max_tokens: 1，費用極小)確認——REST亦沒額度才判'no-credit'，REST成功判'env-error'(呼叫方式或環境錯誤)，其餘結果判'other'；false代表只憑CLI字樣判定(「Credit balance is too low」曾在金鑰正常時出現，風險自負)，預設true
  * @param {Function} [opt.fetch=globalThis.fetch] 輸入交叉確認用之fetch函數，可注入以利測試(不發真實請求)，預設全域fetch
  * @param {String} [opt.crossCheckBaseURL='https://api.anthropic.com'] 輸入交叉確認之API基底網址字串，預設官方端點；CLI經ANTHROPIC_BASE_URL導向他處者請同步給予
@@ -410,7 +411,12 @@ async function dispatchClaude(prompt, opt = {}) {
     let optCli = omit(opt, OWN_KEYS)
 
     //key, 有效字串才啟用API金鑰模式(無效視同未給, 與全套件「無效回退預設」慣例一致; 未給時env原樣交runExecCli, 行為與舊版相同)
-    let key = get(opt, 'key', null)
+    //給了而無效(非字串: 數字、物件、包裝物件、已撤銷之Proxy等)以params回報、不起子進程: 不靜默改走登入態(訂閱)或繼承之環境金鑰(帳本R-KEYOPT-1); 未給(undefined、null、'')照舊
+    let rkey = readKey(get(opt, 'key', null))
+    if (rkey.err !== '') {
+        return getErrorResult(rkey.err)
+    }
+    let key = rkey.key === '' ? null : rkey.key
     let hasKey = isestr(key)
     let flushers = [] //key模式下串流遮蔽器之補送函數(結束時送出保留之尾端)
     let ckKey = null //API金鑰在場(key，或opt.env.ANTHROPIC_API_KEY)時為該金鑰字串: 失敗結果加failureKind細分類與「沒額度」交叉確認(見檔頭)

@@ -115,7 +115,7 @@ async function runFanout(opt = {}) {
     if (task === '') {
         return { ok: false, result: null, integrated: false, agents: [], candidates: [], totalMs: 0, error: 'task must be a non-empty string' }
     }
-    if (!isarr(agents) || agents.length === 0) { //不用isearr: 其於長度恰為1時會判型第0個元素(敵意元素即拋), 元素交下方readCallerObj逐一防護
+    if (!isarr(agents) || agents.length === 0) { //不用isearr: 其於長度恰為1時會判型第0個元素(wsemi 1.9.68以前敵意元素即拋; 1.9.69起回false, 整個陣列被判無效而掩蓋逐元素之params), 元素交下方readCallerObj(經probeReadable)逐一防護
         return { ok: false, result: null, integrated: false, agents: [], candidates: [], totalMs: 0, error: 'agents must be a non-empty array' }
     }
 
@@ -179,7 +179,7 @@ async function runFanout(opt = {}) {
     if (pr.state !== 'value') {
         return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: pr.state === 'timeout' ? `integrate prompt ${pr.msg}` : `integrate prompt threw: ${pr.msg}` }
     }
-    let intPrompt = asText(pr.value) //不拋錯(回傳已撤銷Proxy或toStringTag拋錯之物件時isestr會拋錯而reject); String包裝物件照舊接受; 字樣同callAi之prompt檢核
+    let intPrompt = asText(pr.value) //以asText取文字(不經isestr, 不拋錯); String包裝物件取其原始字串; 字樣同callAi之prompt檢核
     if (intPrompt === '') {
         return { ok: false, result: null, integrated: false, agents: rsAgents, candidates, totalMs: Date.now() - t0, error: 'integrate failed: prompt must be a non-empty string' }
     }

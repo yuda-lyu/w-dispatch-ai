@@ -248,7 +248,7 @@ function classifyLimitLine(raw) {
 function printLogsOn(args) {
     let on = false
     for (let a0 of (Array.isArray(args) ? args : [])) {
-        let a = isestr(a0) ? String(a0) : '' //字串包裝物件(getCliArgs以isestr收)亦以原始字串比對(外審terra #15)
+        let a = isestr(a0) ? a0 : '' //只收原始字串(wsemi 1.9.69起isestr不收String包裝物件; getCliArgs亦濾除之, 實際不會交給opencode), 非原始字串視同未給
         if (a === '--print-logs' || a === '--print-logs=true') {
             on = true
         }
@@ -281,7 +281,7 @@ function printLogsOn(args) {
  *
  */
 function logFlagsToAdd(args) {
-    let a = Array.isArray(args) ? args.filter((v) => isestr(v)).map((v) => String(v)) : [] //字串包裝物件亦以原始字串比對(外審terra #15)
+    let a = Array.isArray(args) ? args.filter((v) => isestr(v)) : [] //只收原始字串(同getCliArgs; String包裝物件不是有效旗標, 視同未給而略過)
     let hasPrint = a.some((v) => v === '--print-logs' || v.startsWith('--print-logs=') || v === '--no-print-logs')
     if (hasPrint) {
         return []

@@ -17,7 +17,8 @@ import castTimerMs from './castTimerMs.mjs'
 import castBudgetMs from './castBudgetMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
-import { callHookSync, awaitUserFn, readCallerObj, errMsg, asText } from './callUserFn.mjs'
+import { callHookSync, awaitUserFn, readCallerObj, probeReadable, errMsg, asText } from './callUserFn.mjs'
+import { readKey, readKeys, KEY_KINDS } from './readKeyOpt.mjs'
 import { baseErrorOf } from './failureDiag.mjs'
 import { coolCfgOf, normRec, isCoolingRec, sweepCooling, applyCool, incStreak, resetStreak } from './cooling.mjs'
 import { isTimeoutLike } from './attemptDeadline.mjs'
@@ -245,9 +246,24 @@ function initState(store) {
             state = { cursors: {} }
         }
     }
+    //store.get回傳不可讀之物件(已撤銷之Proxy、內部標籤拋錯者)或缺鍵之凍結物件: 同上, 本次以全新狀態執行且不回寫;
+    //可讀性先經probeReadable(帳本R-USERFN-4; isobj對已撤銷之Proxy不再拋錯而回false, 會被當成「非物件」而換成可寫回之新狀態)
+    let freshState = () => {
+        useStore = false
+        state = { cursors: {}, cooling: {} }
+    }
+    if (!probeReadable(state, 'state').ok) {
+        freshState()
+    }
     try {
         if (!isobj(state)) {
             state = useStore ? { cursors: {} } : memoryState
+        }
+        for (let m of ['cursors', 'cooling', 'keyCooling', 'failStreak']) {
+            let pm = probeReadable(state[m], m)
+            if (!pm.ok) {
+                throw new Error(pm.msg) //狀態成員不可讀同視為違反store契約: 入catch改全新狀態且不回寫(isobj不拋錯, 否則會被就地換成{}並寫回)
+            }
         }
         if (!isobj(state.cursors)) {
             state.cursors = {}
@@ -263,9 +279,7 @@ function initState(store) {
         }
     }
     catch {
-        //store.get回傳不可讀之物件(已撤銷之Proxy)或缺鍵之凍結物件: 同上, 本次以全新狀態執行且不回寫
-        useStore = false
-        state = { cursors: {}, cooling: {} }
+        freshState()
     }
     let saveState = () => {
         if (useStore) {
@@ -392,7 +406,7 @@ function fkOf(r) {
  * @returns {String} 回傳16碼十六進位字串
  */
 function keyFingerprint(key) {
-    return crypto.createHash('sha256').update(typeof key === 'string' ? key : String(key)).digest('hex').slice(0, 16) //String包裝物件(isestr接受)先取原始字串
+    return crypto.createHash('sha256').update(key).digest('hex').slice(0, 16) //key恆為原始字串(入口readKeys只收原始字串, 含String包裝物件被濾除); 呼叫處以try包住, 畸形值不參與金鑰層級處置
 }
 
 
@@ -451,6 +465,9 @@ function keysAreActualAuth(attemptOpt) {
     try {
         if (get(attemptOpt, 'kind', null) === 'api-anthropic') {
             let h = get(attemptOpt, 'headers', null)
+            if (!probeReadable(h, 'headers').ok) {
+                return false //不可讀(已撤銷之Proxy等)保守視為不可信; 不借isobj對敵意輸入拋錯判定(帳本R-USERFN-4)
+            }
             if (isobj(h) && Object.keys(h).some((k) => /^(?:x-api-key|authorization)$/i.test(k))) {
                 return false
             }
@@ -478,18 +495,29 @@ function isOfficialAnthropicEntry(attemptOpt) {
     try {
         let kind = get(attemptOpt, 'kind', null)
         if (kind === 'api-anthropic') {
-            return !isCustomEndpoint(get(attemptOpt, 'baseURL', null))
+            let bu = get(attemptOpt, 'baseURL', null)
+            if (!probeReadable(bu, 'baseURL').ok) {
+                return false //不可讀者保守視為不屬範圍(isestr不拋錯, 不可借其拋錯判定; 帳本R-USERFN-4)
+            }
+            return !isCustomEndpoint(bu)
         }
         if (kind === 'claude') {
-            if (isCustomEndpoint(get(attemptOpt, 'crossCheckBaseURL', null))) {
+            let cb = get(attemptOpt, 'crossCheckBaseURL', null)
+            if (!probeReadable(cb, 'crossCheckBaseURL').ok) {
+                return false
+            }
+            if (isCustomEndpoint(cb)) {
                 return false
             }
             let env = get(attemptOpt, 'env', null)
+            if (!probeReadable(env, 'env').ok) {
+                return false //不可讀(已撤銷之Proxy等)一律保守視為不屬範圍; 不借isobj對敵意輸入拋錯判定(帳本R-USERFN-4)
+            }
             if (isobj(env)) {
                 let nk = Object.keys(env).find((k) => k.toUpperCase() === 'ANTHROPIC_BASE_URL')
                 if (nk !== undefined) {
                     let d = Object.getOwnPropertyDescriptor(env, nk)
-                    if (!d || !('value' in d) || isCustomEndpoint(d.value)) {
+                    if (!d || !('value' in d) || !probeReadable(d.value, 'ANTHROPIC_BASE_URL').ok || isCustomEndpoint(d.value)) {
                         return false
                     }
                 }
@@ -626,7 +654,7 @@ function judgeBudgetCut(o) {
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Array} opt.providers 輸入供應商條目物件陣列，順序即優先序。各條目除下列鍵外，其餘鍵(kind、model、exe、provider、config、sandbox、timeoutMs等)即該條目之opt原樣透傳對應轉接器
  * @param {String} [opt.providers[].id=條目索引字串] 輸入群組識別字串，游標以此為鍵、亦為日誌標籤，本套件不解讀其內容。須區分到「模型」而非只到「廠商」(如'claude:sonnet'而非'claude')，同一模型經不同路徑取得時須帶上路徑(如'poolside:laguna-s-2.1'與'or:poolside/laguna-s-2.1:free')，且務必唯一。省略時回退為陣列索引字串——索引是位置不是身分，日後插入條目會令後續條目繼承他人游標進度，故正式設定一律明給。詳見本檔檔頭之id設計規則
- * @param {Array} [opt.providers[].keys=[]] 輸入同一服務之多把API key字串陣列，逐次注入輪替(kind為opencode時須同時於條目給予provider；kind為claude時各把即Anthropic API金鑰，只注入該次子進程環境、以API計費，見dispatchClaude；kind為api-anthropic時置於x-api-key標頭)，省略代表沿用CLI既有登入狀態之單一虛擬金鑰
+ * @param {Array} [opt.providers[].keys=[]] 輸入同一服務之多把API key字串陣列，逐次注入輪替(kind為opencode時須同時於條目給予provider；kind為claude時各把即Anthropic API金鑰，只注入該次子進程環境、以API計費，見dispatchClaude；kind為api-anthropic時置於x-api-key標頭)，省略(undefined、null、[]；陣列內之''、null、undefined元素略過)代表沿用CLI既有登入狀態之單一虛擬金鑰；給了而無效(非陣列之定義值、不可讀之陣列、含非空且非原始字串之元素而濾後無有效字串)則該條目以params整組跳過、不起子進程、不送請求(帳本R-KEYOPT-1)；含有效字串者無效元素照舊略過
  * @param {*} [opt.providers[].meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳對應轉接器——條目其餘鍵一律原樣轉傳，自有欄位放此鍵可與轉傳機制永久絕緣，預設undefined
  * @param {Number} [opt.budgetMs=null] 輸入整輪遞補之時間上限毫秒(執行期之剩餘時間：有限數或數字字串有效，≤0為已無時間而不送出、回budget exhausted，小數向下取整；+Infinity、未給或非數值為不限，見castBudgetMs)，剩餘預算會壓進每次呼叫之timeoutMs，轉接器之重試亦受其約束；被其封頂之逾時(整鏈已用盡且差額≥minAttemptMs)記為budget-cut而非條目故障，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入單次嘗試之最低剩餘預算毫秒正整數，剩餘低於此值即停止嘗試回報budget exhausted，預設20000
@@ -696,16 +724,16 @@ async function dispatchAiFallback(prompt, opt = {}) {
         return { ...getErrorResult('prompt must be a non-empty string'), tried: [] }
     }
 
-    //providers, 濾除非物件條目; 判型不得拋錯(已撤銷之Proxy使isarr/isobj拋錯): 陣列本身不可讀以params回報,
-    //無法判型之條目不濾除(交readCallerObj判為不可讀, 於迴圈中以params失敗並留下歷程, 不悄悄消失)
+    //providers, 濾除非物件條目; 可讀性先經probeReadable(帳本R-USERFN-4; wsemi 1.9.69起isarr/isobj對已撤銷之Proxy等不再拋錯而回false, 不可借其拋錯判不可讀):
+    //陣列本身不可讀以params回報; 不可讀之條目不濾除(交readCallerObj判為不可讀, 於迴圈中以params失敗並留下歷程, 不悄悄消失), 可讀而非物件者才濾除
     let providersRaw = get(opt, 'providers', null)
+    let pa = probeReadable(providersRaw, 'providers')
+    if (!pa.ok) {
+        return { ...getErrorResult(pa.msg), tried: [] }
+    }
     let keepEntry = (p) => {
-        try {
-            return isobj(p)
-        }
-        catch {
-            return true
-        }
+        let pe = probeReadable(p, 'providers entry')
+        return pe.ok ? pe.tag === '[object Object]' : true
     }
     let providers = []
     try {
@@ -853,10 +881,14 @@ async function dispatchAiFallback(prompt, opt = {}) {
         let kind = get(entry, 'kind', null)
         let model = get(entry, 'model', null)
 
-        //keys, 濾除非有效字串, 空陣列視同未給(登入態單一虛擬金鑰)
-        let keysRaw = get(entry, 'keys', null)
-        let keys = isarr(keysRaw) ? keysRaw.filter(isestr) : []
+        //keys, 濾除非有效字串, 未給(undefined、null、[]、陣列內全為''／null／undefined)視同未給(登入態單一虛擬金鑰);
+        //給了而無效(非陣列、不可讀、含「非空且非原始字串」之元素而濾後無有效字串者)即本條目以params失敗, 不起子進程、不送請求、不改走他種計費(帳本R-KEYOPT-1; 判定見readKeyOpt.mjs)
+        let rkeys = readKeys(get(entry, 'keys', null))
+        let keys = rkeys.keys
         let nk = keys.length
+        if (entryErr === '' && rkeys.err !== '') {
+            entryErr = rkeys.err
+        }
 
         //entryOpt, 剔除條目自用鍵後即該條目之opt
         let entryOpt = omit(entry, ENTRY_KEYS)
@@ -882,6 +914,11 @@ async function dispatchAiFallback(prompt, opt = {}) {
         }
         //trusted, keys[]即實際認證身分(headers未覆寫認證標頭)才可由失敗推論「該把沒額度」並累計quotaExhausted; scoped, 另須打向官方端點才與他條目共享沒額度紀錄(略過／金鑰冷卻)
         let entryAttemptOpt = { ...sharedOpt, ...entryOpt }
+
+        //單一金鑰(opt.key, 共用或條目層)給了而無效: 同keys, 該條目以params失敗(不起用量查詢、不起子進程、不送請求); 有keys時各把金鑰覆寫opt.key故不判; 只判吃key之kind(codex／antigravity無金鑰概念)
+        if (entryErr === '' && nk === 0 && isestr(kind) && KEY_KINDS.has(kind)) {
+            entryErr = readKey(get(entryAttemptOpt, 'key', null)).err
+        }
         let trusted = nk > 0 && keysAreActualAuth(entryAttemptOpt)
         let scoped = trusted && isOfficialAnthropicEntry(entryAttemptOpt)
 
@@ -890,7 +927,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
         let qg = (nk > 0 && isGoEntry(entryAttemptOpt)) ? resolveQuotaGate(quotaGateEntry !== undefined ? quotaGateEntry : quotaGateRaw) : null
 
         //訂閱類用量門檻設定(僅claude無金鑰者、codex、antigravity才有; 同一個quotaGate鍵, 條目優先於呼叫層, false關閉; 預設只作用於真的該CLI, 見subQuotaGate.mjs)
-        let sq = resolveSubQuotaGate(quotaGateEntry !== undefined ? quotaGateEntry : quotaGateRaw, entryAttemptOpt, nk, id, idExplicit)
+        let sq = entryErr !== '' ? null : resolveSubQuotaGate(quotaGateEntry !== undefined ? quotaGateEntry : quotaGateRaw, entryAttemptOpt, nk, id, idExplicit) //條目已判params失敗者不起用量查詢(不起子進程、不送請求)
         let fps = []
         if (scoped) {
 
@@ -1389,4 +1426,4 @@ async function dispatchAiFallback(prompt, opt = {}) {
 
 
 export default dispatchAiFallback
-export { judgeBudgetCut }
+export { judgeBudgetCut, keysAreActualAuth, isOfficialAnthropicEntry, initState } //後三者為內部函數, 匯出供單元測試直測敵意輸入(不列入套件匯出, 見WDispatchAi.mjs)

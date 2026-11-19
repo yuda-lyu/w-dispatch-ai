@@ -153,8 +153,9 @@ describe('opencodeLimit', function() {
         assert.strict.deepEqual([a.kind, b.kind, b.text], ['quota', 'rate-limit', RATE])
     })
 
-    it('logFlagsToAdd: 未給任何--print-logs形式者補--print-logs(未給--log-level時另補--log-level ERROR); 已給任一形式者一律不補', function() {
+    it('logFlagsToAdd: 未給任何--print-logs形式者補--print-logs(未給--log-level時另補--log-level ERROR); 已給任一形式者一律不補; String包裝物件不是有效旗標, 視同未給', function() {
         //spec: 派工〈本輪範圍〉2「呼叫端不必知道旗標、呼叫端自帶之旗標不重複」; 已給--print-logs者其層級原樣保留
+        //spec: 使用者2026-11-16裁定W-20甲(wsemi 1.9.69): 判斷函數只收原始值, String包裝物件為false(isestr), getCliArgs亦濾除之, 實際不會交給opencode, 故不得算「已給」
         let rr = [
             [],
             ['--variant', 'high'],
@@ -167,8 +168,10 @@ describe('opencodeLimit', function() {
             ['--no-print-logs'],
             null,
             [1, null, '--print-logs'],
-            [Object('--print-logs')], //字串包裝物件亦視為已給(外審terra #15)
+            [Object('--print-logs')], //String包裝物件視同未給(wsemi 1.9.69前之舊語意視為已給)
             [Object('--log-level=WARN')],
+            [Object('--no-print-logs'), '--log-level=WARN'], //包裝旗標被略過, 原始字串旗標照算
+            [Object('--log-level=WARN'), '--print-logs'],
         ].map((a) => logFlagsToAdd(a))
         assert.strict.deepEqual(rr, [
             ['--print-logs', '--log-level', 'ERROR'],
@@ -182,15 +185,18 @@ describe('opencodeLimit', function() {
             [],
             ['--print-logs', '--log-level', 'ERROR'],
             [],
-            [],
+            ['--print-logs', '--log-level', 'ERROR'],
+            ['--print-logs', '--log-level', 'ERROR'],
             ['--print-logs'],
+            [],
         ])
     })
 
-    it('printLogsOn: --print-logs／--print-logs=true為是, --print-logs=false／--no-print-logs為否, 以最後一個為準; 皆無為否', function() {
+    it('printLogsOn: --print-logs／--print-logs=true為是, --print-logs=false／--no-print-logs為否, 以最後一個為準; 皆無為否; String包裝物件視同未給(略過)', function() {
         //spec: 檔頭(日誌列印到stderr之判定, 決定是否監看與上游原因之來源)
-        let rr = [[], ['--print-logs'], ['--print-logs=true'], ['--print-logs=false'], ['--no-print-logs'], ['--print-logs', '--no-print-logs'], ['--print-logs=false', '--print-logs'], null, [Object('--print-logs=true')], ['--print-logs=TRUE']].map((a) => printLogsOn(a))
-        assert.strict.deepEqual(rr, [false, true, true, false, false, false, true, false, true, false])
+        //spec: 使用者2026-11-16裁定W-20甲(wsemi 1.9.69): 判斷函數只收原始值, 包裝物件為false; getCliArgs亦濾除之, 不會交給opencode, 故不得影響判定
+        let rr = [[], ['--print-logs'], ['--print-logs=true'], ['--print-logs=false'], ['--no-print-logs'], ['--print-logs', '--no-print-logs'], ['--print-logs=false', '--print-logs'], null, [Object('--print-logs=true')], ['--print-logs=TRUE'], [Object('--print-logs')], ['--print-logs', Object('--no-print-logs')], [Object('--print-logs'), '--print-logs=false']].map((a) => printLogsOn(a))
+        assert.strict.deepEqual(rr, [false, true, true, false, false, false, true, false, false, false, false, true, false])
     })
 
     it('createLimitWatch: 跨區塊之行於收到換行時才判(前段不觸發); 每次嘗試至多觸發一次onHit; reset後可再觸發', function() {

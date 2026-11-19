@@ -460,7 +460,7 @@ describe('呼叫端注入之函數與物件(外審補格)', function() {
         assert.strict.deepEqual(rows, [true, '', true, 1, false, 'params', true])
     })
 
-    it('runRolePipeline與runFanout之prompt函式回傳String包裝物件時照舊接受(同修前isestr)', async function() {
+    it('runRolePipeline與runFanout之prompt函式回傳String包裝物件時照舊接受(asText取文字, 不經isestr)', async function() {
         //規格: README行為變更紀錄1.0.48第21條與1.0.49起第25條(prompt可為async; 其餘接受範圍不變); 外審opus F12
         let ps = { A: { kind: 'claude', exe: fake.exe } }
         let p = await runRolePipeline({ providers: ps, stages: [{ id: 's1', use: 'A', prompt: () => new String('hello-wrapper') }], callOpt: { promptPrefix: '' } }) // eslint-disable-line no-new-wrappers

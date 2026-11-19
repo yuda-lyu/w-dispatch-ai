@@ -8,7 +8,7 @@ import providersDefault from './providers.mjs'
 import runExecCli from './runExecCli.mjs'
 import getErrorType from './getErrorType.mjs'
 import castTimerMs from './castTimerMs.mjs'
-import { awaitUserFn, readCallerObj, errMsg } from './callUserFn.mjs'
+import { awaitUserFn, readCallerObj, probeReadable, errMsg } from './callUserFn.mjs'
 
 
 // filterOpencodeFree.mjs — 以`opencode models`之輸出過濾目錄(providers)之opencode免費條目, 回報「目前確實供應」者(帳本R-OCFREE-1)
@@ -231,6 +231,10 @@ async function filterOpencodeFree(providers = providersDefault, opt = {}) {
         }
         else {
             let env = get(opt, 'env', null)
+            let penv = probeReadable(env, 'env') //不可讀者以params回報、不起子進程(帳本R-USERFN-4): isobj不拋錯而回false會使env被靜默丟棄、`opencode models`改以繼承之環境執行
+            if (!penv.ok) {
+                return fail('params', penv.msg)
+            }
             let r = await runExecCli(exe, args, { timeoutMs, ...(isobj(env) ? { env } : {}) })
             q = normalizeQueryResult(r)
         }

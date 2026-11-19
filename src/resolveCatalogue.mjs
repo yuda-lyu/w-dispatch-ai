@@ -7,6 +7,7 @@ import providersAll from './providers.mjs'
 import resolveProviders from './resolveProviders.mjs'
 import readEnvFile from './readEnvFile.mjs'
 import castTimerMs from './castTimerMs.mjs'
+import { assertReadable } from './callUserFn.mjs'
 
 
 // resolveCatalogue.mjs — 目錄展開: 內建目錄＋安裝方自帶條目合併 → 逾時三層取值寫進patch → resolveProviders
@@ -196,6 +197,11 @@ function timeoutPatch(merged, opt = {}) {
  *
  */
 function resolveCatalogue(opt = {}) {
+
+    //呼叫端給的物件／陣列不可讀(已撤銷之Proxy等)一律同步throw(同resolveProviders; 修前由判斷函數拋錯而throw, wsemi 1.9.69起會被當成未給而靜默改用內建目錄、process.env、全取; 帳本R-USERFN-4)
+    for (let k of ['catalogue', 'extraProviders', 'env', 'pick', 'exes', 'patch', 'providerTimeouts']) {
+        assertReadable(get(opt, k, null), k)
+    }
 
     //merged
     let merged = mergeCatalogue(get(opt, 'catalogue', null), get(opt, 'extraProviders', null))

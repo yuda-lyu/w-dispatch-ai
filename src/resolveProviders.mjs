@@ -6,6 +6,7 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import strFindSimilar from 'wsemi/src/strFindSimilar.mjs'
 import splitKeys from './splitKeys.mjs'
+import { assertReadable } from './callUserFn.mjs'
 
 
 // resolveProviders.mjs — 把providers定義檔展開為可直接使用的條目
@@ -86,6 +87,19 @@ import splitKeys from './splitKeys.mjs'
  *
  */
 function resolveProviders(providers, opt = {}) {
+
+    //呼叫端給的物件／陣列(providers與其條目、opt.env／pick／exes／patch)不可讀(已撤銷之Proxy、內部標籤或ownKeys拋錯)一律同步throw(本函數無params結果通道):
+    //修前判斷函數(isobj、isarr、isearr)對其拋錯而throw; wsemi 1.9.69起判斷函數不拋而回false, 會靜默改用process.env(換掉金鑰來源)、
+    //pick視同未給而全取(含付費條目)、patch／exes略過、條目濾除——故先以明確探針斷言可讀(帳本R-USERFN-4); 可讀而型別不符者照舊視同未給(K3)
+    assertReadable(providers, 'providers')
+    if (isarr(providers)) {
+        for (let i = 0; i < providers.length; i++) {
+            assertReadable(providers[i], `providers[${i}]`)
+        }
+    }
+    for (let k of ['env', 'pick', 'exes', 'patch']) {
+        assertReadable(get(opt, k, null), k)
+    }
 
     //env, 無效回退process.env(瀏覽器環境無process則空物件)
     let env = get(opt, 'env', null)

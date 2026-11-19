@@ -277,12 +277,21 @@ describe('dispatchAiFallback failureKind處置', function() {
             assert.strict.deepEqual([srv.requests.length, events.filter((e) => e.type === 'skip-key').length], [1, 1])
         })
 
-        //外審#14: isestr接受String包裝物件，指紋計算不得因型別而拋錯
-        it('keys內含String包裝物件: 指紋計算不拋錯，照常成交；與同內容之原始字串金鑰指紋一致(仍共享沒額度紀錄)', async function() {
-            let ok = await call([rest('anthropic:t4r', [Object('sk-ant-good-111111')])]) //Object('x')為String包裝物件
-            srv.requests.length = 0
-            let { events } = await call([rest('anthropic:t4r1', [Object('sk-ant-nocredit-111111')]), rest('anthropic:t4r2', ['sk-ant-nocredit-111111'])])
-            assert.strict.deepEqual([ok.r.ok, ok.r.keyIndex, srv.requests.length, events.filter((e) => e.type === 'skip-key').length], [true, 0, 1, 1])
+        //使用者2026-11-16裁定W-20甲(wsemi 1.9.69): 判斷函數只收原始值, isestr不收String包裝物件(舊: 外審#14視為有效金鑰並於指紋計算取其原始字串)
+        //新語意: 包裝金鑰與數字、null等非字串元素同樣於入口被濾除(不算金鑰、不佔keyIndex、其值不送出、不計指紋), 其後之原始字串金鑰照常使用
+        it('keys內含String包裝物件: 包裝金鑰被濾除(其值不送出、不佔keyIndex)，其後之原始字串金鑰照常成交', async function() {
+            let { r } = await call([rest('anthropic:t4r', [Object('sk-ant-nocredit-111111'), 'sk-ant-good-222222'])]) //Object('x')為String包裝物件
+            assert.strict.deepEqual([r.ok, r.keyIndex, reqKeys(), r.tried.map((t) => [t.keyIndex, t.outcome])], [true, 0, ['sk-ant-good-222222'], [[0, 'ok']]])
+        })
+
+        //2026-11-19裁定(收嚴: 影響計費之opt給了而無效即拒絕, 比照dspec〈輸入參數之檢測機制〉§11; 帳本R-KEYOPT-1): keys給了而無效(非空且非原始字串之元素而濾後無有效字串)即該條目params失敗、不送請求, 不再視同未給而送出不帶金鑰之請求
+        it('keys全為String包裝物件(給了而無效): 該條目以params整組跳過、不送請求(不改送不帶金鑰之請求)；同內容之原始字串金鑰之條目照常送出、不被略過(包裝金鑰條目未算指紋故不共享沒額度紀錄)', async function() {
+            let { r, events } = await call([rest('anthropic:t4r1', [Object('sk-ant-nocredit-111111')]), rest('anthropic:t4r2', ['sk-ant-nocredit-111111'])])
+            //第1條目: params跳過(skip-group), 伺服器不見其請求; 第2條目: 原始字串金鑰照常送出(未被略過), 回沒額度
+            assert.strict.deepEqual(
+                [reqKeys(), events.filter((e) => e.type === 'skip-key').length, r.tried.map((t) => [t.providerId, t.outcome, t.errorType || null]).slice(0, 1), r.failureKind],
+                [['sk-ant-nocredit-111111'], 0, [['anthropic:t4r1', 'skip-group', 'params']], 'no-credit'],
+            )
         })
 
         //外審#13: shouldStop於每次嘗試邊界檢查，全部略過之條目亦須遵守
