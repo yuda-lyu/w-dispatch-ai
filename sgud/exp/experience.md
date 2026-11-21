@@ -12,6 +12,14 @@
 
 > 2026-11-19 再整理(檔約 51KB,超過約 30KB 門檻):2026-11-07～11-11 之免費期 Go 條目下架連網守門紅燈(da405)、OpenCode Go 型錄漂移對齊與 crouton-alpha-free(ke339)、訂閱類條目用量門檻與額度帳(ke340)、agy 提示詞走 stdin(ke342)、CLI 失敗帶回原因(da110)、額度帳帳號識別與重探(da116)、冷卻／健康／預算語意邊界(di402)、呼叫端期限與遞補層期限取早(d417)共八節,已抽出至 `experience_20261119.md`(逐字搬移,節號與標題不變);需要時再調閱.
 
+## 移除 Poolside laguna 兩條目:清單仍列≠可用、移除之連動站點(2026-11-21 dl583,排程第 583 項;帳本 `rulebook_providers.md` R-PROVIDERS-1)
+
+- **「`GET /models` 仍列」不是可用證據**:Poolside 官方端點之 `/models` 仍列 laguna 兩型號,`POST /chat/completions` 卻一律 HTTP 400「Model version … is deactivated」(使用端 11-01 已記同一現象);判可用一律以實際請求為準,與檔頭既有「文件與目錄皆列不等於可用」同形.本輪由主控以 `.env` 之金鑰直呼查證後派工,本套件未自行發請求(不讀 `.env`).
+- **移除 N 條之連動站點**(逐處清單即 R-PROVIDERS-1 站點表):條目數斷言在 3 個測試檔(`unit-providersOpencodeFreeEntries`、`unit-providersOpencodeGoDocs`〔含 README「量級感受」整句與 `resolveProviders.mjs` JSDoc 之字面錨點〕、`unit-providersOpencodeGoEntries`),群組順序在 `unit-providersCodexEntries`;`unit-resolveProviders` 之「可展開內建 providers」案以模擬 env 備齊**全部** envVar 驗無停用,條目不再使用之變數須自該 env 移除(留著不會紅,但誤導讀者以為內建仍用它).盤點用 `Grep "37|35|laguna|poolside|POOLSIDE"` 於 `src`／`test`／`README.md`／`sgud`;歷史紀錄(README 行為變更第 10／44 條、檔頭 2026-09-22 與 11-18 漂移紀錄)保留日期與當時事實、只加「已移除」註記.
+- **範例改用仍存在之條目時要核對其語意**:README／`dispatchAiFallback` 之「同一模型經不同路徑」原以 laguna 三路(額度池與故障域各自獨立)為例;改用 agnes(CLI 與 REST 同用 `AGNES_KEYS`,額度池相同)會寫成不實,故改 `claude:`／`claude-api:`／`anthropic:`(訂閱與 API 金鑰之額度池獨立;後兩者共用 Console 額度而游標與冷卻各自獨立,取自檔頭既有說明).`pick` 打錯字之 `hints` 範例改 `agnes/agnes-3.0-flash` 先以真實 `resolveProviders` 跑過(回 `agnes:agnes-3.0-flash`)再寫入.
+- **守門測試踩到之坑**:①`resolveProviders(providers, { env: {}, pick: [...] })` 中帶 `envVar` 之條目(如 `agnes:`)在無金鑰環境下會被 `skipped` 而不在 `providers`,「pick 後存活之條目」須選無 `envVar` 者(`claude:sonnet`)才不被誤導;②README 現行說明與行為變更歷史紀錄須分段檢查(以 `#### Options shared by all dispatch functions:` 之後為現行),否則「README 不含 laguna」永遠紅.
+- **修前紅取證**(同 2026-11-11 回饋):`git archive --format=tar HEAD src README.md | tar -x -C tmp/<案>/old`,新測試複製進 `old/test/`(測試以 `ROOT = dirname(test)/..` 讀 `src`／`README`),`npx mocha ./tmp/<案>/old/test/…` 即對 HEAD 碼跑;node 自 `tmp/` 往上解析得 repo 之 `node_modules`,不必連結.「通用機制不改」之保持案(自訂條目仍可用 `POOLSIDE_KEYS`、`readEnvFile` 仍讀出)修前即綠,須在報告逐案標明.
+
 ## 可讀性探針取代「借判斷函數拋錯之防線」、金鑰型 opt 收嚴(2026-11-19 dai492i2;帳本 `rulebook_userfn.md` R-USERFN-4、`rulebook_anthropic.md` R-KEYOPT-1)
 
 - **判斷函數不拋後,「try／catch 轉 params」之防線不是壞了而是改走他支**:`isobj(v)` 於已撤銷之 Proxy 上由拋錯變回 `false`,於是 `readCallerObj` 把它原樣交回(`ok:true`),下游改成「照常執行」「靜默略過」「讀取時才 reject」。修法不是補 try,而是**先以明確探針判「可讀」再交判斷函數判型**(`probeReadable`:`Object.prototype.toString.call` ＋ `Reflect.ownKeys`,拋錯即不可讀;兩步各抓一類:`toStringTag` getter／已撤銷之 Proxy 由前者、`ownKeys` 陷阱由後者;屬性值 getter 由後續展開之 try 抓)。`readCallerObj` 對 `typeof` 非 `'object'` 者(含函數 Proxy)仍原樣交回——修前即如此,不屬本次(契約外)。

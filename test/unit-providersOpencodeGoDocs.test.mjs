@@ -197,16 +197,16 @@ describe('各ocgo:條目註解(實測不到者不得寫成已驗證)', function(
         assert.strict.deepEqual([s.includes('無法歸因於這1次'), s.includes('「用量計入」未能由此證明')], [true, true])
     })
 
-    it('目錄條目數與README／resolveProviders註解之37一致(2026-11-10 da405: 38 → 37; 2026-11-13 da-hy Gitea #137新增agy Hydrogen: 37 → 38; 2026-11-18 wda530下架oc:opencode/glm-5.3-flash-free: 38 → 37; 其中ocgo:為8條)', function() {
+    it('目錄條目數與README／resolveProviders註解之35一致(2026-11-10 da405: 38 → 37; 2026-11-13 da-hy Gitea #137新增agy Hydrogen: 37 → 38; 2026-11-18 wda530下架oc:opencode/glm-5.3-flash-free: 38 → 37; 2026-11-21 dl583移除poolside兩條目: 37 → 35; 其中ocgo:為8條)', function() {
         let n = providers.length
         let readme = readSrc('../README.md')
         let rp = readSrc('../src/resolveProviders.mjs')
         let r = [
             n,
-            readme.includes('量級感受：內建providers 37條全上陣時（含需設 `OPENCODE_GO_KEYS` 才會上陣之 8 條 Go 條目；未設者為 29 條），一個名額最壞37×300s＝185min（29 條時145min）；3階段RolePipeline最壞約9.25小時（29 條時約7.25小時'),
-            rp.includes('// => 37 []') && rp.includes('內建條目共37條〔含8條OpenCode Go之ocgo:'),
+            readme.includes('量級感受：內建providers 35條全上陣時（含需設 `OPENCODE_GO_KEYS` 才會上陣之 8 條 Go 條目；未設者為 27 條），一個名額最壞35×300s＝175min（27 條時135min）；3階段RolePipeline最壞約8.75小時（27 條時約6.75小時'),
+            rp.includes('// => 35 []') && rp.includes('內建條目共35條〔含8條OpenCode Go之ocgo:'),
         ]
-        assert.strict.deepEqual(r, [37, true, true])
+        assert.strict.deepEqual(r, [35, true, true])
     })
 
 })

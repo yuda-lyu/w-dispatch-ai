@@ -265,6 +265,7 @@ describe('filterOpencodeFree (以opencode models過濾目錄之免費條目)', f
     describe('輸出解析(parseModelIds)', function() {
 
         it('去色、CRLF、空行、橫幅與警告行、重複行、三段式id', function() {
+            //輸入為`opencode models`輸出之文字樣本(非內建條目): 'poolside/poolside/laguna-s-2.1'僅作「三段式id」之解析樣本, 與內建providers是否收錄無關(2026-11-21 dl583內建已移除, 本案不受影響而保留)
             let esc = String.fromCharCode(27)
             let out = [
                 `${esc}[92mopencode/beam-free${esc}[0m\r`,

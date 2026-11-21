@@ -71,7 +71,8 @@ describe('resolveProviders', function() {
 
     it('可展開套件內建providers.mjs(以模擬env驗證, 不依賴真實.env)', function() {
         //OPENCODE_GO_KEYS: 2026-11-03 da65(Gitea #65)新增8條OpenCode Go條目(ocgo:)所用之金鑰變數, 各envVar皆有值方得「無停用」
-        let fakeEnv = { OPENCODE_KEYS: 'sk-1,sk-2', OPENCODE_GO_KEYS: 'sk-7', AGNES_KEYS: 'sk-3', POOLSIDE_KEYS: 'sk-4', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_KEYS: 'sk-ant-6' }
+        //POOLSIDE_KEYS: 2026-11-21 dl583移除poolside兩條目後內建條目已不使用, 故不在模擬env內(各envVar皆有值方得「無停用」, 缺一即有條目skipped)
+        let fakeEnv = { OPENCODE_KEYS: 'sk-1,sk-2', OPENCODE_GO_KEYS: 'sk-7', AGNES_KEYS: 'sk-3', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_KEYS: 'sk-ant-6' }
         let { providers, skipped } = resolveProviders(providersAll, { env: fakeEnv })
         let r = [
             providers.length === providersAll.length, //各envVar皆有值 → 無停用
@@ -85,7 +86,7 @@ describe('resolveProviders', function() {
 
     it('Anthropic API金鑰條目(claude-api:與anthropic:共6條)只認ANTHROPIC_KEYS: 缺則全數skipped, 且不把ANTHROPIC_API_KEY當金鑰來源(避免使用端誤將Console金鑰載入全域而令Claude Code全面改用API計費)', function() {
         let ids = ['claude-api:opus-5.5', 'claude-api:sonnet-5.5', 'claude-api:haiku-5.5', 'anthropic:opus-5.5', 'anthropic:sonnet-5.5', 'anthropic:haiku-5.5']
-        let envOnlyApiKey = { OPENCODE_KEYS: 'sk-1', AGNES_KEYS: 'sk-3', POOLSIDE_KEYS: 'sk-4', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_API_KEY: 'sk-ant-api03-MUST-NOT-BE-USED' }
+        let envOnlyApiKey = { OPENCODE_KEYS: 'sk-1', AGNES_KEYS: 'sk-3', TYPESAFE_KEYS: 'apikey_5', ANTHROPIC_API_KEY: 'sk-ant-api03-MUST-NOT-BE-USED' }
         let a = resolveProviders(providersAll, { env: envOnlyApiKey })
         let b = resolveProviders(providersAll, { env: { ...envOnlyApiKey, ANTHROPIC_KEYS: ' sk-ant-api03-K1 , sk-ant-api03-K2,' } })
         let pick = resolveProviders(providersAll, { env: { ANTHROPIC_KEYS: 'sk-ant-api03-K1' }, pick: ['anthropic:haiku-5.5', 'claude-api:haiku-5.5', 'claude:sonnet'] })
@@ -145,6 +146,7 @@ describe('resolveProviders', function() {
     })
 
     it('pick查無時missing附拼寫提示hints(最接近之可用id), 無missing時hints為空物件', function() {
+        //自建defs(非內建條目): 'poolside:laguna-s-2.1'僅為拼寫提示之id字面樣本, 與內建providers是否收錄無關(2026-11-21 dl583內建已移除, 本案不受影響而保留)
         let defs = [
             { id: 'poolside:laguna-s-2.1', kind: 'api-openai-compat', model: 'm' },
             { id: 'claude:sonnet', kind: 'claude', model: 'sonnet' },

@@ -236,7 +236,7 @@ await test()
 
 **1.0.40 起**：
 9. 內建 providers：`codex:gpt-6-sol` 改為 `codex:gpt-6.1-sol`（id 與 model 皆換）。以舊 id 做 `pick` 者會落入 `missing`（`hints` 會提示新 id），須改用新 id。
-10. 內建 providers 之思考強度一律明給 high：claude 條目加 `--effort high`（此前未給，`-p` 實測為 medium）；codex 條目加 `--config model_reasoning_effort="high"`（此前沿用執行機之 `config.toml`）；opencode 之 muse-spark-1.2／1.3 與 space-bunny 加 `--variant high`；`zen:space-bunny-free` 之 body 加 `reasoning_effort: 'high'`；`poolside:laguna-s-2.1` 由關閉思考改為開啟（`enable_thinking: true`，`max_tokens` 由 8192 改 32768）。**耗時會增加**（poolside 實測推理題由 3.8s 增為 15～28s，但關閉時該題答錯）。以 `patch` 覆寫條目 `extraArgs` 者，須自行一併帶上防寫與思考強度旗標。
+10. 內建 providers 之思考強度一律明給 high：claude 條目加 `--effort high`（此前未給，`-p` 實測為 medium）；codex 條目加 `--config model_reasoning_effort="high"`（此前沿用執行機之 `config.toml`）；opencode 之 muse-spark-1.2／1.3 與 space-bunny 加 `--variant high`；`zen:space-bunny-free` 之 body 加 `reasoning_effort: 'high'`；`poolside:laguna-s-2.1` 由關閉思考改為開啟（`enable_thinking: true`，`max_tokens` 由 8192 改 32768）。**耗時會增加**（poolside 實測推理題由 3.8s 增為 15～28s，但關閉時該題答錯；〔`poolside:laguna-s-2.1` 已於 2026-11-21 移除，見第 78 條〕）。以 `patch` 覆寫條目 `extraArgs` 者，須自行一併帶上防寫與思考強度旗標。
 
 **1.0.42 起**：
 11. 內建 providers 新增三條 opencode 免費模型：`oc:opencode/ling-3.1-flash-free`、`oc:opencode/longcat-2.5-preview-free`、`oc:opencode/fledge-alpha-free`（匿名免費存取、防寫與 `--variant high` 同其餘 `oc:opencode/*` 條目），排在 `oc:opencode/space-bunny-free` 之後、`agy:` 之前。以 `pick` 自選者不受影響；**全取者遞補鏈變長**，原排其後之條目（agy、claude、codex 等）要在這三條也失敗後才輪到。三者之 REST 遭 Zen 免費層閘門擋下（403），故無 `zen:` 版。
@@ -284,7 +284,7 @@ await test()
 41. 新增 kind `api-anthropic`（`dispatchApiAnthropic`，直呼 `POST /v1/messages`）：`Object.keys(adapters)`／`WDispatchAi.KINDS` 由 7 個變 8 個（插在 `api-openai-responses` 與 `api-typesafe-systemone` 之間）；`dispatchAi` 對未知 kind 之錯誤訊息 `(available: …)` 清單相應多 `api-anthropic`；`WDispatchAi` 多匯出 `dispatchApiAnthropic`。依賴上述清單做完整比對者請更新。
 42. 新增 `errorType: 'refusal'`（僅 `api-anthropic`：HTTP 200 且 `stop_reason` 為 `refusal`）：失敗、不重試，`dispatchAiFallback` 視為與金鑰無關而**整組跳過**；依 `errorType` 做監控或分類者請納入。HTTP 非 2xx 之結果另帶 `apiErrorType`（取自錯誤本體 `error.type`）。
 43. `redactText.mjs` 新增匯出 `maskApiKeys`（遮蔽 `sk-ant-` 樣式）、`redactApiKeyText`（先遮蔽指定機密值再遮蔽樣式）與 `createStreamRedactor`（串流遮蔽器，處理被切在兩塊之間的機密值）；既有 `redactText`／`secretHeaderValues` 行為不變。
-44. 內建 providers 新增 6 條：`claude-api:opus-5.5`／`claude-api:sonnet-5.5`／`claude-api:haiku-5.5`（kind `claude`，`envVar: 'ANTHROPIC_KEYS'`）與 `anthropic:opus-5.5`／`anthropic:sonnet-5.5`／`anthropic:haiku-5.5`（kind `api-anthropic`，`envVar: 'ANTHROPIC_KEYS'`），六條依序集中於清單末端（`poolside:laguna-s-2.1` 之後，先 CLI 後 REST）。**全取（不給 `pick`）且 `.env` 有 `ANTHROPIC_KEYS` 者，這 6 條會進入遞補鏈並耗用 API 額度（計費）**；沒有該變數則進 `skipped`，行為與此前相同。需要避免者以 `pick` 自選。`resolveProviders` 輸出之 `providers.length`、`skipped` 因而可能多 6 項。
+44. 內建 providers 新增 6 條：`claude-api:opus-5.5`／`claude-api:sonnet-5.5`／`claude-api:haiku-5.5`（kind `claude`，`envVar: 'ANTHROPIC_KEYS'`）與 `anthropic:opus-5.5`／`anthropic:sonnet-5.5`／`anthropic:haiku-5.5`（kind `api-anthropic`，`envVar: 'ANTHROPIC_KEYS'`），六條依序集中於清單末端（原接於 `poolside:laguna-s-2.1` 之後，該條已於 2026-11-21 移除而改接於 `agnes:agnes-3.0-flash` 之後，見第 78 條；先 CLI 後 REST）。**全取（不給 `pick`）且 `.env` 有 `ANTHROPIC_KEYS` 者，這 6 條會進入遞補鏈並耗用 API 額度（計費）**；沒有該變數則進 `skipped`，行為與此前相同。需要避免者以 `pick` 自選。`resolveProviders` 輸出之 `providers.length`、`skipped` 因而可能多 6 項。
 45. 文件：新增「Claude以API金鑰計費」與「Options only for dispatchApiAnthropic」；`dispatchAiFallback` 之 `keys` 說明、`adapters.mjs` 選型判準與 `getErrorType.mjs` 之 errorType 一覽同步補述。
 46. `dispatchClaude` 給 `key` 時，子進程環境額外移除**繼承自 `process.env` 之父 Claude Code session 連結變數**：前綴 `CLAUDE_CODE_`、`CLAUDE_AGENT_SDK_` 與完整名稱 `CLAUDECODE`、`CLAUDE_PID`、`CLAUDE_EFFORT`、`CLAUDE_JOB_DIR`（保留 `CLAUDE_CODE_GIT_BASH_PATH`；`opt.env` 明確傳入者保留）。原因：在 Claude Code 工作階段內呼叫時（例如 agent 派工），子 `claude`（2.1.302 實測）會因這些變數沿用父 session 登入而無視 `ANTHROPIC_API_KEY`（`apiKeySource=none`，實走訂閱額度）。**未給 key 時行為不變**（不移除任何變數）。**影響**：給 key 且依賴「繼承自 shell 之 `CLAUDE_CODE_*` 使用者設定」（如 `CLAUDE_CODE_EFFORT_LEVEL`、`CLAUDE_CODE_USE_POWERSHELL_TOOL`、`CLAUDE_CODE_TMPDIR`）者，請改由 `opt.env` 明確傳入；見「Claude以API金鑰計費」。
 47. **失敗細分類 `failureKind`／`failureDetail`**（`api-anthropic` 之全部失敗結果，與 `claude` 在 API 金鑰在場〔`key`，或不建議的 `opt.env.ANTHROPIC_API_KEY`〕且已進入執行階段之失敗結果，另加「`key` 含 NUL 字元而在啟動前被拒」〔`INVALID_KEY`，`failureKind: 'key-invalid'`，`attempts: 0`〕）：值為 `no-credit`／`context-too-long`／`rate-limit`／`overloaded`／`key-invalid`／`no-permission`／`network`／`env-error`／`other`（判準、依據與未實測者見「Claude以API金鑰計費」）。`errorType`／`error`／`apiErrorType`／`stderr` 照舊；**成功結果、訂閱路徑〔`claude` 未給金鑰〕與其他 kind 不帶這些欄位**。依賴「結果物件欄位完全相等」做比對者請注意 `api-anthropic` 之 `params` 失敗亦多一欄 `failureKind: 'other'`。
@@ -360,6 +360,9 @@ await test()
 
 **未發布（wsemi 1.9.69 之下游配合；金鑰型 opt 收嚴。**含行為變更**：`key`／`keys` 給了而無效即拒絕）**：
 77. ①**金鑰型 opt「給了而無效」即以 `params` 拒絕，不再靜默改走另一種計費**（金鑰屬影響計費之 opt）：修前 `key`／`keys` 給了非字串（數字、物件、陣列、`String` 包裝物件、已撤銷之 `Proxy` 等）而濾後無有效字串時，視同未給——`claude` 條目起一個不帶 `ANTHROPIC_API_KEY` 之子進程（改走登入態／訂閱，或繼承之環境值），REST 條目送出不帶認證標頭之請求；現改為**該條目回 `errorType: 'params'`、`attempts: 0`，不起子進程、不送請求**（`dispatchAiFallback` 對該條目整組跳過、續試下一組；用量查詢亦不起）。判定：`key`——`undefined`、`null`、`''` 視為未給（登入態／預設認證），非空原始字串有效，其餘為給了而無效；`keys`——`undefined`、`null`、`[]` 視為未給，陣列內之 `''`、`null`、`undefined` 元素略過，**含有效字串者無效元素照舊略過（混合不拒絕）**，**非陣列之定義值（含字串 `'sk-…'`、`''`）、不可讀之陣列、含「非空且非原始字串」之元素而濾後無有效字串者**為給了而無效。適用 `dispatchClaude`、`dispatchOpencode`、`dispatchApiOpenaiCompat`／`Responses`／`Anthropic`／`TypesafeSystemone` 之 `key` 與 `dispatchAiFallback` 條目之 `keys`／`key`（`codex`、`antigravity` 無金鑰概念，不受影響；有 `keys` 時各把金鑰覆寫 `opt.key`，故不判 `opt.key`）；錯誤訊息只寫型別與個數，不回顯值。**依賴「給了無效金鑰即沿用登入態」者請改為不給該欄**（缺環境變數時傳 `undefined`／`null`／`''` 或 `[]` 皆仍為未給）。②**呼叫端給之物件／陣列不可讀（已撤銷之 `Proxy`、`Symbol.toStringTag` 或 `ownKeys` 陷阱拋錯）之偵測改為本套件內部之可讀性探針**，不再借 wsemi 判斷函數（`isobj`、`isarr` 等）對敵意輸入拋錯來成立防線——wsemi 1.9.69 起判斷函數對任何輸入皆不拋錯而回 `false`，修前依賴其拋錯之站點（`env`／`headers`／`body`／`questions`／`config`／providers 條目與陣列／`spec.fallback`／工作流規格／`store.get()` 之回傳狀態等）於 1.9.69 下把不可讀之輸入當成「非物件」而放行或靜默略過（含 1 案實際 reject）；現一律以 `params` 回報（`store.get()` 回傳不可讀者本次以全新狀態執行且不回寫；函數型之已撤銷 `Proxy` 亦視為不可讀）；同步函數 `resolveProviders`／`resolveCatalogue`／`createAiCaller` 之不可讀 `env`／`pick`／`exes`／`patch`／`catalogue`／`providers` 等**同步 throw** `<名稱> is not readable: …`（修前亦 throw；1.9.69 下曾靜默改用 `process.env`、全取），`filterOpencodeFree` 之不可讀 `env` 回 `params`；以上不可讀之輸入皆不再被當成「非物件／未給」而放行（失敗通道與 wsemi 1.9.68 以前相同；`filterOpencodeFree` 原為 `other`、改為更明確之 `params`）。**`keys` 陣列元素數上限 10000**（超過視為給了而無效）。③`opencode` 之 `extraArgs` 內 `String` 包裝物件旗標視同非字串元素略過（`--print-logs`／`--log-level` 之判定與 `getCliArgs` 一致）；`prompt`／`task` 為 `String` 包裝物件者照舊取其原始字串（轉型取文字，不改）。
+
+**未發布（Poolside laguna 條目下架，2026-11-21；含條目移除：`oc:poolside/poolside/laguna-s-2.1`、`poolside:laguna-s-2.1`）**：
+78. ①**移除內建條目 `oc:poolside/poolside/laguna-s-2.1` 與 `poolside:laguna-s-2.1`**（poolside 兩條目之全部）：2026-11-21 以 `.env` 之 `POOLSIDE_KEYS` 兩把金鑰直呼 `https://inference.poolside.ai/v1`，`GET /models` 仍列 `poolside/laguna-xs-2.1`、`poolside/laguna-s-2.1`，但 `POST /chat/completions` 以 `poolside/laguna-s-2.1`（最小請求與條目原樣之 body 皆試，兩把金鑰皆然）一律 HTTP 400「`Model version qvml0p9 is deactivated. It needs to be activated before running predictions`」，`poolside/laguna-xs-2.1` 亦 HTTP 400「`Model version wdlvmme is deactivated…`」；使用端於 2026-11-01 已記同一現象，故至遲 11 月初起即停用；Poolside 無公開停用公告而轉售管道仍列此模型，可能為該帳號層之停用——不論何者，以現有金鑰兩條目必失敗，全取遞補時每輪白耗兩格，依使用者指示自目錄移除（前例：2026-09-22 之 `zen:laguna-s-2.1-free`、2026-11-10 之 `crouton-alpha-free`；「`/models` 清單仍列」不等於可用，判可用須以實際 `POST /chat/completions` 為準）。內建 providers 37 → 35 條（`oc:` 群組少 1 條、REST 群組少 1 條；其餘條目之 `id`、內容與順序不變，群組順序為 `oc`→`ocgo`→`agy`→`claude`→`codex`→`typesafe`→`zen`→`agnes`→`claude-api`→`anthropic`）。②**升版後的行為變化**：`resolveProviders` 的 `pick` 指名此兩 id 者列入 `missing`（不拋錯、附拼寫提示 `hints`），`patch` 指名者靜默無作用；全取者遞補鏈少 2 條（兩條原皆帶 `envVar: 'POOLSIDE_KEYS'`：原先缺該變數者列於 `skipped`、有該變數者進鏈，現皆不再出現）；`POOLSIDE_KEYS` 已無內建條目使用（`.env` 內有無該變數皆無影響，使用端 `.env` 不必改）；已以 `extraProviders` 或自行合併自帶 Poolside 條目者不受影響，`readEnvFile`／`resolveProviders`／`splitKeys` 仍接受自訂條目之任意 `envVar`（含 `POOLSIDE_KEYS`）。下游若自備名單或文件列有此兩 id（如評比工具之預設名單、`dispatch-opencode` 技能之條目表），請同步剔除。③`providers.mjs` 檔頭新增 2026-11-21 漂移紀錄；本文以 laguna 為例之處（`id` 命名規則之「同一模型經不同路徑」、`resolveProviders` 之 `pick` 打錯字範例）改用仍存在之條目；「量級感受」改為 35 條（未設 `OPENCODE_GO_KEYS` 者 27 條）。內建條目共 35 條。
 
 #### Options shared by all dispatch functions:
 | key | type | default | description |
@@ -728,7 +731,7 @@ let r = await wdi.dispatchAiFallback(state, { providers: jev, questions })
 | 規則 | 說明 |
 | --- | --- |
 | **區分到「模型」而非只到「廠商」** | ❌ `id: 'claude'` — 日後無法同時掛 sonnet 與 opus，日誌也看不出用了哪個模型<br>✅ `id: 'claude:sonnet'`、`id: 'claude:opus'` |
-| **同一模型經不同路徑時須帶路徑** | 同一個 laguna 可經 Poolside 官方 REST、OpenRouter、opencode CLI 三條路，額度池與故障域各自獨立，屬三個供應商：<br>`'poolside:laguna-s-2.1'`、`'or:poolside/laguna-s-2.1:free'`、`'oc:poolside/poolside/laguna-s-2.1'` |
+| **同一模型經不同路徑時須帶路徑** | 同一個 Sonnet 可經 Claude Code 訂閱登入態、Claude Code 配 Anthropic API 金鑰計費、Anthropic REST 三條路，計費路徑與故障域各異（訂閱與 API 金鑰之額度池各自獨立；後兩者同用 Console 額度，但游標與冷卻各自獨立），屬三個供應商：<br>`'claude:sonnet'`、`'claude-api:sonnet-5.5'`、`'anthropic:sonnet-5.5'` |
 | **務必給、務必唯一** | 未給時回退為**陣列索引字串**——索引是位置不是身分，日後於鏈中插入條目會令後續條目繼承他人的游標進度（輪替張冠李戴）。兩個條目同 `id` 則共用同一游標且日誌無法區分。 |
 
 **同一組金鑰用於多個條目時**（例如某模型的 CLI 版與 REST 版共用同一批金鑰），各條目游標**獨立**：兩者各自從游標起點輪替，同一把金鑰可能被連續使用而另一把閒置。要共享輪替進度就給**相同** `id`（代價：日誌無法區分兩者）；要能區分就分開命名（代價：額度不均攤）。此取捨由呼叫端依實際需求決定。
@@ -965,7 +968,7 @@ timeoutMs（單次嘗試，統一預設300000）
 | `runRolePipeline` | Σ各階段（**序列**） | ≈M×K×timeoutMs |
 | `runFanoutPipeline` | 上兩者相加 | ≈(2+M)×K×timeoutMs |
 
-量級感受：內建providers 37條全上陣時（含需設 `OPENCODE_GO_KEYS` 才會上陣之 8 條 Go 條目；未設者為 29 條），一個名額最壞37×300s＝185min（29 條時145min）；3階段RolePipeline最壞約9.25小時（29 條時約7.25小時；正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
+量級感受：內建providers 35條全上陣時（含需設 `OPENCODE_GO_KEYS` 才會上陣之 8 條 Go 條目；未設者為 27 條），一個名額最壞35×300s＝175min（27 條時135min）；3階段RolePipeline最壞約8.75小時（27 條時約6.75小時；正常情況為秒級~分鐘級，最壞只在多家連環卡死時發生）。
 
 **外部調整四層**（細者覆蓋粗者，全部免改套件程式）：
 1. **全域**：`dispatchAiWkf({ defaults: { timeoutMs, budgetMs, minAttemptMs } })`
@@ -1066,7 +1069,7 @@ let wkf2 = wdi.dispatchAiWkf({ providers: table, defaults: {
 ```alias
 import wdi from 'w-dispatch-ai'
 
-//金鑰放.env(OPENCODE_KEYS/OPENCODE_GO_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS/ANTHROPIC_KEYS, 逗號分隔多把), 以readEnvFile讀成物件——
+//金鑰放.env(OPENCODE_KEYS/OPENCODE_GO_KEYS/AGNES_KEYS/TYPESAFE_KEYS/ANTHROPIC_KEYS, 逗號分隔多把), 以readEnvFile讀成物件——
 //不用process.loadEnvFile: 那會把金鑰塞進process.env, 多專案並行時互相覆蓋
 let env = wdi.readEnvFile('./.env')
 
@@ -1088,7 +1091,7 @@ let p2 = wdi.resolveProviders(wdi.providers, {
 })
 
 //pick打錯字時missing附拼寫提示hints(最接近之可用id), 可直接組出可定位的錯誤訊息
-let pm = wdi.resolveProviders(wdi.providers, { env, pick: ['poolside/laguna-s-2.1'] })
+let pm = wdi.resolveProviders(wdi.providers, { env, pick: ['agnes/agnes-3.0-flash'] })
 if (pm.missing.length > 0) {
     throw new Error(`unknown provider id(s): ${pm.missing.map((id) => `${id} (did you mean ${pm.hints[id]}?)`).join(', ')}`)
 }
@@ -1104,11 +1107,11 @@ let resolved = wdi.resolveProviders(merged, { env, pick: [...] })
 
 上列合併與逐條逾時取值，亦可一次交給 `resolveCatalogue({ extraProviders, providerTimeouts, timeoutMs, ... })`（見下方「目錄展開」），不必自行合併。
 
-**內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（原僅 `zen:space-bunny-free`，該條已於 2026-10-13 移除，現無內建 REST 條目帶此欄），agy 以模型 slug 之檔位（`-high`）表示；poolside 之思考為開關，已設為開啟。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效（codex 條目例外：其防寫為獨立之 `sandbox` 欄位而不在 `extraArgs`，覆寫 `extraArgs` 只需帶上強度旗標，唯讀檔位不受影響）。
+**內建條目之思考強度一律 high**（2026-09-30 起，單一來源為 providers.mjs 之 `EFFORT` 常數）：各家參數不同——claude 為 `--effort`，codex 為 `--config model_reasoning_effort`，opencode 為 `--variant`（僅有檔位之模型帶），REST 為 `body.reasoning_effort`（原僅 `zen:space-bunny-free`，該條已於 2026-10-13 移除，現無內建 REST 條目帶此欄），agy 以模型 slug 之檔位（`-high`）表示。未明給時各 CLI 回退自身預設（claude `-p` 實測為 medium，codex 沿用執行機之 `config.toml`），結果隨安裝機而異，故一律明給。以 `patch` 覆寫 `extraArgs` 時，須自行一併帶上防寫與思考強度旗標，否則兩者同時失效（codex 條目例外：其防寫為獨立之 `sandbox` 欄位而不在 `extraArgs`，覆寫 `extraArgs` 只需帶上強度旗標，唯讀檔位不受影響）。
 
 **Anthropic API 金鑰條目（2026-10-24 起，`claude-api:`×3 與 `anthropic:`×3）**：`envVar` 為 `ANTHROPIC_KEYS`（**不是** `ANTHROPIC_API_KEY`，理由與用法見「Claude以API金鑰計費」）；思考強度同樣 high——`claude-api:` 為 `--effort high`，`anthropic:` 為條目欄位 `effort: 'high'`（轉為 `output_config.effort`；Opus 5.5 與 Haiku 5.5 之 API 預設為 medium，故必須明給）。
 
-**推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；內建之 `poolside:laguna-s-2.1`（開啟思考）即用 32768。
+**推理模型請放寬 `body.max_tokens`**：推理模型的 `max_tokens` 含推理 token（2026-09-24 實測 `space-bunny-free` 列 10 個縣市一題即用 5222，其中推理 4849），照抄上例之 8192 容易截斷；截斷預設判失敗換家（`errorType: 'incomplete'`，見`acceptTruncated`），截斷頻繁等於白白換家；推理模型之自帶條目請依該模型之輸出上限放寬（如 32768；各家上限不同，先查其文件）。
 
 **警語：動「輸入」、不要動「回傳」**——把條目 push 進回傳的 `providers` 陣列不會同步進 `table`，兩者當場分歧；合併輸入再呼叫則兩種輸出同源產出、必然一致。另同 id 重複條目屬設定錯誤（共用游標、日誌無法區分），合併時務必如上例先濾再接。
 

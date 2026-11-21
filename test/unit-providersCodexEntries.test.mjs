@@ -72,13 +72,14 @@ describe('providers: codex條目(terra／sol／luna)', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('群組(id前綴)順序不動: oc→ocgo→agy→claude→codex→typesafe→zen→agnes→poolside→claude-api→anthropic, 各群組各成一段(codex在claude之後、typesafe之前)', function() {
+    it('群組(id前綴)順序不動: oc→ocgo→agy→claude→codex→typesafe→zen→agnes→claude-api→anthropic, 各群組各成一段(codex在claude之後、typesafe之前)', function() {
         //規格: 任務2「其他群組之順序不動」——基準為新增前(HEAD)之群組順序; terra只加入codex群組, 不得使codex段位移或拆散他群組
         //2026-11-03 da65(Gitea #65): 新增ocgo:群組(OpenCode Go, 8條)置於oc之後、agy之前; 其餘群組之相對順序不變
+        //2026-11-21 dl583: poolside群組(原在agnes之後、claude-api之前; 僅poolside:laguna-s-2.1一條)隨該條目移除而消失(使用者指示, 見providers.mjs檔頭漂移紀錄); 其餘群組之相對順序不變
         let prefixes = providers.map((p) => p.id.split(':')[0])
         let runs = prefixes.filter((x, i) => i === 0 || x !== prefixes[i - 1])
         let r = [runs, new Set(runs).size === runs.length]
-        let rr = [['oc', 'ocgo', 'agy', 'claude', 'codex', 'typesafe', 'zen', 'agnes', 'poolside', 'claude-api', 'anthropic'], true]
+        let rr = [['oc', 'ocgo', 'agy', 'claude', 'codex', 'typesafe', 'zen', 'agnes', 'claude-api', 'anthropic'], true]
         assert.strict.deepEqual(r, rr)
     })
 

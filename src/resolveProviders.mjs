@@ -60,12 +60,12 @@ import { assertReadable } from './callUserFn.mjs'
  * //全取: envVar展開為keys, 缺環境變數者列入skipped
  * let { providers, table, skipped } = resolveProviders(providersAll, { env })
  * console.log(providers.length, skipped)
- * // => 37 [] (設.env已備齊各條目之envVar; 內建條目共37條〔含8條OpenCode Go之ocgo:, 其金鑰變數為OPENCODE_GO_KEYS〕, 缺變數者改列於skipped且不計入providers)
+ * // => 35 [] (設.env已備齊各條目之envVar; 內建條目共35條〔含8條OpenCode Go之ocgo:, 其金鑰變數為OPENCODE_GO_KEYS〕, 缺變數者改列於skipped且不計入providers)
  *
  * //pick打錯字時, missing附拼寫提示hints(最接近之可用id)
- * let rm = resolveProviders(providersAll, { env, pick: ['poolside/laguna-s-2.1'] })
+ * let rm = resolveProviders(providersAll, { env, pick: ['agnes/agnes-3.0-flash'] })
  * console.log(rm.missing, rm.hints)
- * // => [ 'poolside/laguna-s-2.1' ] { 'poolside/laguna-s-2.1': 'poolside:laguna-s-2.1' }
+ * // => [ 'agnes/agnes-3.0-flash' ] { 'agnes/agnes-3.0-flash': 'agnes:agnes-3.0-flash' }
  *
  * //自選: 依pick順序回傳(順序即遞補優先序), 可直接餵dispatchAiFallback
  * let r2 = resolveProviders(providersAll, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] })
@@ -128,7 +128,7 @@ function resolveProviders(providers, opt = {}) {
     }
 
     //hints, missing之拼寫提示: 自全部條目id中找最接近者——實務上pick查無多半是打錯字
-    //(如'poolside/laguna'誤作分隔符), 附上最接近id可直接定位; 僅為相似度最高者, 非保證正解
+    //(如'agnes/agnes-3.0-flash'誤作分隔符), 附上最接近id可直接定位; 僅為相似度最高者, 非保證正解
     let hints = {}
     if (missing.length > 0) {
         let ids = providersRaw.map((p) => get(p, 'id', null)).filter(isestr)

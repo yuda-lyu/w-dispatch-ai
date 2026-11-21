@@ -8,7 +8,7 @@
 //   oc:＝經opencode CLI(有工具、較慢) / agy:＝antigravity CLI / claude:/codex:＝訂閱登入態CLI
 //   ocgo:＝同opencode CLI但走OpenCode Go月費訂閱額度(provider opencode-go, envVar OPENCODE_GO_KEYS; 與oc:額度池不同, 見下方【OpenCode Go】段)
 //   claude-api:＝經Claude Code CLI但以Anthropic Console之API金鑰計費(有工具; 與claude:同CLI、不同計費路徑故為不同供應商, envVar ANTHROPIC_KEYS)
-//   zen:/agnes:/poolside:＝REST直呼(免CLI免登入、快, 純文字生成)
+//   zen:/agnes:＝REST直呼(免CLI免登入、快, 純文字生成)
 //   anthropic:＝REST直呼Anthropic Messages API(純文字生成, 以Console之API金鑰計費, envVar ANTHROPIC_KEYS)
 //   typesafe:＝REST直呼之決策模型(非文字生成, 須給questions, 見該條註解)
 //   同一模型之CLI版與REST版屬不同供應商(能力與故障域不同; 額度池多半也不同), 故各為一條。
@@ -328,7 +328,7 @@
 //     ——即v2頁該列為過期資料, 免費變體已終止而非暫時限流。
 //   2026-09-22移除zen:laguna-s-2.1-free(同上兩條件: 不在/models清單且實測400 Model is unavailable;
 //     v2文件仍列其為Free亦屬過期)。註: poolside之兩條目(oc:poolside/與poolside:)走Poolside官方端點,
-//     與此zen轉售條目無關, 實測仍可用故保留。
+//     與此zen轉售條目無關, 實測仍可用故保留(2026-11-21起不成立, 見該日漂移紀錄: 兩條目已移除)。
 //   2026-09-22移除全部「對話型免費模型之zen:REST條目」共6條(使用者指示): zen:muse-spark-1.2與1.3
 //     (/responses)、zen:mimo-v2.5-free、zen:ling-3.0-flash-fin-free、zen:nemotron-3-ultra-free、
 //     zen:nemotron-3.5-lightning-free(/chat/completions)。理由: 自2026-09-17之免費層閘門起,
@@ -412,12 +412,26 @@
 //     不受影響: 付費Go路徑之同名ocgo:opencode-go/glm-5.3-flash(不同供應商、不同金鑰變數, 不在本案)。
 //     清單有列而目錄未收者4個(opencode/hy4-flash-free、iceman-free、inkling-2-small-free、longcat-2.5-free): 皆未做R-OCFREE-2②實測, 不收(其中iceman-free、inkling-2-small-free、longcat-2.5-free同11-10紀錄之未收者; hy4-flash-free未見於11-10紀錄、為本輪`filterOpencodeFree`之uncatalogued, 未做任何實測; 11-10紀錄之minimax-m3.1-flash-free本輪CLI清單已不列)。
 //     日後免費變體重新上架且實測可通時, 依收錄檢核重收即可。
+//   2026-11-21之漂移(使用者指示; 主控任務20261121154013之dl583; 起因: 以.env之POOLSIDE_KEYS兩把金鑰直呼https://inference.poolside.ai/v1之實測):
+//     移除oc:poolside/poolside/laguna-s-2.1與poolside:laguna-s-2.1兩條(poolside兩條目之全部): GET /models仍列poolside/laguna-xs-2.1、poolside/laguna-s-2.1,
+//     但POST /chat/completions以poolside/laguna-s-2.1(最小請求與本檔條目原樣之body皆試, 兩把金鑰皆然)一律HTTP 400
+//     「Model version qvml0p9 is deactivated. It needs to be activated before running predictions」; poolside/laguna-xs-2.1亦HTTP 400「Model version wdlvmme is deactivated…」。
+//     使用端於2026-11-01已記同一現象, 故至遲11月初起即停用(至今約三週); Poolside無公開停用公告而轉售管道仍列此模型, 可能為本帳號層之停用——
+//     不論何者, 以現有金鑰兩條目必失敗, 全取遞補時每輪白耗兩格, 屬結構性失效而非暫時限流, 依先例(2026-09-22之zen:laguna-s-2.1-free、2026-11-10之crouton-alpha-free)自目錄移除。
+//     「/models清單仍列」不等於可用(同檔頭「文件與目錄皆列不等於可用」之又一例): 判可用須以實際POST /chat/completions為準。
+//     內建providers 37 → 35條(oc:群組少1條、REST群組少1條; 群組順序oc→ocgo→agy→claude→codex→typesafe→zen→agnes→claude-api→anthropic, 其餘條目之id、內容與順序零改動)。
+//     POOLSIDE_KEYS已無內建條目使用(使用端.env內之變數不動; 通用機制readEnvFile／resolveProviders／splitKeys仍接受自訂條目之任意envVar, 含POOLSIDE_KEYS)。
+//     上方2026-09-22紀錄所稱poolside兩條目「實測仍可用故保留」為當時事實, 自本日起不成立。
+//     日後Poolside恢復啟用(POST /chat/completions回200)時, 依檔頭收錄檢核重新收錄即可; 原條目欄位: baseURL https://inference.poolside.ai/v1、model poolside/laguna-s-2.1
+//     (CLI版為poolside/poolside/laguna-s-2.1, 自訂provider poolside, 無--variant檔位)、REST版body為max_tokens 32768且chat_template_kwargs.enable_thinking true, 其餘見git歷史。
+//     原REST條目之思考開關實測(2026-09-30, 第1把金鑰): 不帶enable_thinking欄即為開啟(推理829、27.6s); false時推理0、3.8s但一題正整數邊長矩形題答錯(12,3,6), true時答對(3,3,3、20.7s);
+//     reasoning_effort於false時HTTP 400、true時接受但推理token無一致差異, 故不帶; 開思考後推理token計入max_tokens, 故由8192改32768(同日實測接受, 列10縣市題用538)。
 //
 // 【使用方式】
 //   import providers from 'w-dispatch-ai/src/providers.mjs'
 //   import resolveProviders from 'w-dispatch-ai/src/resolveProviders.mjs'
 //   import readEnvFile from 'w-dispatch-ai/src/readEnvFile.mjs'
-//   let env = readEnvFile('./.env') //OPENCODE_KEYS/OPENCODE_GO_KEYS/AGNES_KEYS/POOLSIDE_KEYS/TYPESAFE_KEYS, 逗號分隔多把; 不污染process.env
+//   let env = readEnvFile('./.env') //OPENCODE_KEYS/OPENCODE_GO_KEYS/AGNES_KEYS/TYPESAFE_KEYS/ANTHROPIC_KEYS, 逗號分隔多把; 不污染process.env
 //   let { providers: ps, table, skipped } = resolveProviders(providers, { env }) //全取
 //   let r2 = resolveProviders(providers, { env, pick: ['agnes:agnes-3.0-flash', 'claude:sonnet'] }) //自選, pick順序即遞補優先序
 //   let r3 = resolveProviders(providers, { env, pick: ['typesafe:jev-latest'] }) //決策模型單獨取出
@@ -446,7 +460,7 @@
 //              而`opencode run`為非互動, ask一律自動拒絕(stderr: The user rejected permission),
 //              金絲雀實測寫檔與shell建檔皆未落地, 故仍為機械鎖(2026-09-23於1.18.32重驗仍自動拒絕)。
 //              注意呼叫端勿另傳--auto(2026-09-23實測: 帶上即放行ask, 模型以node寫檔落地)。
-//  agnes/poolside走opencode但非Zen免費層, 不受閘門影響, 為對稱亦用同一鎖(bash:ask之拒絕行為相同)。
+//  agnes走opencode但非Zen免費層, 不受閘門影響, 為對稱亦用同一鎖(bash:ask之拒絕行為相同)。
 let OC_READONLY = { edit: 'deny', bash: 'ask' }
 
 
@@ -473,7 +487,7 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //           (app-server model/list之defaultReasoningEffort, gpt-6.1-sol與gpt-6.1-terra皆為low)——明給令條目不隨安裝機之設定而變;
 //           同日實測--config覆寫優先於config.toml(給low時session記為low)。
 //  opencode --variant: 僅部分模型有檔位, 以`opencode models <provider> --verbose`之variants查(同日opencode 1.18.33:
-//           muse-spark-1.2(2026-10-03已移除)/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無;
+//           muse-spark-1.2(2026-10-03已移除)/1.3與space-bunny有high; big-pickle、mimo無檔位; agnes-ai、poolside為自訂provider亦無(poolside條目已於2026-11-21移除);
 //           2026-10-03新收之ling-3.1-flash、longcat-2.5-preview亦有high(同日所收fledge-alpha已於10-13移除), opencode 1.18.34;
 //           2026-10-13新收之cat-jam(另有xhigh/max)、step-5-preview亦有high, opencode 1.18.35;
 //           2026-10-18新收之beam(另有xhigh/max)亦有high、同日移除muse-spark-1.3, opencode 1.19.3;
@@ -485,8 +499,8 @@ let CLAUDE_READONLY = ['--tools', 'Read,Glob,Grep', '--strict-mcp-config']
 //  REST     body.reasoning_effort: 原僅zen:space-bunny-free帶(該條2026-10-13已移除, 現無內建REST條目帶此欄)——
 //           opencode模型目錄宣告其high檔即{reasoningEffort:'high'}
 //           (@ai-sdk/openai-compatible轉為此欄), 與oc:版同參數。agnes接受此欄但同日兩題各兩輪推理token無一致差異,
-//           視為未生效故不帶(其預設即會思考, usage可見推理token)。poolside之思考為開關(chat_template_kwargs.enable_thinking)
-//           而非檔位, 同日由關改開(見該條); jev(systemone)為決策模型無此概念。
+//           視為未生效故不帶(其預設即會思考, usage可見推理token)。原poolside之思考為開關(chat_template_kwargs.enable_thinking)
+//           而非檔位, 同日由關改開(該條已於2026-11-21移除, 實測見該日漂移紀錄末句); jev(systemone)為決策模型無此概念。
 //  anthropic: REST(kind api-anthropic)  條目欄位effort(轉為body.output_config.effort, 2026-10-24): 未給時API依模型預設——Opus 5.5與Haiku 5.5為medium(非high)、
 //           Sonnet 5.5為high——故三條皆明給EFFORT; 三模型皆為自適應思考(省略thinking即開), Opus 5.5不可關閉, 條目不送thinking也不得以disabled關閉(上方測試守門)。
 //           claude-api:(CLI)同claude:條目以--effort表示。
@@ -524,24 +538,7 @@ let providers = [
             permission: OC_READONLY,
         },
     },
-    {
-        id: 'oc:poolside/poolside/laguna-s-2.1',
-        model: 'poolside/poolside/laguna-s-2.1',
-        kind: 'opencode',
-        envVar: 'POOLSIDE_KEYS',
-        provider: 'poolside',
-        config: {
-            provider: {
-                'poolside': {
-                    npm: '@ai-sdk/openai-compatible',
-                    name: 'Poolside',
-                    options: { baseURL: 'https://inference.poolside.ai/v1' },
-                    models: { 'poolside/laguna-s-2.1': { name: 'Laguna S 2.1' } },
-                },
-            },
-            permission: OC_READONLY,
-        },
-    },
+    //(原置於oc:agnes-ai/agnes-3.0-flash之後之oc:poolside/poolside/laguna-s-2.1已於2026-11-21移除, 見檔頭漂移紀錄)
     //oc:opencode/*免費模型: 2026-09-18起改為匿名免費存取(不帶envVar、useStoredAuth:false), 理由見檔頭
     //【Zen免費層閘門】——帶金鑰反而依該金鑰所屬工作區之模型開關而異(第1把實測Model access is disabled)
     //(原首條oc:opencode/muse-spark-1.3-contributor-free已於2026-10-18移除, 見檔頭漂移紀錄)
@@ -978,8 +975,9 @@ let providers = [
         //付費版jev-1.13未收: 同日以第1把金鑰實測403(Upstream request failed: Model access is disabled),
         //屬該金鑰工作區未開此模型; 要收須先於Zen後台開啟並確認計費($0.042/1M輸入)。
     },
-    //REST文字生成條目(api-openai-compat): agnes:/poolside:走各家官方端點。zen:之對話型免費模型REST皆受免費層閘門所擋
+    //REST文字生成條目(api-openai-compat): agnes:走官方端點。zen:之對話型免費模型REST皆受免費層閘門所擋
     //(最後一條zen:space-bunny-free已於2026-10-13移除), 現無收錄; 端點表與閘門見檔頭
+    //(原poolside:laguna-s-2.1已於2026-11-21移除, 見檔頭漂移紀錄; 其2026-09-30之思考開關實測見該紀錄末句)
     {
         id: 'agnes:agnes-3.0-flash',
         model: 'agnes-3.0-flash',
@@ -987,21 +985,6 @@ let providers = [
         envVar: 'AGNES_KEYS',
         baseURL: 'https://apihub.agnes-ai.com/v1',
         body: { max_tokens: 8192 },
-    },
-    {
-        id: 'poolside:laguna-s-2.1',
-        model: 'poolside/laguna-s-2.1',
-        kind: 'api-openai-compat',
-        envVar: 'POOLSIDE_KEYS',
-        baseURL: 'https://inference.poolside.ai/v1',
-        body: {
-            max_tokens: 32768,
-            chat_template_kwargs: { enable_thinking: true },
-        },
-        //思考為開關而非檔位: 2026-09-30依「思考強度一律high」由false改true(原false無紀錄說明)。同日實測(第1把金鑰):
-        //不帶此欄即為開啟(推理829、27.6s); false時推理0、3.8s但一題正整數邊長矩形題答錯(12,3,6), true時答對(3,3,3、20.7s)。
-        //reasoning_effort於false時HTTP 400、true時接受但推理token無一致差異, 故不帶。開思考後推理token計入max_tokens,
-        //依README「推理模型請放寬body.max_tokens」由8192改32768(同日實測接受, 列10縣市題用538)
     },
 
     //══ 以下六條為「計費條目」(Anthropic Console之API金鑰, 全取遞補時最後才輪到; 先CLI後REST) ══

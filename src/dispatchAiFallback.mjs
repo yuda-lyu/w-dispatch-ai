@@ -182,11 +182,11 @@ import { isTimeoutLike } from './attemptDeadline.mjs'
 //      ✓ id:'claude:sonnet' / id:'claude:opus'
 //
 //   ② 同一模型經不同路徑取得時, id須帶上路徑, 且前綴用「具體路徑名」不用泛稱
-//      同一個laguna可經Poolside官方REST、OpenRouter、opencode CLI三條路,
-//      三者額度池與故障域各自獨立, 屬三個供應商:
-//      ✓ 'poolside:laguna-s-2.1' / 'or:poolside/laguna-s-2.1:free' / 'oc:poolside/poolside/laguna-s-2.1'
-//      ✗ 'api:laguna-s-2.1' —— 泛稱api:在同模型有多個REST閘道時會撞名, 且日誌看不出走哪個閘道
-//      慣用前綴: CLI類＝oc:/agy:/claude:/codex:(即kind或CLI名); REST類＝閘道名(zen:/agnes:/poolside:/or:/nv:)
+//      同一個Sonnet可經Claude Code訂閱登入態、Claude Code配Anthropic API金鑰計費、Anthropic REST三條路,
+//      計費路徑與故障域各異(訂閱與API金鑰之額度池各自獨立; 後兩者同用Console額度, 但游標與冷卻各自獨立), 屬三個供應商:
+//      ✓ 'claude:sonnet' / 'claude-api:sonnet-5.5' / 'anthropic:sonnet-5.5'
+//      ✗ 'api:sonnet-5.5' —— 泛稱api:在同模型有多個REST閘道時會撞名, 且日誌看不出走哪個閘道
+//      慣用前綴: CLI類＝oc:/agy:/claude:/codex:(即kind或CLI名); REST類＝閘道名(zen:/agnes:/anthropic:/or:/nv:)
 //
 //   ③ id務必給且務必唯一
 //      未給時本套件回退為「陣列索引字串」——索引是位置不是身分, 日後於鏈中插入條目
@@ -653,7 +653,7 @@ function judgeBudgetCut(o) {
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Array} opt.providers 輸入供應商條目物件陣列，順序即優先序。各條目除下列鍵外，其餘鍵(kind、model、exe、provider、config、sandbox、timeoutMs等)即該條目之opt原樣透傳對應轉接器
- * @param {String} [opt.providers[].id=條目索引字串] 輸入群組識別字串，游標以此為鍵、亦為日誌標籤，本套件不解讀其內容。須區分到「模型」而非只到「廠商」(如'claude:sonnet'而非'claude')，同一模型經不同路徑取得時須帶上路徑(如'poolside:laguna-s-2.1'與'or:poolside/laguna-s-2.1:free')，且務必唯一。省略時回退為陣列索引字串——索引是位置不是身分，日後插入條目會令後續條目繼承他人游標進度，故正式設定一律明給。詳見本檔檔頭之id設計規則
+ * @param {String} [opt.providers[].id=條目索引字串] 輸入群組識別字串，游標以此為鍵、亦為日誌標籤，本套件不解讀其內容。須區分到「模型」而非只到「廠商」(如'claude:sonnet'而非'claude')，同一模型經不同路徑取得時須帶上路徑(如'claude:sonnet'與'claude-api:sonnet-5.5')，且務必唯一。省略時回退為陣列索引字串——索引是位置不是身分，日後插入條目會令後續條目繼承他人游標進度，故正式設定一律明給。詳見本檔檔頭之id設計規則
  * @param {Array} [opt.providers[].keys=[]] 輸入同一服務之多把API key字串陣列，逐次注入輪替(kind為opencode時須同時於條目給予provider；kind為claude時各把即Anthropic API金鑰，只注入該次子進程環境、以API計費，見dispatchClaude；kind為api-anthropic時置於x-api-key標頭)，省略(undefined、null、[]；陣列內之''、null、undefined元素略過)代表沿用CLI既有登入狀態之單一虛擬金鑰；給了而無效(非陣列之定義值、不可讀之陣列、含非空且非原始字串之元素而濾後無有效字串)則該條目以params整組跳過、不起子進程、不送請求(帳本R-KEYOPT-1)；含有效字串者無效元素照舊略過
  * @param {*} [opt.providers[].meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳對應轉接器——條目其餘鍵一律原樣轉傳，自有欄位放此鍵可與轉傳機制永久絕緣，預設undefined
  * @param {Number} [opt.budgetMs=null] 輸入整輪遞補之時間上限毫秒(執行期之剩餘時間：有限數或數字字串有效，≤0為已無時間而不送出、回budget exhausted，小數向下取整；+Infinity、未給或非數值為不限，見castBudgetMs)，剩餘預算會壓進每次呼叫之timeoutMs，轉接器之重試亦受其約束；被其封頂之逾時(整鏈已用盡且差額≥minAttemptMs)記為budget-cut而非條目故障，預設null代表不限
