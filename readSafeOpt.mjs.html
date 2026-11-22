@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    <meta charset="utf-8">
+    <title>readSafeOpt.mjs - Documentation</title>
+    
+    
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc.css">
+    <script src="scripts/nav.js" defer></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav >
+    
+    
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#NO_SIDE_EFFECT">NO_SIDE_EFFECT</a></li><li><a href="global.html#OUTCOME_TEXT">OUTCOME_TEXT</a></li><li><a href="global.html#WDispatchAi">WDispatchAi</a></li><li><a href="global.html#accountIdOf">accountIdOf</a></li><li><a href="global.html#accountTagOf">accountTagOf</a></li><li><a href="global.html#adapters">adapters</a></li><li><a href="global.html#addErrorDetail">addErrorDetail</a></li><li><a href="global.html#addFailureKind">addFailureKind</a></li><li><a href="global.html#addUpstream">addUpstream</a></li><li><a href="global.html#adoptThenable">adoptThenable</a></li><li><a href="global.html#agyGroupOf">agyGroupOf</a></li><li><a href="global.html#agyPrint">agyPrint</a></li><li><a href="global.html#applyCool">applyCool</a></li><li><a href="global.html#applyOutputTokenMax">applyOutputTokenMax</a></li><li><a href="global.html#asText">asText</a></li><li><a href="global.html#assertObjOpt">assertObjOpt</a></li><li><a href="global.html#assertReadable">assertReadable</a></li><li><a href="global.html#attachErrorType">attachErrorType</a></li><li><a href="global.html#awaitUserFn">awaitUserFn</a></li><li><a href="global.html#baseErrorOf">baseErrorOf</a></li><li><a href="global.html#budgetFor">budgetFor</a></li><li><a href="global.html#buildChain">buildChain</a></li><li><a href="global.html#buildKeyEnv">buildKeyEnv</a></li><li><a href="global.html#buildValidator">buildValidator</a></li><li><a href="global.html#cachedQuery">cachedQuery</a></li><li><a href="global.html#callAiWithFallback">callAiWithFallback</a></li><li><a href="global.html#callHookSync">callHookSync</a></li><li><a href="global.html#callOnce">callOnce</a></li><li><a href="global.html#capByHints">capByHints</a></li><li><a href="global.html#castBudgetMs">castBudgetMs</a></li><li><a href="global.html#castCountOr">castCountOr</a></li><li><a href="global.html#castOutputTokenMax">castOutputTokenMax</a></li><li><a href="global.html#castPintOr">castPintOr</a></li><li><a href="global.html#castTimerMs">castTimerMs</a></li><li><a href="global.html#checkAgyStdinSupport">checkAgyStdinSupport</a></li><li><a href="global.html#checkGoQuota">checkGoQuota</a></li><li><a href="global.html#checkObjOpt">checkObjOpt</a></li><li><a href="global.html#checkSafeOpts">checkSafeOpts</a></li><li><a href="global.html#checkTarget">checkTarget</a></li><li><a href="global.html#chkLog">chkLog</a></li><li><a href="global.html#clampUntilMs">clampUntilMs</a></li><li><a href="global.html#classifyCliFailure">classifyCliFailure</a></li><li><a href="global.html#classifyFetchError">classifyFetchError</a></li><li><a href="global.html#classifyLimitLine">classifyLimitLine</a></li><li><a href="global.html#classifyRestFailure">classifyRestFailure</a></li><li><a href="global.html#claudeLimitUntilOf">claudeLimitUntilOf</a></li><li><a href="global.html#cleanLine">cleanLine</a></li><li><a href="global.html#clearAgyStdinSupportCache">clearAgyStdinSupportCache</a></li><li><a href="global.html#cliSpawnGate">cliSpawnGate</a></li><li><a href="global.html#collectAdditional">collectAdditional</a></li><li><a href="global.html#collectCliEvidence">collectCliEvidence</a></li><li><a href="global.html#composeError">composeError</a></li><li><a href="global.html#coolCfgOf">coolCfgOf</a></li><li><a href="global.html#coolEntry">coolEntry</a></li><li><a href="global.html#coolingOf">coolingOf</a></li><li><a href="global.html#createAiCaller">createAiCaller</a></li><li><a href="global.html#createAiEventLogger">createAiEventLogger</a></li><li><a href="global.html#createCountCli">createCountCli</a></li><li><a href="global.html#createCpuSampler">createCpuSampler</a></li><li><a href="global.html#createCutTracker">createCutTracker</a></li><li><a href="global.html#createDenyWatch">createDenyWatch</a></li><li><a href="global.html#createFileStore">createFileStore</a></li><li><a href="global.html#createGateState">createGateState</a></li><li><a href="global.html#createLimitWatch">createLimitWatch</a></li><li><a href="global.html#createQuotaGateState">createQuotaGateState</a></li><li><a href="global.html#createStreamRedactor">createStreamRedactor</a></li><li><a href="global.html#createTail">createTail</a></li><li><a href="global.html#createTailCapture">createTailCapture</a></li><li><a href="global.html#createUsageCounter">createUsageCounter</a></li><li><a href="global.html#decodeJwtPayload">decodeJwtPayload</a></li><li><a href="global.html#defaultImages">defaultImages</a></li><li><a href="global.html#defaultIntegratePrompt">defaultIntegratePrompt</a></li><li><a href="global.html#descOf">descOf</a></li><li><a href="global.html#descendantsOf">descendantsOf</a></li><li><a href="global.html#describeNonJsonBody">describeNonJsonBody</a></li><li><a href="global.html#dfQuotaTimeoutMs">dfQuotaTimeoutMs</a></li><li><a href="global.html#dfTimeoutMs">dfTimeoutMs</a></li><li><a href="global.html#directWindow">directWindow</a></li><li><a href="global.html#dispatchAi">dispatchAi</a></li><li><a href="global.html#dispatchAiFallback">dispatchAiFallback</a></li><li><a href="global.html#dispatchAiWkf">dispatchAiWkf</a></li><li><a href="global.html#dispatchAntigravity">dispatchAntigravity</a></li><li><a href="global.html#dispatchApiAnthropic">dispatchApiAnthropic</a></li><li><a href="global.html#dispatchApiOpenaiCompat">dispatchApiOpenaiCompat</a></li><li><a href="global.html#dispatchApiOpenaiResponses">dispatchApiOpenaiResponses</a></li><li><a href="global.html#dispatchApiTypesafeSystemone">dispatchApiTypesafeSystemone</a></li><li><a href="global.html#dispatchClaude">dispatchClaude</a></li><li><a href="global.html#dispatchCodex">dispatchCodex</a></li><li><a href="global.html#dispatchOpencode">dispatchOpencode</a></li><li><a href="global.html#emitLine">emitLine</a></li><li><a href="global.html#envStrOf">envStrOf</a></li><li><a href="global.html#errField">errField</a></li><li><a href="global.html#errorMessageOf">errorMessageOf</a></li><li><a href="global.html#exeStem">exeStem</a></li><li><a href="global.html#extractJsonLoose">extractJsonLoose</a></li><li><a href="global.html#extractOutputText">extractOutputText</a></li><li><a href="global.html#fail">fail</a></li><li><a href="global.html#fetchQuotaJson">fetchQuotaJson</a></li><li><a href="global.html#filterOpencodeFree">filterOpencodeFree</a></li><li><a href="global.html#finOf">finOf</a></li><li><a href="global.html#findEnvKey">findEnvKey</a></li><li><a href="global.html#findStdinConflictArg">findStdinConflictArg</a></li><li><a href="global.html#fingerprint">fingerprint</a></li><li><a href="global.html#finishOf">finishOf</a></li><li><a href="global.html#firstStr">firstStr</a></li><li><a href="global.html#fkOf">fkOf</a></li><li><a href="global.html#forgetQuota">forgetQuota</a></li><li><a href="global.html#fromBucket">fromBucket</a></li><li><a href="global.html#fromCodexUsageHttp">fromCodexUsageHttp</a></li><li><a href="global.html#fromLimitItem">fromLimitItem</a></li><li><a href="global.html#fromRpcWindow">fromRpcWindow</a></li><li><a href="global.html#fromTopField">fromTopField</a></li><li><a href="global.html#fromWindow">fromWindow</a></li><li><a href="global.html#getCliArgs">getCliArgs</a></li><li><a href="global.html#getErrorResult">getErrorResult</a></li><li><a href="global.html#getErrorType">getErrorType</a></li><li><a href="global.html#getFormatArg">getFormatArg</a></li><li><a href="global.html#getOpencodeLogPath">getOpencodeLogPath</a></li><li><a href="global.html#getQuotaAntigravity">getQuotaAntigravity</a></li><li><a href="global.html#getQuotaClaude">getQuotaClaude</a></li><li><a href="global.html#getQuotaCodex">getQuotaCodex</a></li><li><a href="global.html#gitEnv">gitEnv</a></li><li><a href="global.html#gwOf">gwOf</a></li><li><a href="global.html#hasContent">hasContent</a></li><li><a href="global.html#incStreak">incStreak</a></li><li><a href="global.html#initState">initState</a></li><li><a href="global.html#isCoolingRec">isCoolingRec</a></li><li><a href="global.html#isCustomEndpoint">isCustomEndpoint</a></li><li><a href="global.html#isFreeText">isFreeText</a></li><li><a href="global.html#isGoEntry">isGoEntry</a></li><li><a href="global.html#isKeyIndependentFail">isKeyIndependentFail</a></li><li><a href="global.html#isLinkVar">isLinkVar</a></li><li><a href="global.html#isOfficialAnthropicEntry">isOfficialAnthropicEntry</a></li><li><a href="global.html#isOfficialAnthropicUrl">isOfficialAnthropicUrl</a></li><li><a href="global.html#isSpawnFail">isSpawnFail</a></li><li><a href="global.html#isTimeoutLike">isTimeoutLike</a></li><li><a href="global.html#isTransientFailure">isTransientFailure</a></li><li><a href="global.html#itemsOf">itemsOf</a></li><li><a href="global.html#judgeBudgetCut">judgeBudgetCut</a></li><li><a href="global.html#judgeGoUsage">judgeGoUsage</a></li><li><a href="global.html#judgeTruncated">judgeTruncated</a></li><li><a href="global.html#judgeWindowItems">judgeWindowItems</a></li><li><a href="global.html#keyFingerprint">keyFingerprint</a></li><li><a href="global.html#keyText">keyText</a></li><li><a href="global.html#keysAreActualAuth">keysAreActualAuth</a></li><li><a href="global.html#killProcessTree">killProcessTree</a></li><li><a href="global.html#lastLines">lastLines</a></li><li><a href="global.html#learnQuotaFromFailure">learnQuotaFromFailure</a></li><li><a href="global.html#ledgerDrop">ledgerDrop</a></li><li><a href="global.html#ledgerFind">ledgerFind</a></li><li><a href="global.html#ledgerForget">ledgerForget</a></li><li><a href="global.html#ledgerMark">ledgerMark</a></li><li><a href="global.html#ledgerPut">ledgerPut</a></li><li><a href="global.html#listCodexRefs">listCodexRefs</a></li><li><a href="global.html#lock">lock</a></li><li><a href="global.html#logAiOutcome">logAiOutcome</a></li><li><a href="global.html#logFlagsToAdd">logFlagsToAdd</a></li><li><a href="global.html#makeArrayCoverageValidator">makeArrayCoverageValidator</a></li><li><a href="global.html#maskApiKeys">maskApiKeys</a></li><li><a href="global.html#maskDiag">maskDiag</a></li><li><a href="global.html#maxFor">maxFor</a></li><li><a href="global.html#maxMinAttemptMs">maxMinAttemptMs</a></li><li><a href="global.html#mergeCatalogue">mergeCatalogue</a></li><li><a href="global.html#minutesOf">minutesOf</a></li><li><a href="global.html#norm">norm</a></li><li><a href="global.html#normRec">normRec</a></li><li><a href="global.html#normalizeFinishReason">normalizeFinishReason</a></li><li><a href="global.html#normalizeQueryResult">normalizeQueryResult</a></li><li><a href="global.html#nowOf">nowOf</a></li><li><a href="global.html#oneline">oneline</a></li><li><a href="global.html#opencodeGoUsage">opencodeGoUsage</a></li><li><a href="global.html#orStop">orStop</a></li><li><a href="global.html#parseAgyStream">parseAgyStream</a></li><li><a href="global.html#parseCodexEvents">parseCodexEvents</a></li><li><a href="global.html#parseDenyLine">parseDenyLine</a></li><li><a href="global.html#parseGoLimit">parseGoLimit</a></li><li><a href="global.html#parseIndexList">parseIndexList</a></li><li><a href="global.html#parseJsonArray">parseJsonArray</a></li><li><a href="global.html#parseJsonLines">parseJsonLines</a></li><li><a href="global.html#parseLogFields">parseLogFields</a></li><li><a href="global.html#parseModelIds">parseModelIds</a></li><li><a href="global.html#parseOpencodeEvents">parseOpencodeEvents</a></li><li><a href="global.html#parsePsComm">parsePsComm</a></li><li><a href="global.html#parseTasklistCsv">parseTasklistCsv</a></li><li><a href="global.html#pickUpstream">pickUpstream</a></li><li><a href="global.html#pickWindow">pickWindow</a></li><li><a href="global.html#prefixOf">prefixOf</a></li><li><a href="global.html#printLogsOn">printLogsOn</a></li><li><a href="global.html#probeAnthropicKey">probeAnthropicKey</a></li><li><a href="global.html#probeAnthropicKeys">probeAnthropicKeys</a></li><li><a href="global.html#probeOnce">probeOnce</a></li><li><a href="global.html#probeReadable">probeReadable</a></li><li><a href="global.html#querySnapshot">querySnapshot</a></li><li><a href="global.html#readAttemptHints">readAttemptHints</a></li><li><a href="global.html#readBodyCapped">readBodyCapped</a></li><li><a href="global.html#readBoolOpt">readBoolOpt</a></li><li><a href="global.html#readCallerObj">readCallerObj</a></li><li><a href="global.html#readDirsOpt">readDirsOpt</a></li><li><a href="global.html#readEnvFile">readEnvFile</a></li><li><a href="global.html#readEnvOpt">readEnvOpt</a></li><li><a href="global.html#readJsonOrNull">readJsonOrNull</a></li><li><a href="global.html#readKey">readKey</a></li><li><a href="global.html#readKeys">readKeys</a></li><li><a href="global.html#readLimitHeaders">readLimitHeaders</a></li><li><a href="global.html#readOpencodeUpstream">readOpencodeUpstream</a></li><li><a href="global.html#readProviderOpt">readProviderOpt</a></li><li><a href="global.html#readState">readState</a></li><li><a href="global.html#readStrOpt">readStrOpt</a></li><li><a href="global.html#readTailLines">readTailLines</a></li><li><a href="global.html#readTickets">readTickets</a></li><li><a href="global.html#reasonOf">reasonOf</a></li><li><a href="global.html#recheck">recheck</a></li><li><a href="global.html#redactApiKeyText">redactApiKeyText</a></li><li><a href="global.html#redactResult">redactResult</a></li><li><a href="global.html#redactText">redactText</a></li><li><a href="global.html#remainingOf">remainingOf</a></li><li><a href="global.html#removeNewCodexRefs">removeNewCodexRefs</a></li><li><a href="global.html#reorderByCooling">reorderByCooling</a></li><li><a href="global.html#reorderKeysByCooling">reorderKeysByCooling</a></li><li><a href="global.html#resetLedgerNotice">resetLedgerNotice</a></li><li><a href="global.html#resetStreak">resetStreak</a></li><li><a href="global.html#reshapeAgyResult">reshapeAgyResult</a></li><li><a href="global.html#resolveCatalogue">resolveCatalogue</a></li><li><a href="global.html#resolveProviders">resolveProviders</a></li><li><a href="global.html#resolveQuotaGate">resolveQuotaGate</a></li><li><a href="global.html#resolveSpawnGate">resolveSpawnGate</a></li><li><a href="global.html#resolveSubQuotaGate">resolveSubQuotaGate</a></li><li><a href="global.html#retryFits">retryFits</a></li><li><a href="global.html#run">run</a></li><li><a href="global.html#runExecCli">runExecCli</a></li><li><a href="global.html#runFanout">runFanout</a></li><li><a href="global.html#runFanoutPipeline">runFanoutPipeline</a></li><li><a href="global.html#runGit">runGit</a></li><li><a href="global.html#runRolePipeline">runRolePipeline</a></li><li><a href="global.html#runText">runText</a></li><li><a href="global.html#safeValidate">safeValidate</a></li><li><a href="global.html#safeValidateAsync">safeValidateAsync</a></li><li><a href="global.html#salvageTruncatedArray">salvageTruncatedArray</a></li><li><a href="global.html#sampleRamDefault">sampleRamDefault</a></li><li><a href="global.html#secretHeaderValues">secretHeaderValues</a></li><li><a href="global.html#settleUserValue">settleUserValue</a></li><li><a href="global.html#sigOf">sigOf</a></li><li><a href="global.html#splitKeys">splitKeys</a></li><li><a href="global.html#stateOf">stateOf</a></li><li><a href="global.html#streakOf">streakOf</a></li><li><a href="global.html#subFamilyOf">subFamilyOf</a></li><li><a href="global.html#subGateDecide">subGateDecide</a></li><li><a href="global.html#sweepCooling">sweepCooling</a></li><li><a href="global.html#tailOf">tailOf</a></li><li><a href="global.html#timeoutPatch">timeoutPatch</a></li><li><a href="global.html#toMs">toMs</a></li><li><a href="global.html#toQuotaLabel">toQuotaLabel</a></li><li><a href="global.html#toQuotaResult">toQuotaResult</a></li><li><a href="global.html#toQuotaScopedLabel">toQuotaScopedLabel</a></li><li><a href="global.html#toQuotaWindow">toQuotaWindow</a></li><li><a href="global.html#toSnapshot">toSnapshot</a></li><li><a href="global.html#triedText">triedText</a></li><li><a href="global.html#unlock">unlock</a></li><li><a href="global.html#upstreamClassOf">upstreamClassOf</a></li><li><a href="global.html#upstreamFromLines">upstreamFromLines</a></li><li><a href="global.html#usedDetail">usedDetail</a></li><li><a href="global.html#validateNote">validateNote</a></li><li><a href="global.html#valueOf">valueOf</a></li><li><a href="global.html#verifyLedgerHit">verifyLedgerHit</a></li><li><a href="global.html#viaAppServer">viaAppServer</a></li><li><a href="global.html#viaHttp">viaHttp</a></li><li><a href="global.html#wallToUtc">wallToUtc</a></li><li><a href="global.html#windowApplies">windowApplies</a></li><li><a href="global.html#windowOf">windowOf</a></li><li><a href="global.html#windowToSeconds">windowToSeconds</a></li><li><a href="global.html#withOutputInfo">withOutputInfo</a></li><li><a href="global.html#writeTicket">writeTicket</a></li><li><a href="global.html#zoneWall">zoneWall</a></li></ul>
+    
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">readSafeOpt.mjs</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import isestr from 'wsemi/src/isestr.mjs'
+import { probeReadable, errMsg } from './callUserFn.mjs'
+import { readKey } from './readKeyOpt.mjs'
+
+
+// readSafeOpt.mjs — 影響安全或計費之純量opt「給了而無效即拒絕」之判定單一來源(內部模組; 帳本R-SAFEOPT-1; 比照readKeyOpt.mjs之金鑰型opt)
+//
+// 【為何】dspec〈輸入參數之檢測機制〉§11〈安全相關opt為K3之例外〉: 影響安全或計費之opt「給了而無效」即拒絕(fail-closed), 不靜默改用預設:
+//   修前: codex sandbox給了非字串→退回workspace-write(原要求read-only之意圖被放寬); claude／agy skipPermissions給了非布林→退回true(原要求保留權限閘門之意圖被關掉);
+//   agy addDirs給了非陣列→退回[cwd](原要求限縮可視範圍之意圖被放寬); REST baseURL給了無效值→退回官方端點(金鑰改送官方); 各家exe給了無效值→退回PATH上之預設執行檔(換了執行檔),
+//   各家cwd給了無效值→execCli退回process.cwd()(在別的目錄動手); getQuotaClaude／getQuotaCodex之env不可讀→退回process.env(查了預設帳號)。
+//
+// 【視為未給(維持預設)】undefined、null。 ''不視為未給(與金鑰型opt不同: 金鑰常取自環境變數而空字串＝缺值, 預設為登入態; 本檔各opt之空字串若退回預設即「悄悄改用預設值」, 屬給了而無效)。
+// 【給了而無效(以params回報, 不起子行程、不送請求)】
+//   readStrOpt  : 非原始字串、空字串(含包裝物件、數字、物件、函數、已撤銷之Proxy);
+//   readBoolOpt : 非原始布林(含'true'、1、包裝物件);
+//   readDirsOpt : 非陣列之定義值(字串、物件等)、不可讀之陣列(已撤銷之Proxy、length拋錯)、元素數逾上限, 或陣列含「非空且非原始字串」之元素而濾後無有效字串者;
+//                 空陣列[]為合法(明示不揭露任何目錄); 含有效字串者無效元素照舊略過(同readKeys, 不因同組有無效元素而拒絕整組);
+//   readEnvOpt  : 非一般物件(陣列、字串、數字等)或不可讀(拋錯之getter、已撤銷之Proxy); 用於env(額度讀者、四家CLI、filterOpencodeFree之子行程環境; resolveProviders／resolveCatalogue之金鑰來源)
+//                 與exes(resolveProviders／resolveCatalogue之kind→執行檔路徑)——「給了而非物件」不視為未給(子行程不得因此悄悄繼承process.env、金鑰來源不得悄悄改用process.env、執行檔不得悄悄改用PATH上之預設);
+//   readProviderOpt: dispatchOpencode之provider——只在key有效時才判(provider無效則key不被注入而悄悄改用auth.json既有登入＝計費路徑改變); ''與未給維持現狀(文件載明之預設／常見值)。
+// 【訊息(K9)】只寫參數名、期望之種類與typeof, 不回顯值(值可能為路徑、網址或含金鑰之物件)。
+
+
+//MAX_DIRS, addDirs陣列元素數上限(超過視為給了而無效, 同readKeyOpt之MAX_KEYS)
+let MAX_DIRS = 10000
+
+
+//given, 是否「給了」(undefined、null為未給)
+function given(v) {
+    return !(v === undefined || v === null)
+}
+
+
+//bad, 組「給了而無效」之訊息: 不含值本身(只含typeof; typeof對已撤銷之Proxy與包裝物件皆不拋錯)
+function bad(name, want, v) {
+    return `${name} must be ${want} when given (got ${typeof v}); an invalid ${name} is rejected instead of silently falling back to the default`
+}
+
+
+/**
+ * 判定非空字串型之安全opt(exe、cwd、sandbox、baseURL)：未給(undefined、null)回null值；原始非空字串回該字串；其餘(給了而無效)回錯誤訊息
+ *
+ * @param {*} v 輸入opt之值
+ * @param {String} name 輸入參數名稱字串，用於錯誤訊息
+ * @returns {Object} 回傳物件，內含value(有效字串，未給或無效為null)、err(給了而無效時之訊息；否則空字串，訊息不含值本身)
+ */
+function readStrOpt(v, name) {
+    if (!given(v)) {
+        return { value: null, err: '' }
+    }
+    if (isestr(v)) {
+        return { value: v, err: '' }
+    }
+    return { value: null, err: bad(name, 'a non-empty string', v) }
+}
+
+
+/**
+ * 判定布林型之安全opt(skipPermissions)：未給(undefined、null)回null值；原始布林回該值；其餘(給了而無效)回錯誤訊息
+ *
+ * @param {*} v 輸入opt之值
+ * @param {String} name 輸入參數名稱字串，用於錯誤訊息
+ * @returns {Object} 回傳物件，內含value(true、false；未給或無效為null)、err(給了而無效時之訊息；否則空字串，訊息不含值本身)
+ */
+function readBoolOpt(v, name) {
+    if (!given(v)) {
+        return { value: null, err: '' }
+    }
+    if (v === true || v === false) {
+        return { value: v, err: '' }
+    }
+    return { value: null, err: bad(name, 'a boolean', v) }
+}
+
+
+/**
+ * 判定目錄陣列型之安全opt(addDirs)：未給回null；陣列回有效字串元素之陣列(無效元素略過；空陣列為合法)；其餘(給了而無效)回錯誤訊息
+ *
+ * 只經可讀性探針與typeof判定，不執行呼叫端之回調
+ *
+ * @param {*} v 輸入opt之值
+ * @param {String} name 輸入參數名稱字串，用於錯誤訊息
+ * @returns {Object} 回傳物件，內含dirs(有效目錄字串陣列；未給為null；無效為null)、err(給了而無效時之訊息；否則空字串，訊息不含值本身)
+ */
+function readDirsOpt(v, name) {
+    if (!given(v)) {
+        return { dirs: null, err: '' }
+    }
+    let p = probeReadable(v, name)
+    if (!p.ok) {
+        return { dirs: null, err: p.msg }
+    }
+    if (!Array.isArray(v)) { //不用內部標籤判陣列: 偽造Symbol.toStringTag為'Array'之一般物件不是陣列
+        return { dirs: null, err: bad(name, 'an array of non-empty strings', v) }
+    }
+    let out = []
+    let nbad = 0
+    try {
+        let n = v.length
+        if (!Number.isInteger(n) || n &lt; 0) { //陣列Proxy之length可讀出非整數／負數: 無法逐元素判定, 視為不可讀
+            return { dirs: null, err: `${name} is not readable: length is not a valid array length` }
+        }
+        if (n > MAX_DIRS) {
+            return { dirs: null, err: `${name} has too many elements (more than ${MAX_DIRS}); an invalid ${name} is rejected instead of silently falling back to the default` }
+        }
+        for (let i = 0; i &lt; n; i++) {
+            let d = v[i]
+            if (isestr(d)) {
+                out.push(d)
+            }
+            else if (d !== undefined &amp;&amp; d !== null &amp;&amp; d !== '') {
+                nbad++
+            }
+        }
+    }
+    catch (err) {
+        return { dirs: null, err: `${name} is not readable: ${errMsg(err)}` }
+    }
+    if (out.length === 0 &amp;&amp; nbad > 0) {
+        return { dirs: null, err: `${name} has no valid directory: ${nbad} element(s) are not non-empty strings; an invalid ${name} is rejected instead of silently falling back to the default` }
+    }
+    return { dirs: out, err: '' }
+}
+
+
+/**
+ * 判定一般物件型之安全opt(env：額度讀者、四家CLI、filterOpencodeFree、resolveProviders／resolveCatalogue；exes：resolveProviders／resolveCatalogue)：未給回null；可讀之一般物件回物化之淺層副本；其餘(給了而無效、不可讀)回錯誤訊息
+ *
+ * @param {*} v 輸入opt之值
+ * @param {String} name 輸入參數名稱字串，用於錯誤訊息
+ * @returns {Object} 回傳物件，內含env(物化之淺層副本；未給為null；無效為null)、err(給了而無效時之訊息；否則空字串，訊息不含值本身)
+ */
+function readEnvOpt(v, name) {
+    let e = checkObjOpt(v, name)
+    if (e !== '') {
+        return { env: null, err: e }
+    }
+    if (!given(v)) {
+        return { env: null, err: '' }
+    }
+    if (v === process.env) {
+        return { env: v, err: '' } //行程環境本身原樣交回(淺層副本會失去Windows之大小寫不分查找)
+    }
+    try {
+        return { env: { ...v }, err: '' }
+    }
+    catch (err) {
+        return { env: null, err: `${name} is not readable: ${errMsg(err)}` }
+    }
+}
+
+
+/**
+ * 判定一般物件型之安全opt之「形狀」(給了則須為可讀之一般物件)：只經可讀性探針與內部標籤判定，不展開、不讀屬性值(有狀態之getter不被讀取)
+ *
+ * 單一來源：readEnvOpt(展開前)、assertObjOpt、checkSafeOpts之env皆經此；遞補層與resolveProviders／resolveCatalogue不得執行呼叫端env內之getter(由轉接器物化讀一次，K4)
+ *
+ * @param {*} v 輸入opt之值
+ * @param {String} name 輸入參數名稱字串，用於錯誤訊息
+ * @returns {String} 回傳錯誤訊息字串(未給、或為可讀之一般物件、或為process.env本身回空字串；訊息不含值本身)
+ */
+function checkObjOpt(v, name) {
+    if (!given(v) || v === process.env) {
+        return ''
+    }
+    let p = probeReadable(v, name)
+    if (!p.ok) {
+        return p.msg
+    }
+    if (typeof v !== 'object' || p.tag !== '[object Object]') {
+        return bad(name, 'an object', v)
+    }
+    return ''
+}
+
+
+/**
+ * 斷言一般物件型之安全opt給了則須為可讀之物件，否則拋出(供同步函數用，如resolveProviders／resolveCatalogue之env、exes；其無params結果通道，與不可讀者同樣同步throw)
+ *
+ * 只驗形狀不取值、不執行getter：判定同checkObjOpt(單一來源)，呼叫端仍以原物件使用；未給(undefined、null)不拋
+ *
+ * @param {*} v 輸入opt之值
+ * @param {String} name 輸入參數名稱字串，用於錯誤訊息
+ * @returns {undefined} 無回傳值；給了而非物件或不可讀時拋出Error，訊息不含值本身
+ */
+function assertObjOpt(v, name) {
+    let e = checkObjOpt(v, name)
+    if (e !== '') {
+        throw new Error(e)
+    }
+}
+
+
+/**
+ * 判定dispatchOpencode之provider：未給(undefined、null)與''(文件載明之預設／常見值)回null值；原始非空字串回該字串；
+ * 其餘(給了而非原始非空字串)僅在key有效(keyed為true)時回錯誤訊息——provider無效則key不被注入，悄悄改用auth.json既有登入(計費路徑改變)；未給key者無此影響，維持現狀(回null值)
+ *
+ * @param {*} v 輸入provider之值
+ * @param {Boolean} keyed 輸入是否有有效之key(非空原始字串)布林值
+ * @param {String} [name='provider'] 輸入參數名稱字串，用於錯誤訊息
+ * @returns {Object} 回傳物件，內含value(有效provider字串；未給、''、未給key之無效值皆為null)、err(給了而無效且key有效時之訊息；否則空字串，訊息不含值本身)
+ */
+function readProviderOpt(v, keyed, name = 'provider') {
+    if (v === undefined || v === null || v === '') {
+        return { value: null, err: '' }
+    }
+    if (isestr(v)) {
+        return { value: v, err: '' }
+    }
+    if (keyed === true) {
+        return { value: null, err: `${name} must be a non-empty string when given together with a key (got ${typeof v}); an invalid ${name} is rejected instead of silently not injecting the key and falling back to the stored login` }
+    }
+    return { value: null, err: '' }
+}
+
+
+//SAFE_SPEC, 各kind(同adapters.mjs之鍵)之轉接器自身須判定之安全相關opt(鍵名與判定種類)——供遞補層於發出try事件之前判定(checkSafeOpts)
+//種類: str(readStrOpt)、bool(readBoolOpt)、dirs(readDirsOpt)、env(checkObjOpt, 給了而非物件即拒絕; 只驗形狀不執行getter)、provider(readProviderOpt, 僅key有效時判)
+let SAFE_SPEC = {
+    'claude': [['exe', 'str'], ['cwd', 'str'], ['skipPermissions', 'bool'], ['env', 'env']],
+    'codex': [['exe', 'str'], ['cwd', 'str'], ['sandbox', 'str'], ['cleanCodexRefs', 'bool'], ['env', 'env']],
+    'opencode': [['exe', 'str'], ['cwd', 'str'], ['useStoredAuth', 'bool'], ['provider', 'provider'], ['env', 'env']],
+    'antigravity': [['exe', 'str'], ['cwd', 'str'], ['skipPermissions', 'bool'], ['addDirs', 'dirs'], ['env', 'env']],
+    'api-anthropic': [['baseURL', 'str']],
+    'api-typesafe-systemone': [['baseURL', 'str']],
+}
+
+
+/**
+ * 依kind判定轉接器之安全相關純量opt是否給了而無效，回第一個錯誤訊息(皆有效回空字串)
+ *
+ * 供dispatchAiFallback於發出try事件之前判定：此類params失敗於未送出任何嘗試即可知，不得發try事件(onUsage／createUsageCounter於try入帳)；
+ * 轉接器自身仍各自判定(直呼時之防線)，兩處共用本檔之單一判定；讀取失敗(拋錯之getter等)視為不可讀回錯誤訊息
+ *
+ * @param {String} kind 輸入轉接器種類字串(claude、codex、opencode、antigravity、api-anthropic、api-typesafe-systemone；其餘回空字串)
+ * @param {Object} opt 輸入條目疊上共用預設後之設定物件(已物化，可讀)
+ * @param {Object} [ctx={}] 輸入情境物件，keyed為true代表該條目另有有效之金鑰(keys陣列帶有效字串；單一opt.key已由opt自身判定)，供provider之判定(僅key有效時才判)
+ * @returns {String} 回傳第一個錯誤訊息字串(不含輸入值)，皆有效或kind不在表內回空字串
+ * @example
+ *
+ * import { checkSafeOpts } from './src/readSafeOpt.mjs'
+ *
+ * console.log(checkSafeOpts('codex', { sandbox: 123 }))
+ * // => 'sandbox must be a non-empty string when given (got number); an invalid sandbox is rejected instead of silently falling back to the default'
+ *
+ * console.log(checkSafeOpts('codex', { sandbox: 'read-only' }) === '')
+ * // => true
+ *
+ */
+function checkSafeOpts(kind, opt, ctx = {}) {
+    let spec = Object.hasOwn(SAFE_SPEC, kind) ? SAFE_SPEC[kind] : null
+    if (spec === null) {
+        return ''
+    }
+    try {
+        let keyed = ctx !== null &amp;&amp; ctx !== undefined &amp;&amp; ctx.keyed === true
+        for (let [key, type] of spec) {
+            let v = opt === null || opt === undefined ? undefined : opt[key]
+            let r = null
+            if (type === 'bool') {
+                r = readBoolOpt(v, key)
+            }
+            else if (type === 'dirs') {
+                r = readDirsOpt(v, key)
+            }
+            else if (type === 'env') {
+                r = { err: checkObjOpt(v, key) } //只驗形狀、不展開(遞補層不執行呼叫端env內之getter, 由轉接器物化讀一次)
+            }
+            else if (type === 'provider') {
+                r = readProviderOpt(v, keyed || readKey(opt === null || opt === undefined ? undefined : opt.key).key !== '', key)
+            }
+            else {
+                r = readStrOpt(v, key)
+            }
+            if (r.err !== '') {
+                return r.err
+            }
+        }
+    }
+    catch (err) {
+        return `safe opt is not readable: ${errMsg(err)}`
+    }
+    return ''
+}
+
+
+export { readStrOpt, readBoolOpt, readDirsOpt, readEnvOpt, checkObjOpt, assertObjOpt, readProviderOpt, checkSafeOpts }
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+    
+    
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Mon Nov 23 2026 01:53:24 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/polyfill.js"></script>
+<script src="scripts/linenumber.js"></script>
+
+
+
+</body>
+</html>
