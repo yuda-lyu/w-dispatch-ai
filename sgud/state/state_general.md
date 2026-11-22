@@ -22,7 +22,7 @@
 
 ## 三、已知待辦
 
-- **(2026-11-19 dai492i2,待主控裁示)影響安全／計費之純量設定值「給了而無效」之處理**:codex `sandbox`(退回 `workspace-write`)、claude／agy `skipPermissions`(退回 true)、agy `addDirs`(退回 `[cwd]`)、REST `baseURL`(退回官方端點,金鑰改送官方)、各家 `exe`／`cwd`,於給了一般無效值(如數字)時修前即退回預設;1.9.69 起已撤銷之 Proxy 等敵意值亦同(修前為 reject)。依 dspec §11 應「給了而無效即拒絕」,本套件僅對 `key`／`keys` 落實(R-KEYOPT-1),其餘待裁示是否比照並另派。
+- **(已於 2026-11-22 tdai1〔排程第 553 項,主控裁示照辦〕處理,見 `state_tdai1.md` 與 `rulebook_safeopt.md` R-SAFEOPT-1;併處 A3、B2、C1、A5、A7;原文保留供對照)(2026-11-19 dai492i2,待主控裁示)影響安全／計費之純量設定值「給了而無效」之處理**:codex `sandbox`(退回 `workspace-write`)、claude／agy `skipPermissions`(退回 true)、agy `addDirs`(退回 `[cwd]`)、REST `baseURL`(退回官方端點,金鑰改送官方)、各家 `exe`／`cwd`,於給了一般無效值(如數字)時修前即退回預設;1.9.69 起已撤銷之 Proxy 等敵意值亦同(修前為 reject)。依 dspec §11 應「給了而無效即拒絕」,本套件僅對 `key`／`keys` 落實(R-KEYOPT-1),其餘待裁示是否比照並另派。
 - **(2026-11-19 dai492i2,已知、未改)**:`createAiCaller` 之 `onUsage` 於 `try` 事件入帳,條目因 params 失敗(無效 `kind`、不可讀條目、`keys`／`key` 給了而無效)未實際送出仍發 `try`(既有行為);`getQuotaClaude`／`getQuotaCodex` 之不可讀 `opt.env` 改查預設帳號;`probeAnthropicKeys` 之不可讀 `keys` 引數回空結果;`makeArrayCoverageValidator` 之不可讀 `contentFields`／`maxLengths` 放寬驗證器;`callAI(prompt, o)` 之不可讀 `o` 視同 `{}`;`dispatchClaude` 等之頂層 `opt` 為已撤銷之 Proxy 或 `opt.key` 為拋錯 getter 時於 try 外 reject(修前即有,契約外);`resolveProviders` 條目同時帶 `envVar` 與無效 `keys` 時以 env 金鑰覆蓋(`isearr` 與 `readKeys` 語意不同)。
 - 2026-11-19(dai492i2):`sgud/exp/experience.md` 約 51KB 逾門檻,八節(da405、ke339、ke340、ke342、da110、da116、di402、d417)逐字抽出至 `experience_20261119.md`(約 33KB,**本檔亦已逾約 30KB 門檻**,是否再依類型拆分待主控安排),主檔約 25KB.
 

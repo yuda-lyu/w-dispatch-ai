@@ -92,7 +92,7 @@ describe('dispatchOpencode', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('useStoredAuth為false且未注入金鑰時注入空憑證\'{}\'(不讀auth.json); 非false一律不注入; 旗標不進命令列', async function() {
+    it('useStoredAuth為false且未注入金鑰時注入空憑證\'{}\'(不讀auth.json); true、未給不注入; 給了而非布林(\'false\')以params拒絕(排程第553項裁示②, 修前視為true不注入); 旗標不進命令列', async function() {
         let t1 = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', useStoredAuth: false })
         let t2 = await dispatchOpencode('abc', { exe: fake.exe, useStoredAuth: false })
         let t3 = await dispatchOpencode('abc', { exe: fake.exe, useStoredAuth: true })
@@ -101,10 +101,10 @@ describe('dispatchOpencode', function() {
             JSON.parse(t1.stdout).env.OPENCODE_AUTH_CONTENT,
             JSON.parse(t2.stdout).env.OPENCODE_AUTH_CONTENT,
             JSON.parse(t3.stdout).env.OPENCODE_AUTH_CONTENT,
-            JSON.parse(t4.stdout).env.OPENCODE_AUTH_CONTENT,
+            [t4.ok, t4.errorType, t4.attempts],
             JSON.parse(t1.stdout).args,
         ]
-        let rr = ['{}', '{}', '', '', ['run', '--agent', 'build', ...LOG_FLAGS]]
+        let rr = ['{}', '{}', '', [false, 'params', 0], ['run', '--agent', 'build', ...LOG_FLAGS]]
         assert.strict.deepEqual(r, rr)
     })
 

@@ -3,7 +3,7 @@ import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
+import castCountOr from '../castCountOr.mjs'
 import fsReadJson from 'wsemi/src/fsReadJson.mjs'
 import fsWriteJson from 'wsemi/src/fsWriteJson.mjs'
 import { callHookSync, asText } from '../callUserFn.mjs'
@@ -44,7 +44,7 @@ import { callHookSync, asText } from '../callUserFn.mjs'
  * @param {String} [opt.dir=null] 輸入狀態目錄字串
  * @param {String} [opt.name='ai-usage.json'] 輸入用量檔名字串，預設'ai-usage.json'
  * @param {Function} [opt.getDate=系統日期] 輸入日期函數()=>'YYYY-MM-DD'，預設隨系統時區(排程環境建議注入時區錨定者)；須為同步函數且回傳非空字串或數值(拋錯、回傳Promise或其他型別時退用預設，不外拋)
- * @param {Number} [opt.keepDays=14] 輸入保留天數正整數，預設14
+ * @param {Number} [opt.keepDays=14] 輸入保留天數正整數(1至4294967295之整數或其十進位數字字串，Infinity、小數、'0x10'與超過上限者視為未給)，預設14
  * @param {Function} [opt.keyOf=(ev)=>ev.keyId||ev.providerId] 輸入計帳鍵函數(ev)=>String，決定粒度(金鑰或條目)，須為同步函數(拋錯或回傳Promise時退用預設，不外拋；同步回傳非字串或空字串者不計數)，預設優先keyId
  * @returns {Object} 回傳計數器物件，內含onEvent(可直接餵dispatch之onEvent)、bump(手動累加)、today(今日統計)與file(用量檔路徑)
  * @example
@@ -86,10 +86,8 @@ function createUsageCounter(opt = {}) {
         return usable ? v : dfGetDate()
     }
 
-    let keepDays = get(opt, 'keepDays', null)
-    if (!ispint(keepDays)) {
-        keepDays = 14
-    }
+    //keepDays, 次數類: iseint count且至少1才採用(用轉換值), 其餘視為未給用14(帳本R-COUNT-1)
+    let keepDays = castCountOr(get(opt, 'keepDays', null), 14, 1)
 
     let dfKeyOf = (ev) => get(ev, 'keyId', null) || get(ev, 'providerId', '')
     let keyOfIn = get(opt, 'keyOf', null)
@@ -113,6 +111,7 @@ function createUsageCounter(opt = {}) {
         if (!isestr(key)) {
             return
         }
+        n = castCountOr(n, 1) //累加量為次數類: iseint count(0～4294967295)才採用(用轉換值), 其餘(Infinity、字串'2x'、小數、負數)視為未給用1(修前不判型: 數字字串串接成'02'、Infinity寫檔變null; 帳本R-COUNT-1)
         let raw = readAll()
         let today = getDate()
         let cur = isobj(raw[today]) ? raw[today] : {}

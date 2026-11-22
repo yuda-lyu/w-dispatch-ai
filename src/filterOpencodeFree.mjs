@@ -8,7 +8,8 @@ import providersDefault from './providers.mjs'
 import runExecCli from './runExecCli.mjs'
 import getErrorType from './getErrorType.mjs'
 import castTimerMs from './castTimerMs.mjs'
-import { awaitUserFn, readCallerObj, probeReadable, errMsg } from './callUserFn.mjs'
+import { readStrOpt, readEnvOpt } from './readSafeOpt.mjs'
+import { awaitUserFn, readCallerObj, errMsg } from './callUserFn.mjs'
 
 
 // filterOpencodeFree.mjs — 以`opencode models`之輸出過濾目錄(providers)之opencode免費條目, 回報「目前確實供應」者(帳本R-OCFREE-1)
@@ -130,7 +131,7 @@ function normalizeQueryResult(v) {
  * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，預設'opencode'
  * @param {Boolean} [opt.refresh=false] 輸入是否附`--refresh`(自models.dev更新本機快取，須連網)布林值，預設false
  * @param {Number} [opt.timeoutMs=30000] 輸入查詢逾時毫秒正整數，預設30000
- * @param {Object} [opt.env=undefined] 輸入查詢子進程額外注入之環境變數物件，預設undefined
+ * @param {Object} [opt.env=undefined] 輸入查詢子進程額外注入之環境變數物件，預設undefined；給了而非物件(字串、數字、陣列等)或不可讀者以params回報、不起子進程(不視為未給)
  * @param {Function} [opt.query=undefined] 輸入查詢函數，可注入以利測試(不啟動子進程)：接收{ exe, args, timeoutMs, refresh }，回傳(或resolve)`opencode models`之stdout字串，或execCli形狀之結果物件{ ok, stdout, stderr, code, pid, error }；可為async，拋錯、reject、逾時皆以errorType回報，預設undefined代表實際執行opencode
  * @returns {Promise} 回傳Promise，resolve回傳物件，內含ok(查詢成功布林值)、errorType(失敗類別字串，成功為'')、error(錯誤訊息字串，成功為'')、available(目前供應之免費條目陣列，條目為淺層副本，依輸入順序)、removed(免費條目但不在`opencode models`清單之陣列，疑似下架)、unchecked(含free字樣但不屬opencode自家CLI條目、無從以清單判定之陣列)、uncatalogued(清單有列之opencode/免費模型id而輸入條目未收者之字串陣列，供提示新增)、listed(`opencode models`列出之全部模型id字串陣列)、refreshed(是否附--refresh之布林值)、durationMs(耗時毫秒)；ok為false時available／removed／unchecked／uncatalogued／listed皆為null，本函數不會reject
  * @example
@@ -207,11 +208,12 @@ async function filterOpencodeFree(providers = providersDefault, opt = {}) {
             entries.push(re.value)
         }
 
-        //設定
-        let exe = get(opt, 'exe', null)
-        if (!isestr(exe)) {
-            exe = DEFAULT_EXE
+        //設定: exe給了而無效以params回報(帳本R-SAFEOPT-1: 不退回PATH上之預設執行檔)
+        let rexe = readStrOpt(get(opt, 'exe', null), 'exe')
+        if (rexe.err !== '') {
+            return fail('params', rexe.err)
         }
+        let exe = rexe.value === null ? DEFAULT_EXE : rexe.value
         refreshed = get(opt, 'refresh', null) === true
         let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
         let args = ['models', ...(refreshed ? ['--refresh'] : [])]
@@ -230,12 +232,12 @@ async function filterOpencodeFree(providers = providersDefault, opt = {}) {
             q = normalizeQueryResult(u.value)
         }
         else {
-            let env = get(opt, 'env', null)
-            let penv = probeReadable(env, 'env') //不可讀者以params回報、不起子進程(帳本R-USERFN-4): isobj不拋錯而回false會使env被靜默丟棄、`opencode models`改以繼承之環境執行
-            if (!penv.ok) {
-                return fail('params', penv.msg)
+            //env給了而非物件或不可讀者以params回報、不起子進程(帳本R-USERFN-4、R-SAFEOPT-1規則10): 不視為未給而令`opencode models`以繼承之環境執行(與四家CLI同一判定readEnvOpt)
+            let renv = readEnvOpt(get(opt, 'env', null), 'env')
+            if (renv.err !== '') {
+                return fail('params', renv.err)
             }
-            let r = await runExecCli(exe, args, { timeoutMs, ...(isobj(env) ? { env } : {}) })
+            let r = await runExecCli(exe, args, { timeoutMs, ...(renv.env !== null ? { env: renv.env } : {}) })
             q = normalizeQueryResult(r)
         }
         if (!q.ok) {

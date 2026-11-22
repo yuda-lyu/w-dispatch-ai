@@ -1,9 +1,8 @@
 import isfun from 'wsemi/src/isfun.mjs'
-import isnum from 'wsemi/src/isnum.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import strleft from 'wsemi/src/strleft.mjs'
 import strdelleft from 'wsemi/src/strdelleft.mjs'
+import castCountOr from './castCountOr.mjs'
 
 
 // buildValidator.mjs — 由validate規則建立驗證函式(規則語法同wsemi之execCli)
@@ -73,13 +72,12 @@ function buildValidator(rule) {
 
             else if (strleft(check, 4) === 'min:') {
 
-                //規則本身無效(如min:abc) → 視為驗證失敗, 不靜默跳過
-                let smin = strdelleft(check, 4)
-                if (!isnum(smin)) {
+                //規則本身無效(如min:abc、min:Infinity、min:0x2、min:-3、min:1.5、超過4294967295) → 視為驗證失敗, 不靜默跳過(次數類: iseint count, 帳本R-COUNT-1)
+                let min = castCountOr(strdelleft(check, 4), null)
+                if (min === null) {
                     return false
                 }
 
-                let min = cint(smin)
                 if (!isestr(stdout) || stdout.length < min) {
                     return false
                 }

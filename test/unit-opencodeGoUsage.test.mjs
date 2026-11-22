@@ -323,22 +323,29 @@ describe('opencodeGoUsage(Go用量端點)', function() {
             assert.strict.deepEqual([r.ok, typeof r.errorType], [false, 'string'])
         })
 
-        it('baseURL非http(s)網址(ftp、空字串、非字串、只有協定)視為未給而改用預設官方網址(dspec〈輸入參數之檢測機制〉K3: opt鍵之非預期輸入改用預設, 只有必須參數key報錯); 以替身fetch觀察實際請求網址, 不連網', async function() {
+        it('baseURL未給(undefined、null)用預設官方網址; 給了而非http(s)網址(ftp、空字串、非字串、只有協定)以params回報、不發請求、不退回官方網址使金鑰改送官方(排程第553項: 安全相關opt為K3之例外, dspec §11、帳本R-SAFEOPT-1; 修前此案斷言「視為未給而改用預設」); 以替身fetch觀察實際請求網址, 不連網', async function() {
             let urls = []
             let ori = globalThis.fetch
             globalThis.fetch = async (url) => {
                 urls.push(String(url))
                 return new Response(JSON.stringify({ type: 'error', error: { type: 'AuthError', message: 'Unauthorized' } }), { status: 401, headers: { 'Content-Type': 'application/json' } })
             }
+            let bad = []
             try {
-                for (let b of ['ftp://127.0.0.1/x', '', 'not a url', 'http://', 123, {}, undefined, null]) {
+                for (let b of ['ftp://127.0.0.1/x', '', 'not a url', 'http://', 123, {}]) {
+                    let r = await opencodeGoUsage({ key: KEY, baseURL: b })
+                    bad.push([r.ok, r.errorType, r.error])
+                }
+                assert.strict.deepEqual(urls, []) //無效者一律未發請求
+                for (let b of [undefined, null]) {
                     await opencodeGoUsage({ key: KEY, baseURL: b })
                 }
             }
             finally {
                 globalThis.fetch = ori
             }
-            assert.strict.deepEqual(urls, Array(8).fill('https://opencode.ai/inference/go/v1/usage'))
+            assert.strict.deepEqual(bad, Array(6).fill([false, 'params', 'invalid opt.baseURL: must be an http(s) URL string']))
+            assert.strict.deepEqual(urls, Array(2).fill('https://opencode.ai/inference/go/v1/usage'))
         })
 
         it('params錯誤訊息依V19格式「invalid <名稱>: must be <種類描述>」、固定詞彙、不回顯輸入值(K9)', async function() {

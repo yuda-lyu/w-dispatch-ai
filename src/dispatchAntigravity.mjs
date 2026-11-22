@@ -1,10 +1,9 @@
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
-import isarr from 'wsemi/src/isarr.mjs'
-import isbol from 'wsemi/src/isbol.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
+import { readStrOpt, readBoolOpt, readDirsOpt, readEnvOpt } from './readSafeOpt.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli, { optTruncate } from './runExecCli.mjs'
@@ -185,17 +184,17 @@ function reshapeAgyResult(r, raw) {
  * @param {String} prompt 輸入提示詞字串，依promptVia作為`--print`旗標之值(argv，長度上限30000字元)或stdin之stream-json訊息內容(stdin，無長度上限)傳遞
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.promptVia='auto'] 輸入提示詞傳法字串，'argv'走`--print`旗標(超過30000字元回params失敗，行為同修前)，'stdin'走`--input-format stream-json`自stdin送一行NDJSON(不受命令列上限約束，需agy>=1.1.15；舊版回params錯誤並指引升級；extraArgs含`--output-format`、`--input-format`、`--print`/`-p`/`--prompt`、`-i`/`--prompt-interactive`者回params錯誤)，'auto'為不超過30000字元走argv、超過走stdin；其他值回退預設，預設'auto'
- * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'agy'
+ * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，未給(undefined、null)用'agy'，給了而非非空字串(含'')以params回報、不起子進程(不退回預設；排程第553項)
  * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.8-flash-low'、'gemini-4-argon-high'，預設''代表不帶`--model`旗標由agy自行決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，會耗用Argon額度；預設可能隨agy版本變動)
  * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'(部分模型更少，以`agy -p /effort --model <slug> --output-format json`之available為準)，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶
- * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
+ * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，未給(undefined、null)用true，給了而非布林以params回報、不起子進程(不退回true；排程第553項)
  * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'630s')，預設''代表由timeoutMs推導(加30秒，恆大於timeoutMs令外層先逾時；agy自身逾時是離開碼0之部分輸出，不是錯誤，故一般無須手動設)
- * @param {Array} [opt.addDirs=自動納入cwd] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端
+ * @param {Array} [opt.addDirs=自動納入cwd] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端(含有效字串者無效元素略過)；給了而非陣列、不可讀或元素全無效者以params回報、不起子進程(不退回[cwd]；排程第553項)
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`(argv路徑)或`--input-format stream-json --output-format stream-json`(stdin路徑，此路徑下extraArgs不得含衝突旗標，見promptVia)之前，預設[]
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將強制關閉子進程及其子孫程序，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
- * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
+ * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，未給(undefined、null)用process.cwd()，給了而非非空字串(含'')以params回報、不起子進程(排程第553項)。注意本參數不影響agy之檔案可視範圍(agy以自身scratch目錄為工作區)，可視範圍由addDirs決定(未給addDirs時自動納入本目錄)
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，預設0
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(antigravity預設不限，守門為no-op、零成本；agy.exe之CPU占用本機未測)，false關閉，物件可明給maxCli(數agy.exe)、ramUsedMax、cpuMax等逐次開啟，等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串，stdin路徑為result.response之純回覆文字)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；stdin路徑另帶raw(agy原始NDJSON輸出字串，離開碼0之結果才有)；失敗(離開碼非零、訊號結束、逾時)時另帶errorDetail({ exitCode(數字或null), stderrTail, stdoutTail(僅stdout非空) })，execCli原生形狀之error(`Exit code N`等)改為`Exit code N: <stderr尾段>`(至多300字元，已遮蔽金鑰權杖)，本轉接器自組之error(如`agy stream-json: …`)文字不變；成功時另帶finish(agy輸出不揭露終止原因故恆為'unknown')與outputChars(stdout字元數)，見runExecCli.mjs與failureDiag.mjs檔頭；本函數不會reject
  * @example
@@ -250,10 +249,24 @@ async function dispatchAntigravity(prompt, opt = {}) {
         return getErrorResult(`prompt too long (${prompt.length} chars > ${MAX_PROMPT_LENGTH}), agy passes prompt via --print flag and Windows command line is capped at 32767 chars`)
     }
 
-    //exe, 無效回退預設'agy', 由execCli自系統PATH解析實體路徑
-    let exe = get(opt, 'exe', null)
-    if (!isestr(exe)) {
-        exe = DEFAULT_EXE
+    //exe、skipPermissions、addDirs、cwd為影響執行與安全之純量opt: 未給(undefined、null)用預設('agy'、true、[cwd]、process.cwd()), 給了而無效即以params回報、不起子行程(帳本R-SAFEOPT-1; dspec §11, 不退回預設)
+    //exe, 由execCli自系統PATH解析實體路徑
+    let rexe = readStrOpt(get(opt, 'exe', null), 'exe')
+    if (rexe.err !== '') {
+        return getErrorResult(rexe.err)
+    }
+    let exe = rexe.value === null ? DEFAULT_EXE : rexe.value
+
+    //cwd(原樣留在optCli轉傳execCli): 修前非字串由execCli退回process.cwd()(在別的目錄動手)
+    let rcwd = readStrOpt(get(opt, 'cwd', null), 'cwd')
+    if (rcwd.err !== '') {
+        return getErrorResult(rcwd.err)
+    }
+
+    //env給了而非物件或不可讀以params回報(帳本R-SAFEOPT-1規則10; 與runExecCli同一判定readEnvOpt, 於起任何子行程[agy --version探測、agy]之前判); 可讀者之物化副本於下方交runExecCli(只讀一次)
+    let renv = readEnvOpt(get(opt, 'env', null), 'env')
+    if (renv.err !== '') {
+        return getErrorResult(renv.err)
     }
 
     //model, 無效時整段`--model`旗標不出現, 由agy自行決定使用模型(agy 1.4.0實測預設為Gemini 4 Argon (Medium), 見檔頭)
@@ -262,11 +275,12 @@ async function dispatchAntigravity(prompt, opt = {}) {
     //effort, 無效時整段`--effort`旗標不出現; 與帶檔位slug之衝突由agy判定(檔位不一致時conflicts錯誤, exit 1)
     let effort = get(opt, 'effort', null)
 
-    //skipPermissions, 非布林值回退預設true(非互動print模式不卡權限確認)
-    let skipPermissions = get(opt, 'skipPermissions', null)
-    if (!isbol(skipPermissions)) {
-        skipPermissions = true
+    //skipPermissions(非互動print模式不卡權限確認之預設true): 修前非布林退回true(原要求保留權限閘門之意圖被關掉)
+    let rskip = readBoolOpt(get(opt, 'skipPermissions', null), 'skipPermissions')
+    if (rskip.err !== '') {
+        return getErrorResult(rskip.err)
     }
+    let skipPermissions = rskip.value === null ? true : rskip.value
 
     //timeoutMs, 先行取值以供printTimeout推導; 1～2147483647之整數才採用, 無效(含超過計時器上限)回退全套件統一預設300000(castTimerMs, 與wsemi execCli之判定相同, 不夾上限)
     let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
@@ -283,19 +297,18 @@ async function dispatchAntigravity(prompt, opt = {}) {
     //強模型得自行摸索(實測116s vs 帶--add-dir僅6s), 且兩者皆ok:true屬靜默失敗,
     //極易被誤判為模型能力不足(2026-08-13以隨機token實測確認)。
     //明示addDirs(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端, 不自動加入
-    let addDirs = get(opt, 'addDirs', null)
-    if (!isarr(addDirs)) {
-        let cwdEff = get(opt, 'cwd', null)
-        if (!isestr(cwdEff)) {
-            cwdEff = process.cwd()
-        }
-        addDirs = [cwdEff]
+    //給了而無效(非陣列、不可讀、含非空且非原始字串之元素而濾後無有效字串者)以params回報, 不退回[cwd]放寬可視範圍; 含有效字串者無效元素照舊略過(判定見readSafeOpt.mjs)
+    let rdirs = readDirsOpt(get(opt, 'addDirs', null), 'addDirs')
+    if (rdirs.err !== '') {
+        return getErrorResult(rdirs.err)
+    }
+    let addDirs = rdirs.dirs
+    if (addDirs === null) {
+        addDirs = [rcwd.value === null ? process.cwd() : rcwd.value]
     }
     let addDirArgs = []
     for (let d of addDirs) {
-        if (isestr(d)) {
-            addDirArgs.push('--add-dir', d)
-        }
+        addDirArgs.push('--add-dir', d)
     }
 
     //extraArgs
@@ -307,7 +320,7 @@ async function dispatchAntigravity(prompt, opt = {}) {
         if (conflict !== '') {
             return getErrorResult(`extraArgs contains [${conflict}], which conflicts with the stdin prompt path (promptVia '${promptVia}' uses --input-format stream-json --output-format stream-json and no --print); remove it, or use promptVia 'argv' for prompts within ${MAX_PROMPT_LENGTH} chars`)
         }
-        let sup = await checkAgyStdinSupport(exe, { cwd: get(opt, 'cwd', null), timeoutMs })
+        let sup = await checkAgyStdinSupport(exe, { cwd: rcwd.value, timeoutMs })
         if (sup.supported === false) {
             return getErrorResult(`agy version [${sup.version}] does not support --input-format stream-json (stdin prompt path needs agy >= ${sup.minVersion}); run [agy update], or use promptVia 'argv' for prompts within ${MAX_PROMPT_LENGTH} chars`)
         }
@@ -326,6 +339,9 @@ async function dispatchAntigravity(prompt, opt = {}) {
 
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
+    if (renv.env !== null) {
+        optCli.env = renv.env
+    }
 
     //stdin路徑: input為一行NDJSON(JSON.stringify不輸出裸換行, 含換行與引號之prompt亦保持單行); 輸出經reshapeResult接縫還原
     //(onStdout累積全文: 失敗結果之stdout被execCli裁到500字元, result事件在最後一行會被裁掉; 作法同dispatchOpencode之detectTruncation)

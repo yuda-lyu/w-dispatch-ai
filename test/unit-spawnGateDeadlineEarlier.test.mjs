@@ -126,14 +126,14 @@ describe('呼叫端 spawnGate.deadlineAt 與遞補層期限取較早者(第417�
             )
         })
 
-        //S5: minAttemptMs 與 shouldStop 之優先序不變(物件優先)
-        it('S5 minAttemptMs 與 shouldStop 仍為 spawnGate 物件優先(本項只動 deadlineAt)', function() {
+        //S5: 原「minAttemptMs 與 shouldStop 之優先序不變(物件優先)」於排程第422項改為取嚴: shouldStop 以「或」合併、minAttemptMs 取兩來源有效值之較大者(判型統一為正整數); 詳見 unit-gateHintsMerge
+        it('S5(排程第422項改寫) minAttemptMs 取兩來源較大者、shouldStop 以「或」合併; 物件之 minAttemptMs 非法不遮蔽提示之有效值(修前物件優先: 100、取預設20000)', function() {
             let f1 = () => true
             let f2 = () => false
             let d = resolveSpawnGate({ kind: 'opencode', shouldStop: f1, deadlineAt: 5000, minAttemptMs: 300, spawnGate: { shouldStop: f2, deadlineAt: 7000, minAttemptMs: 100 }, cores: 4 })
-            assert.strict.deepEqual([d.shouldStop === f2, d.minAttemptMs], [true, 100])
+            assert.strict.deepEqual([d.shouldStop(), d.minAttemptMs], [true, 300])
             let e = resolveSpawnGate({ kind: 'opencode', shouldStop: f1, minAttemptMs: 300, spawnGate: { minAttemptMs: 'x' }, cores: 4 })
-            assert.strict.deepEqual([e.shouldStop === f1, e.minAttemptMs], [true, 20000]) //物件之 minAttemptMs 非法 → 沿用既有行為(取預設, 不退用提示之300); 本項不改
+            assert.strict.deepEqual([e.shouldStop(), e.minAttemptMs], [true, 300])
         })
     })
 

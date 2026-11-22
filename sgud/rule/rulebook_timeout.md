@@ -22,9 +22,9 @@
    - `src/goQuotaGate.mjs`、`src/subQuotaGate.mjs` 之 `ms()`(閘門之**快取間隔** `cacheMs`／`antigravityCacheMs` 等):仍以 `isenum(v, { use: 'timer', gt: 0 })` 判定(dspec §7.1「計時毫秒一般用 isenum timer」,允許小數;非 `timeoutMs`).其**讀者逾時**(`timeoutMs`／`antigravityTimeoutMs`)已於 2026-11-13 改為 `castTimerMs`(規則 6).兩種寫法(整數 vs 允許小數)並存,見 `sgud/feedback/feedback.md`.
    - `src/cliSpawnGate.mjs` 之 `pollMs`／`gateWaitMaxMs`／`settleMs`／`probeTimeoutMs`／`probeFailCooldownMs`／`minGapMs`:已以 `isenum` timer 判定.
    - `budgetMs`:「執行期剩餘時間」,`castBudgetMs`(R-CALLER-1-6、D11 甲);建構值走 `castPintOr`(規則 6).
-   - **次數／索引類(非毫秒,本輪不動,見 `state_timeout.md` 待辦)**:`maxRetries`(REST 四家、`runExecCli` 以 `isp0int`＋`cint`:`Infinity`→1.8e308 近乎無限重試)、`keepDays`、`maxLengths`、`minCandidates`、`parseIndexList` 之 `min`／`max`／`topN`、遞補層之 `cursor`(索引)與舊式冷卻時間戳 `ts`、內部結果值 `appliedTimeoutMs`.
+   - **次數／索引類(非毫秒;2026-11-22 排程第 446 項已一次改為 `castCountOr`／`iseint`,見 `rulebook_count.md` R-COUNT-1;下列為原清單,保留供對照)**:`maxRetries`(REST 四家、`runExecCli` 以 `isp0int`＋`cint`:`Infinity`→1.8e308 近乎無限重試)、`keepDays`、`maxLengths`、`minCandidates`、`parseIndexList` 之 `min`／`max`／`topN`、遞補層之 `cursor`(索引)與舊式冷卻時間戳 `ts`、內部結果值 `appliedTimeoutMs`.
 
-### 站點全集(32 站點,27 檔;含規則 6 之 5 個新增站點)
+### 站點全集(33 站點,27 檔;含規則 6 之 5 個新增站點;2026-11-22 排程第 446 項於 `dispatchAiFallback.mjs` 增 `appliedTimeoutMs` 一站,由 2 變 3)
 
 `Grep "castTimerMs\(" src` 排除 `castTimerMs.mjs` 自身後逐檔計數(`test/unit-castTimerMs.test.mjs`「站點全集」固定此表;新增站點須先檢查再改此表與本表).`castPintOr` 之站點(規則 6)不在此表:`minAttemptMs`(`dispatchAiFallback`、`runExecCli`、`attemptDeadline`)、`cooldownMs`／`cooldownMaxMs`／`coolAfterFails`、`cooling.mjs` 四處、REST 四家與 `runExecCli` 之 `retryDelayMs`、`transientRetry.fastMs`、`createAiCaller` 之 `budgetMs` 建構值、`fetchQuotaJson` 之 `maxBodyBytes`:
 
@@ -34,7 +34,7 @@
 | `checkAgyStdinSupport.mjs` | 1 | 15000(外層 min 15000) |
 | `checkTruncation.mjs` | 1(`safeValidateAsync`) | 300000 |
 | `createAiCaller.mjs` | 1(逐次;建構經 `resolveCatalogue`) | 未給不寫入 |
-| `dispatchAiFallback.mjs` | 2(`entryTimeout`:條目層、共用層逐層) | 300000 |
+| `dispatchAiFallback.mjs` | 3(`entryTimeout`:條目層、共用層逐層;`appliedTimeoutMs`:轉接器內部結果值,第 446 項,無效回 `null`) | 300000／null |
 | `goQuotaGate.mjs` | 1(Go 額度閘之讀者逾時) | 5000 |
 | `subQuotaGate.mjs` | 2(訂閱類額度閘之讀者逾時:`timeoutMs`、`antigravityTimeoutMs`) | 15000／60000 |
 | `dispatchAntigravity.mjs`、`dispatchClaude.mjs`、`dispatchCodex.mjs`、`dispatchOpencode.mjs` | 各 1 | 300000 |
@@ -49,7 +49,7 @@
 ### 盤點指令
 
 - `Grep "castPintOr\([^)]*timeoutMs" src` → 0 筆(舊判定不得殘留;`test/unit-castTimerMs.test.mjs`「src 內無 castPintOr(… timeoutMs …) 站點」).
-- `Grep "castTimerMs\(" src` → 32 站點(同檔「站點全集」);`Grep "ispint\(|isp0int\(|isint\(" src`(排除註解)應只剩「次數／索引類」清單(規則 5 末項).
+- `Grep "castTimerMs\(" src` → 33 站點(同檔「站點全集」);`Grep "ispint\(|isp0int\(|isint\(" src`(排除註解)→ 0 筆(2026-11-22 起,次數／索引類已改 `castCountOr`,見 `rulebook_count.md`).
 
 ### 對應測試
 

@@ -241,13 +241,16 @@ describe('filterOpencodeFree (以opencode models過濾目錄之免費條目)', f
             assert.strict.deepEqual([q.calls, r.refreshed], [[{ exe: 'opencode', args: ['models'], timeoutMs: 30000, refresh: false }], false])
         })
 
-        it('refresh:true附--refresh, exe與timeoutMs可自訂(無效值回退預設)', async function() {
+        it('refresh:true附--refresh, exe與timeoutMs可自訂(timeoutMs、refresh無效值回退預設; exe給了而無效以params拒絕、不查詢, 排程第553項: 不退回PATH上之預設執行檔; 修前此案斷言exe為\'\'回退預設)', async function() {
             let q = spyQuery(okOut('opencode/beam-free\n'))
             let r = await filterOpencodeFree(CATALOG, { query: q.fn, refresh: true, exe: 'C:/x/opencode.cmd', timeoutMs: 1234 })
             assert.strict.deepEqual([q.calls, r.refreshed], [[{ exe: 'C:/x/opencode.cmd', args: ['models', '--refresh'], timeoutMs: 1234, refresh: true }], true])
             let q2 = spyQuery(okOut('opencode/beam-free\n'))
-            await filterOpencodeFree(CATALOG, { query: q2.fn, refresh: 'yes', exe: '', timeoutMs: -5 })
+            await filterOpencodeFree(CATALOG, { query: q2.fn, refresh: 'yes', timeoutMs: -5 })
             assert.strict.deepEqual(q2.calls, [{ exe: 'opencode', args: ['models'], timeoutMs: 30000, refresh: false }]) //僅布林true才開refresh
+            let q3 = spyQuery(okOut('opencode/beam-free\n'))
+            let r3 = await filterOpencodeFree(CATALOG, { query: q3.fn, exe: '' })
+            assert.strict.deepEqual([q3.calls, r3.ok, r3.errorType], [[], false, 'params'])
         })
 
         it('失敗結果亦記refreshed(令呼叫端知道失敗發生於哪種查詢)', async function() {

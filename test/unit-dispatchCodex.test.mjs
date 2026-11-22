@@ -67,14 +67,18 @@ describe('dispatchCodex', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('sandbox可自訂, 非有效字串則回退workspace-write', async function() {
+    it('sandbox可自訂, 未給(undefined、null)用workspace-write; 給了而無效(非字串)以params拒絕、不起子行程、不退回workspace-write(排程第553項: 安全相關opt給了而無效即拒絕, 帳本R-SAFEOPT-1; 修前此案斷言「非有效字串回退workspace-write」)', async function() {
         let t1 = await dispatchCodex('abc', { exe: fake.exe, sandbox: 'read-only' })
         let t2 = await dispatchCodex('abc', { exe: fake.exe, sandbox: 123 })
+        let t3 = await dispatchCodex('abc', { exe: fake.exe, sandbox: null })
+        let t4 = await dispatchCodex('abc', { exe: fake.exe })
         let r = [
             JSON.parse(t1.stdout).args[2],
-            JSON.parse(t2.stdout).args[2],
+            [t2.ok, t2.errorType, t2.attempts],
+            JSON.parse(t3.stdout).args[2],
+            JSON.parse(t4.stdout).args[2],
         ]
-        let rr = ['read-only', 'workspace-write']
+        let rr = ['read-only', [false, 'params', 0], 'workspace-write', 'workspace-write']
         assert.strict.deepEqual(r, rr)
     })
 

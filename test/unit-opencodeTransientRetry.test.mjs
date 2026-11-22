@@ -429,7 +429,7 @@ describe('opencode暫時性錯誤(database is locked)重試一次(R-SPAWNGATE-5)
             }
         })
 
-        it('預算判斷之minAttemptMs預設取守門之預設(20000): 剩餘約25秒 → 重試; 剩餘約19秒 → 不重試; spawnGate物件內之minAttemptMs優先於遞補層提示、deadlineAt兩者取較早者(排程第417項)', async function() {
+        it('預算判斷之minAttemptMs預設取守門之預設(20000): 剩餘約25秒 → 重試; 剩餘約19秒 → 不重試; spawnGate物件內之minAttemptMs與遞補層提示取較大者(排程第422項; 修前物件優先)、deadlineAt兩者取較早者(排程第417項)', async function() {
             let { r: a } = await run('locked,ok', { spawnGateHints: { deadlineAt: Date.now() + 25000 } })
             assert.strict.deepEqual([a.ok, a.attempts], [true, 2])
             let { r: b, n: nb } = await run('locked,ok', { spawnGateHints: { deadlineAt: Date.now() + 19000 } })

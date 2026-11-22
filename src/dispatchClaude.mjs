@@ -1,14 +1,13 @@
 import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
-import isbol from 'wsemi/src/isbol.mjs'
-import isobj from 'wsemi/src/isobj.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli from './runExecCli.mjs'
-import { asText, readCallerObj } from './callUserFn.mjs'
+import { asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
+import { readStrOpt, readBoolOpt, readEnvOpt } from './readSafeOpt.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import redactText, { redactApiKeyText, createStreamRedactor } from './redactText.mjs'
@@ -327,19 +326,19 @@ async function addFailureKind(out, raw, ckKey, tap, cc) {
  *
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程(Claude Code之stdin上限10MB，超過即非零離開)
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {String} [opt.exe='claude'] 輸入claude執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，預設'claude'
+ * @param {String} [opt.exe='claude'] 輸入claude執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，未給(undefined、null)用'claude'，給了而非非空字串(含'')以params回報、不起子進程(不退回預設；排程第553項)
  * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'claude-opus-5-5'(全名, 固定版本)、'opus'或'sonnet'(別名, 隨CLI指向最新版)，預設''代表不帶`--model`旗標，由CLI依方案決定(2.1.280起Pro/Team Standard亦預設Opus)
  * @param {String} [opt.key=''] 輸入Anthropic Console之API金鑰字串(sk-ant-…)，給予有效字串即以API金鑰計費：只於該次子進程環境設ANTHROPIC_API_KEY並移除ANTHROPIC_AUTH_TOKEN、CLAUDE_CODE_USE_*、CLAUDE_CODE_OAUTH_TOKEN等其他憑證變數(含opt.env中同名者)，另自子進程環境移除繼承自process.env之父session連結變數(前綴CLAUDE_CODE_、CLAUDE_AGENT_SDK_與CLAUDECODE、CLAUDE_PID、CLAUDE_EFFORT、CLAUDE_JOB_DIR，保留CLAUDE_CODE_GIT_BASH_PATH；opt.env明確傳入者保留，要保留某使用者設定如CLAUDE_CODE_EFFORT_LEVEL請由opt.env傳入)，結果之stdout/stderr/error與onStdout／onStderr回調收到之文字遮蔽key(長度不足6字元者不遮蔽；含NUL字元者回INVALID_KEY失敗)；未給(undefined、null、'')代表沿用登入狀態(行為與無此參數時完全相同，不移除任何變數)，預設''；給了而無效(非字串：數字、物件、陣列、String包裝物件、已撤銷之Proxy等)回params失敗且不起子進程，不靜默改走登入態或繼承之環境金鑰(帳本R-KEYOPT-1)。經dispatchAiFallback時由條目之keys逐把注入(providers.mjs之claude-api:條目以envVar ANTHROPIC_KEYS取得)。勿把Console金鑰設為全域環境變數ANTHROPIC_API_KEY，否則本機全部Claude Code皆改走API計費
  * @param {Boolean} [opt.crossCheck=true] 輸入是否啟用「沒額度」交叉確認布林值(僅API金鑰在場時有意義：opt.key有效，或opt.env.ANTHROPIC_API_KEY有效字串)：CLI失敗且字樣判為沒額度時，以同一把金鑰對REST送極小請求(max_tokens: 1，費用極小)確認——REST亦沒額度才判'no-credit'，REST成功判'env-error'(呼叫方式或環境錯誤)，其餘結果判'other'；false代表只憑CLI字樣判定(「Credit balance is too low」曾在金鑰正常時出現，風險自負)，預設true
  * @param {Function} [opt.fetch=globalThis.fetch] 輸入交叉確認用之fetch函數，可注入以利測試(不發真實請求)，預設全域fetch
  * @param {String} [opt.crossCheckBaseURL='https://api.anthropic.com'] 輸入交叉確認之API基底網址字串，預設官方端點；CLI經ANTHROPIC_BASE_URL導向他處者請同步給予
  * @param {String} [opt.crossCheckModel='claude-haiku-5-5'] 輸入交叉確認用模型ID字串，預設claude-haiku-5-5(最便宜)
- * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，預設true
+ * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，未給(undefined、null)用true，給了而非布林以params回報、不起子進程(不退回true；排程第553項)
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將強制關閉子進程及其子孫程序，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
- * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
+ * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，未給(undefined、null)用process.cwd()，給了而非非空字串(含'')以params回報、不起子進程(排程第553項)
  * @param {String|Function} [opt.validate=undefined] 輸入stdout驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與子進程共用該次嘗試之timeoutMs)，拋錯或reject視同驗證失敗(OUTPUT_VALIDATION_FAILED，stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，預設0
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，預設0
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入spawn前之機器級守門設定：未給為預設(claude預設不限，守門為no-op、零成本，因等候模型回應時claude.exe幾乎不占CPU)，false關閉，物件可明給maxCli(數claude.exe)、ramUsedMax、cpuMax等逐次開啟，等待不計入timeoutMs，見cliSpawnGate.mjs檔頭，預設undefined
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(標準輸出字串)、stderr(標準錯誤字串，自訂validate拋錯時前綴'validate threw: 訊息')、code(離開碼，子進程未能啟動時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，子進程未能啟動為'spawn'，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、pid(子進程pid，未能啟動時為undefined)、attempts(實際嘗試次數)；API金鑰在場(opt.key，或opt.env.ANTHROPIC_API_KEY)且已進入執行階段之失敗結果另帶failureKind(細分類：'no-credit'沒額度｜'context-too-long'脈絡過長｜'rate-limit'限流｜'overloaded'過載｜'key-invalid'金鑰無效｜'no-permission'無權限｜'network'網路(逾時、連不上)｜'env-error'呼叫方式或環境錯誤(CLI稱沒額度但REST同一把金鑰成功)｜'other'其他，判準、字樣來源與未實測者見failureKind.mjs檔頭)、failureDetail(命中之失敗文字或判定說明，已遮蔽金鑰，≤約400字元)與crossCheck(僅CLI字樣判為沒額度時：{ done, restKind, restStatus }，done為是否已做REST交叉確認)；成功結果與訂閱路徑(未給金鑰)之結果不帶這些欄位；失敗(離開碼非零、訊號結束、逾時)時error為`Exit code N: <尾段>`(尾段至多300字元，已遮蔽金鑰權杖；claude把失敗訊息印在stdout而stderr空，故stderr空時Exit code之尾段取自stdout)並另帶errorDetail({ exitCode(數字或null), stderrTail, stdoutTail(僅stdout非空) })；成功時另帶finish(claude輸出不揭露終止原因故恆為'unknown')與outputChars(stdout字元數)，見runExecCli.mjs與failureDiag.mjs檔頭；本函數不會reject
  * @example
@@ -378,19 +377,28 @@ async function dispatchClaude(prompt, opt = {}) {
         return getErrorResult('prompt must be a non-empty string')
     }
 
-    //exe, 無效回退預設'claude', 由execCli自系統PATH解析實體路徑
-    let exe = get(opt, 'exe', null)
-    if (!isestr(exe)) {
-        exe = DEFAULT_EXE
+    //exe、skipPermissions、cwd為影響執行與安全之純量opt: 未給(undefined、null)用預設('claude'、true、process.cwd()), 給了而無效即以params回報、不起子行程(帳本R-SAFEOPT-1; dspec §11, 不退回預設)
+    //exe, 由execCli自系統PATH解析實體路徑
+    let rexe = readStrOpt(get(opt, 'exe', null), 'exe')
+    if (rexe.err !== '') {
+        return getErrorResult(rexe.err)
     }
+    let exe = rexe.value === null ? DEFAULT_EXE : rexe.value
 
     //model, 無效時整段`--model`旗標不出現, 由CLI自行決定使用模型
     let model = get(opt, 'model', null)
 
-    //skipPermissions, 非布林值回退預設true(非互動-p模式不卡權限確認)
-    let skipPermissions = get(opt, 'skipPermissions', null)
-    if (!isbol(skipPermissions)) {
-        skipPermissions = true
+    //skipPermissions(非互動-p模式不卡權限確認之預設true): 修前非布林退回true(原要求保留權限閘門之意圖被關掉)
+    let rskip = readBoolOpt(get(opt, 'skipPermissions', null), 'skipPermissions')
+    if (rskip.err !== '') {
+        return getErrorResult(rskip.err)
+    }
+    let skipPermissions = rskip.value === null ? true : rskip.value
+
+    //cwd(原樣留在optCli轉傳execCli): 修前非字串由execCli退回process.cwd()(在別的目錄動手)
+    let rcwd = readStrOpt(get(opt, 'cwd', null), 'cwd')
+    if (rcwd.err !== '') {
+        return getErrorResult(rcwd.err)
     }
 
     //extraArgs
@@ -428,12 +436,12 @@ async function dispatchClaude(prompt, opt = {}) {
         }
         ckKey = key
 
-        //呼叫端env不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 訊息與runExecCli同(四家一致); 外來例外訊息可能夾帶key故先遮蔽
-        let er = readCallerObj(get(opt, 'env', null), 'env')
-        if (!er.ok) {
-            return getErrorResult(redactApiKeyText(er.msg, [key]))
+        //呼叫端env給了而非物件或不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 判定與訊息與runExecCli同(readEnvOpt, 四家一致; 帳本R-SAFEOPT-1規則10); 外來例外訊息可能夾帶key故先遮蔽
+        let er = readEnvOpt(get(opt, 'env', null), 'env')
+        if (er.err !== '') {
+            return getErrorResult(redactApiKeyText(er.err, [key]))
         }
-        optCli.env = buildKeyEnv(isobj(er.value) ? er.value : {}, key)
+        optCli.env = buildKeyEnv(er.env === null ? {} : er.env, key)
 
         //onStdout／onStderr(如把串流寫入stdout.log): 包串流遮蔽器, 回調收到已遮蔽文字(stdout只遮蔽key本身, stderr另遮蔽sk-ant-樣式, 與結果物件同規則)
         for (let [name, pattern] of [['onStdout', false], ['onStderr', true]]) {
@@ -459,15 +467,15 @@ async function dispatchClaude(prompt, opt = {}) {
 
         //未給key: 呼叫端若以opt.env自行傳入ANTHROPIC_API_KEY(不建議, 見檔頭【勿以env傳金鑰並搭--bare】), 該金鑰亦參與失敗分類與交叉確認。
         //env物件只讀一次(取omit已取得之optCli.env, 不再讀opt.env; 以物化之副本交runExecCli, 令呼叫端getter不被讀兩次);
-        //不可讀者於此直接以params回報(訊息同runExecCli; 2026-10-25外審#9: 不得交下層重讀而放行第二次讀取成功之物件); 未給env或無此鍵時env與行為完全不變
-        let er = readCallerObj(get(optCli, 'env', null), 'env')
-        if (!er.ok) {
-            return getErrorResult(er.msg)
+        //給了而非物件或不可讀者於此直接以params回報(判定與訊息同runExecCli之readEnvOpt; 2026-10-25外審#9: 不得交下層重讀而放行第二次讀取成功之物件); 未給env或無此鍵時env與行為完全不變
+        let er = readEnvOpt(get(optCli, 'env', null), 'env')
+        if (er.err !== '') {
+            return getErrorResult(er.err)
         }
-        if (isobj(er.value)) {
-            optCli.env = er.value
-            let nk = Object.keys(er.value).find((k) => normName(k) === normName('ANTHROPIC_API_KEY'))
-            let ek = (nk === undefined) ? null : er.value[nk]
+        if (er.env !== null) {
+            optCli.env = er.env
+            let nk = Object.keys(er.env).find((k) => normName(k) === normName('ANTHROPIC_API_KEY'))
+            let ek = (nk === undefined) ? null : er.env[nk]
             if (isestr(ek) && !ek.includes('\u0000')) {
                 ckKey = ek
             }

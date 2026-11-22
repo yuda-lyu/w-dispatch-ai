@@ -12,6 +12,7 @@ import isenum from 'wsemi/src/isenum.mjs'
 import iseint from 'wsemi/src/iseint.mjs'
 import getTrace from 'wsemi/src/getTrace.mjs'
 import { awaitUserFn, callHookSync, readCallerObj, errMsg } from './callUserFn.mjs'
+import { orStop, maxMinAttemptMs } from './gateHints.mjs'
 
 
 // cliSpawnGate.mjs — CLI類轉接器spawn前之機器級守門(內部模組, 由runExecCli於每次嘗試前呼叫; Gitea #67; 帳本R-SPAWNGATE-1)
@@ -538,9 +539,9 @@ function resolveSpawnGate(opt = {}) {
     let probeTimeoutMs = pickMs('probeTimeoutMs', DEFAULT_PROBE_TIMEOUT_MS)
     let probeFailCooldownMs = pickMs('probeFailCooldownMs', DEFAULT_PROBE_FAIL_COOLDOWN_MS)
 
-    //minAttemptMs、shouldStop: 取spawnGate物件之鍵, 未給者取呼叫層提示(opt同名鍵, 由遞補層經runExecCli傳入, 令預設情形下亦能帶budgetMs與shouldStop); deadlineAt另見下(兩者取早)
-    let hint = (key) => (o[key] !== undefined && o[key] !== null ? o[key] : get(opt, key, undefined))
-    let minAttemptMs = toMs(hint('minAttemptMs')) ?? DEFAULT_MIN_ATTEMPT_MS
+    //minAttemptMs、shouldStop: 兩來源(spawnGate物件之鍵與呼叫層提示, 即opt同名鍵, 由遞補層經runExecCli傳入, 令預設情形下亦能帶budgetMs與shouldStop)合併(排程第422項, 見gateHints.mjs):
+    //minAttemptMs取兩來源有效(正整數)值之較大者, 無效者不遮蔽另一來源, 皆無效用預設; shouldStop以「或」合併; deadlineAt另見下(兩者取早)
+    let minAttemptMs = maxMinAttemptMs(o.minAttemptMs, get(opt, 'minAttemptMs', undefined), DEFAULT_MIN_ATTEMPT_MS)
 
     //deadlineAt: 絕對時刻(epoch ms, 與now同一時鐘), 未給或非法視為無;
     //spawnGate物件與呼叫層提示(遞補層之budgetMs換算)兩者皆有效時取較早者(2026-11-11 排程第417項, 主控裁示甲; 修前物件優先, 呼叫端給較晚之期限可令守門等待越過遞補層之budgetMs);
@@ -549,7 +550,7 @@ function resolveSpawnGate(opt = {}) {
     let daObj = daOf(o.deadlineAt)
     let daHint = daOf(get(opt, 'deadlineAt', undefined))
     let deadlineAt = daObj !== null && daHint !== null ? Math.min(daObj, daHint) : (daObj !== null ? daObj : daHint)
-    let shouldStop = isfun(hint('shouldStop')) ? hint('shouldStop') : null
+    let shouldStop = orStop(o.shouldStop, get(opt, 'shouldStop', undefined))
 
     //images: 非空字串陣列(元素限允許字元), 無效元素濾除, 結果為空取預設
     let images = defaultImages(kind, platform)
@@ -620,19 +621,38 @@ function resolveSpawnGate(opt = {}) {
 
 
 /**
- * 取互斥鎖(FIFO)
+ * 取互斥鎖(FIFO)，可給等候上限(排程第422項: 有期限時排隊亦受期限約束)
  *
  * @param {Object} st 輸入狀態物件
- * @returns {Promise} 回傳Promise，取得鎖時resolve
+ * @param {Number} [maxMs=Infinity] 輸入等候上限毫秒，預設Infinity代表無上限；有限值者到點仍未取得即放棄排隊
+ * @returns {Promise} 回傳Promise，resolve回傳是否取得鎖之布林值(取得者須於finally unlock; false者未持有鎖、不得unlock)
  */
-function lock(st) {
+function lock(st, maxMs = Infinity) {
     return new Promise((resolve) => {
         if (!st.busy) {
             st.busy = true
-            resolve()
+            resolve(true)
+            return
         }
-        else {
-            st.queue.push(resolve)
+
+        //排隊: 取得鎖時(前一持有者unlock而呼叫本函數)resolve(true); 有等候上限者另設計時器, 到點仍未取得即自佇列移除並resolve(false)(不再接手鎖, 不遺失或重複釋放鎖)
+        let timer = null
+        let entry = () => {
+            if (timer !== null) {
+                clearTimeout(timer)
+            }
+            resolve(true)
+        }
+        st.queue.push(entry)
+        if (Number.isFinite(maxMs)) {
+            timer = setTimeout(() => {
+                let i = st.queue.indexOf(entry)
+                if (i >= 0) {
+                    st.queue.splice(i, 1)
+                    resolve(false)
+                }
+            }, Math.max(0, maxMs))
+            timer.unref() //等待逾時之計時器不得使行程無法結束
         }
     })
 }
@@ -708,6 +728,9 @@ async function run(opt, logArg) {
         trace('start', { kind: cfg.kind, maxCli: cfg.maxCli, ramUsedMax: cfg.ramUsedMax, cpuMax: cfg.cpuMax, pollMs: cfg.pollMs, gateWaitMaxMs: cfg.gateWaitMaxMs })
     }
 
+    //deadlineHit: 本次檢查中是否有探針因截止(期限約束)而未啟動或被縮短逾時(每次evaluate起重置)
+    let deadlineHit = false
+
     //probe: 失敗(拋錯／reject／逾時／非法值)一律回{ ok: false }, 視為通過; 失敗後冷卻期內不再呼叫
     let probe = async (name, fn, valid) => {
         let t = now()
@@ -717,12 +740,32 @@ async function run(opt, logArg) {
             }
             return { ok: false }
         }
-        let r = await awaitUserFn(fn, cfg.probeTimeoutMs)
+
+        //有期限時探針之逾時不超過「截止(gateWaitMaxMs與deadlineAt − minAttemptMs之較早者) − 現在」(排程第422項; 修前探針逾時為固定之probeTimeoutMs, 期限已近仍等滿;
+        //截止已到者逾時取最短(awaitUserFn下限1ms): 即時可得之探針結果照用, 否則視為逾時)。因截止而被縮短之逾時不算探針故障(不冷卻、不警告), 只記probe-skip(reason 'deadline')並標記deadlineHit——
+        //本次檢查無從確認資源狀態, 由主迴圈比照「等待到點」以fail-open放行(帶failOpen, 不以一般通過之名放行)
+        let tmo = cfg.probeTimeoutMs
+        let capped = false
+        if (cfg.deadlineAt !== null) {
+            let left = Math.max(deadline - t, 0)
+            if (left < tmo) {
+                tmo = left
+                capped = true
+            }
+        }
+        let r = await awaitUserFn(fn, tmo)
         let reason = null
         if (r.state === 'threw') {
             reason = 'threw'
         }
         else if (r.state === 'timeout') {
+            if (capped) {
+                deadlineHit = true
+                if (trace) {
+                    trace('probe-skip', { probe: name, reason: 'deadline' })
+                }
+                return { ok: false }
+            }
             reason = 'timeout'
         }
         else if (!valid(r.value)) {
@@ -787,6 +830,7 @@ async function run(opt, logArg) {
     let n = 0
     let evaluate = async () => {
         n++
+        deadlineHit = false
         let snapshot = { cli: null, cpu: null, ram: null }
         let blocked = []
         let visible = null
@@ -839,7 +883,7 @@ async function run(opt, logArg) {
         if (trace) {
             trace('check', { n, pass, blockedBy: blocked.join(','), visible, cli: snapshot.cli, cpu: snapshot.cpu, ram: snapshot.ram })
         }
-        return { pass, blocked, snapshot, visible }
+        return { pass, blocked, snapshot, visible, deadlineHit }
     }
 
     let fmt = (x) => (x === null ? '-' : (Math.round(x * 100) / 100))
@@ -873,7 +917,20 @@ async function run(opt, logArg) {
         //臨界區: [補足放行間隔]＋檢查＋登記預約, 同行程之併發呼叫逐一通過(間隔之等待亦在區內, 使併發呼叫FIFO依序錯開, 且檢查緊接放行)
         let ev = null
         let stopped = false
-        await lock(st)
+
+        //排互斥鎖之等候亦受截止約束(排程第422項; 僅有期限且用真實時鐘時: 假時鐘之測試世界不以真實計時器約束): 到點仍未取得鎖即fail-open放行(登記預約、不持鎖),
+        //修前排隊無上限, 前一持有者之探針／放行間隔等待可使後來者越過遞補層之budgetMs
+        let lockMs = (cfg.deadlineAt !== null && cfg.now === null) ? deadline - now() : Infinity
+        let gotLock = await lock(st, lockMs)
+        if (!gotLock) {
+            let waitedMs = now() - t0
+            reserve(null)
+            say('warn', `[w-dispatch-ai spawnGate] could not get the gate lock before the deadline after ${Math.round(waitedMs / 1000)}s; proceeding (fail-open)`)
+            if (trace) {
+                trace('fail-open', { reason: 'lock-timeout', waitedMs })
+            }
+            return { outcome: 'fail-open', gated, waitedMs, snapshot: lastSnapshot, failOpen: true, aborted: false }
+        }
         try {
             if (cfg.minGapMs !== null) {
                 let tNow = now()
@@ -897,7 +954,7 @@ async function run(opt, logArg) {
             }
             if (!stopped) {
                 ev = await evaluate()
-                if (ev.pass) {
+                if (ev.pass && !ev.deadlineHit) { //deadlineHit者由下方fail-open分支登記預約(不重複登記)
                     ev.pending = reserve(ev.visible)
                 }
             }
@@ -909,6 +966,17 @@ async function run(opt, logArg) {
             return abortedResult()
         }
         lastSnapshot = ev.snapshot
+
+        //探針因截止(期限約束)未能完成檢查: 等同等待到點, 以fail-open放行(不以一般通過之名放行, 結果帶failOpen)
+        if (ev.deadlineHit) {
+            let waitedMs = now() - t0
+            reserve(ev.visible)
+            say('warn', `[w-dispatch-ai spawnGate] deadline reached during the check after ${Math.round(waitedMs / 1000)}s; proceeding (fail-open)`)
+            if (trace) {
+                trace('fail-open', { reason: 'deadline', waitedMs })
+            }
+            return { outcome: 'fail-open', gated, waitedMs, snapshot: ev.snapshot, failOpen: true, aborted: false }
+        }
 
         if (ev.pass) {
             let waitedMs = now() - t0

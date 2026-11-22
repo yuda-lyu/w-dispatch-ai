@@ -5,13 +5,13 @@ import isarr from 'wsemi/src/isarr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
+import iseint from 'wsemi/src/iseint.mjs'
 import dispatchAi from './dispatchAi.mjs'
 import { KIND_CLI } from './cliSpawnGate.mjs'
 import { resolveQuotaGate, isGoEntry, checkGoQuota } from './goQuotaGate.mjs'
 import { resolveSubQuotaGate, subGateDecide, learnQuotaFromFailure } from './subQuotaGate.mjs'
 import getErrorResult from './getErrorResult.mjs'
+import castCountOr from './castCountOr.mjs'
 import castPintOr from './castPintOr.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import castBudgetMs from './castBudgetMs.mjs'
@@ -19,6 +19,7 @@ import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { BODY_NOT_JSON } from './describeNonJsonBody.mjs'
 import { callHookSync, awaitUserFn, readCallerObj, probeReadable, errMsg, asText } from './callUserFn.mjs'
 import { readKey, readKeys, KEY_KINDS } from './readKeyOpt.mjs'
+import { checkSafeOpts } from './readSafeOpt.mjs'
 import { baseErrorOf } from './failureDiag.mjs'
 import { coolCfgOf, normRec, isCoolingRec, sweepCooling, applyCool, incStreak, resetStreak } from './cooling.mjs'
 import { isTimeoutLike } from './attemptDeadline.mjs'
@@ -351,7 +352,9 @@ function reorderKeysByCooling(order, fpOf, state, cooldownMs, saveState) {
     for (let ki of order) {
         let fp = fpOf(ki)
         let ts = get(table, fp, null)
-        if (ispint(ts) && (now - ts) < cooldownMs) {
+        //冷卻起點之時間戳: iseint timestamp且至少1才採用(用轉換值), Infinity、'Infinity'、'0x10'等視為無效紀錄(修前ispint(Infinity)為真, 使該把金鑰永遠冷卻; 帳本R-COUNT-1)
+        let tsOk = iseint(ts, { use: 'timestamp', min: 1 })
+        if (tsOk && (now - Number(typeof ts === 'string' ? ts.trim() : ts)) < cooldownMs) {
             cool.push(ki)
         }
         else {
@@ -606,6 +609,11 @@ function isKeyIndependentFail(r) {
         return true
     }
 
+    //opencode之ask權限被自動拒絕而結束工作階段(errorType 'denied', 排程第454項): 由權限規則決定, 同規則下模型再發同樣之呼叫必被拒, 與金鑰無關, 換金鑰必然再被拒, 整組跳過改派下一條目
+    if (errorType === 'denied') {
+        return true
+    }
+
     //failureKind(api-anthropic與claude帶key, 見failureKind.mjs): 網路(連不上、逾時, 已於轉接器內依maxRetries重試)與呼叫方式或環境錯誤(CLI稱沒額度但同金鑰REST成功),
     //皆與「哪一把金鑰」無關, 換金鑰必然再敗、亦不得據以判額度, 整組跳過
     let failureKind = get(r, 'failureKind', '')
@@ -662,7 +670,7 @@ function judgeBudgetCut(o) {
  * @param {Number} [opt.cooldownMs=0] 輸入供應商冷卻視窗毫秒非負整數，>0啟用：條目(限有明給id者)遭遇限流(HTTP 429，僅api類可偵測；CLI類可經coolDetect注入判定)或逾時(TIMEOUT開頭)後，於冷卻視窗內之後續呼叫中被移至鏈尾——只降序不移除，前面全敗時仍會被嘗試，任一次成功立即解除；注意啟用時「providers順序即優先序」會被暫時重排，此即本機制之目的；預設0代表不啟用
  * @param {Number} [opt.cooldownGrowth=1] 輸入冷卻加長倍率(≥1之數字或數字字串)，條目於冷卻視窗外再觸發時n+1，有效視窗＝min(cooldownMs×cooldownGrowth^(n−1)，cooldownMaxMs)(整組沒額度與鏈首被封頂之冷卻為固定視窗cooldownMs、不動n)，非預期之值用1，預設1代表視窗恆為cooldownMs(同修前)
  * @param {Number} [opt.cooldownMaxMs=86400000] 輸入冷卻加長之上限毫秒正整數(小於cooldownMs取cooldownMs；久未觸發之紀錄於「有效視窗＋本值」後清除)，非預期之值用24小時，預設86400000
- * @param {Number} [opt.coolAfterFails=0] 輸入持久連敗門檻正整數，>0且cooldownMs>0時，條目組盡(實際送出之嘗試數>0、型別不全為params、非整組沒額度)即於store之failStreak累計，達門檻以reason 'streak'冷卻(觸發後不歸零，成交歸零)，非預期之值為0，預設0代表不計數
+ * @param {Number} [opt.coolAfterFails=0] 輸入持久連敗門檻正整數(1至4294967295之整數或其十進位數字字串)，>0且cooldownMs>0時，條目組盡(實際送出之嘗試數>0、型別不全為params、非整組沒額度)即於store之failStreak累計，達門檻以reason 'streak'冷卻(觸發後不歸零，成交歸零)，非預期之值為0，預設0代表不計數
  * @param {Function} [opt.envDown=null] 輸入環境歸因函數async()=>Boolean(如本機斷網)，整鏈皆敗且有實際嘗試(不含未送出之參數失敗)時於回傳前詢問一次(上限5秒，不以剩餘預算封頂——環境歸因屬整鏈結束後之記帳，而有budgetMs時整鏈結束剩餘常≈0；拋錯、reject、逾時、非true皆視為否)，為true即本次之n遞增與連敗遞增不落定(以減去本次增量還原、冷卻時間戳保留、已被刪除之紀錄不復活)且結果帶envDown: true，預設null
  * @param {Function} [opt.coolDetect=null] 輸入冷卻觸發判定函數(r)=>Boolean，收完整失敗結果物件(含stdout、stderr、code、error)，回傳true即視同冷卻觸發(內建429／TIMEOUT／failureKind為rate-limit之觸發不受影響；優先序：內建先判、未命中才呼叫coolDetect，兩者為「或」疊加，coolDetect只能增加觸發、不能否決內建觸發；沒額度之金鑰冷卻不經coolDetect)——CLI類限流埋在stderr且各家字樣不同，簽章表由觀察到字樣的呼叫端維護，如(r)=>/FreeUsageLimitError/i.test(r.stderr||'')；僅cooldownMs>0時有效，回調須為同步函數，拋出例外或回傳Promise(承接其rejection)皆視同false；以字樣判定者宜先排除errorType為'validation'者(其stderr含驗證函數自身之訊息)，預設null
  * @param {Boolean|Object} [opt.spawnGate=undefined] 輸入CLI類條目spawn前之機器級守門設定(false關閉；未給為預設：只對opencode啟用，claude、codex、antigravity預設不限；物件可覆寫maxCli、ramUsedMax、cpuMax、pollMs、gateWaitMaxMs等)，放頂層為各條目之共用預設、條目自帶者整個取代；守門等待計入budgetMs、可被shouldStop中止，見cliSpawnGate.mjs檔頭，預設undefined
@@ -674,7 +682,7 @@ function judgeBudgetCut(o) {
  * @param {Number} [opt.timeoutMs=300000] 輸入各attempt共用之逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，條目可覆寫，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入各attempt共用之stdout驗證規則(同dispatch functions之validate，自訂函數可回傳Promise)，條目可覆寫，預設undefined
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受REST文字類轉接器回報之截斷內容布林值(原樣轉傳轉接器)，1.0.37起截斷於validate之前判失敗，validate內含搶救策略者須給true，預設false
- * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數，韌性建議交給換家而非重試同一家，預設0；opencode條目遇`database is locked`(本機資料庫鎖競爭)之快速失敗另由轉接器層多重試一次，不佔此次數(見runExecCli.mjs檔頭【暫時性錯誤重試】)，仍失敗才換家
+ * @param {Number} [opt.maxRetries=0] 輸入各attempt共用之同家重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，韌性建議交給換家而非重試同一家，預設0；opencode條目遇`database is locked`(本機資料庫鎖競爭)之快速失敗另由轉接器層多重試一次，不佔此次數(見runExecCli.mjs檔頭【暫時性錯誤重試】)，仍失敗才換家
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，除execCli既有欄位(ok、stdout、stderr、code、error、durationMs、attempts、pid)外，追加providerId(實際使用之群組)、keyIndex(實際使用之金鑰索引，無keys時為null)、kind、model、tried(全部嘗試歷程陣列，成功時亦回傳；失敗項含errorType、stdout與stderr供診斷被拒原因)；失敗結果帶機器可讀之errorType(一覽見getErrorType.mjs檔頭)；api類轉接器提供usage(token用量)時原樣流出於結果與tried各項，CLI類無此欄；REST文字類轉接器另帶finishReason與truncated(是否截斷)，同樣流出於結果與tried各項；api-anthropic與claude帶key之失敗另帶failureKind／failureDetail(細分類，見檔頭【failureKind處置】，流出於結果與tried各項)，tried之outcome另有'budget-cut'(見事件budget-cut)；最終失敗結果(含budget-out、budget-cut、中止之提前返回)在有供應商整組皆沒額度時另帶quotaExhausted(供應商id陣列)，整鏈皆敗且envDown回true時另帶envDown: true，且最後一筆為該情形時error為'QUOTA_EXHAUSTED: …'、為脈絡過長時為'CONTEXT_TOO_LONG: …'(此時整個呼叫已結束)、為呼叫方式或環境錯誤時為'ENV_ERROR: …'；本函數不會reject
  * @example
  * //need opencode, claude, codex cli in system PATH
@@ -770,7 +778,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
     let coolCfg = coolCfgOf({ cooldownMs, cooldownGrowth: get(opt, 'cooldownGrowth', null), cooldownMaxMs: get(opt, 'cooldownMaxMs', null) })
 
     //coolAfterFails, 持久連敗之門檻(正整數), 無效視為0＝不計數; 僅cooldownMs>0時有效
-    let coolAfterFails = castPintOr(get(opt, 'coolAfterFails', null), 0)
+    let coolAfterFails = castCountOr(get(opt, 'coolAfterFails', null), 0, 1) //次數類: iseint count且至少1才採用(帳本R-COUNT-1)
 
     //envDown, 呼叫端提供之環境歸因(async () => Boolean, 如本機斷網), 整鏈皆敗且有實際嘗試時於回傳前詢問一次; 非函數視為未給
     let envDown = get(opt, 'envDown', null)
@@ -897,7 +905,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
         let cursor = 0
         if (nk > 0) {
             let c = get(state.cursors, id, 0)
-            cursor = ispint(c) ? cint(c) % nk : 0
+            cursor = iseint(c, { use: 'index' }) ? Number(typeof c === 'string' ? c.trim() : c) % nk : 0 //游標為索引類: iseint index才採用(用轉換值), 其餘從第一把起(修前Infinity轉1.8e308取模得非0; 帳本R-COUNT-1)
         }
 
         //組內逐把嘗試, 每把至多一次, 全敗即組盡遞補下一組
@@ -918,6 +926,12 @@ async function dispatchAiFallback(prompt, opt = {}) {
         //單一金鑰(opt.key, 共用或條目層)給了而無效: 同keys, 該條目以params失敗(不起用量查詢、不起子進程、不送請求); 有keys時各把金鑰覆寫opt.key故不判; 只判吃key之kind(codex／antigravity無金鑰概念)
         if (entryErr === '' && nk === 0 && isestr(kind) && KEY_KINDS.has(kind)) {
             entryErr = readKey(get(entryAttemptOpt, 'key', null)).err
+        }
+
+        //轉接器之安全相關純量opt(exe、cwd、sandbox、skipPermissions、addDirs、baseURL、cleanCodexRefs、四家CLI之env、opencode之useStoredAuth與provider)給了而無效: 轉接器本就會以params拒絕, 於此先判(單一來源readSafeOpt.mjs之checkSafeOpts),
+        //令此類未送出之失敗同條目層params失敗不發try事件(不入onUsage／createUsageCounter之帳; 帳本R-SAFEOPT-1之C1); keyed: 該條目有有效之keys(provider無效且有金鑰才拒絕, 見readProviderOpt)
+        if (entryErr === '' && isestr(kind)) {
+            entryErr = checkSafeOpts(kind, entryAttemptOpt, { keyed: nk > 0 })
         }
         let trusted = nk > 0 && keysAreActualAuth(entryAttemptOpt)
         let scoped = trusted && isOfficialAnthropicEntry(entryAttemptOpt)
@@ -1104,7 +1118,12 @@ async function dispatchAiFallback(prompt, opt = {}) {
             }
 
             //dispatch
-            emit({ type: 'try', providerId: id, keyIndex, keyId, kind, model })
+            //條目層已判params失敗者(不可讀之條目、keys或key給了而無效等; entryErr非空)不起子行程、不送請求, 故不發try事件(帳本R-SAFEOPT-1, C1):
+            //try事件之語意為「實際嘗試」, createAiCaller之onUsage與createUsageCounter皆於try入帳, 修前此類失敗亦入帳(用量被灌水); 失敗仍照常進tried與skip-group等後續事件(欄位含error)。
+            //轉接器自身之params檢核(於dispatchAi內才得知, 如model缺漏、exe無效)發生於try之後, 事件發出時尚不可知, 不在此列(結果帶attempts 0可辨)
+            if (entryErr === '') {
+                emit({ type: 'try', providerId: id, keyIndex, keyId, kind, model })
+            }
             let r = (entryErr !== '') ? getErrorResult(entryErr) : await dispatchAi(kind, prompt, attemptOpt)
             if (entryErr === '' && !(r.ok !== true && ['params', 'spawn', 'aborted'].includes(r.errorType))) {
                 attemptsSent++ //實際送出(參數檢核失敗、子進程未能啟動、守門中止皆未送出)
@@ -1115,7 +1134,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
             let appliedTimeoutMs = null
             if (isobj(r) && (Object.hasOwn(r, 'cutByDeadline') || Object.hasOwn(r, 'appliedTimeoutMs'))) {
                 cutByDeadline = r.cutByDeadline === true
-                appliedTimeoutMs = ispint(r.appliedTimeoutMs) ? cint(r.appliedTimeoutMs) : null
+                appliedTimeoutMs = castTimerMs(r.appliedTimeoutMs, null) //轉接器內部結果值(實際採用之逾時): 同timeoutMs判定(帳本R-TIMEOUT-1、R-COUNT-1)
                 r = omit(r, ['cutByDeadline', 'appliedTimeoutMs'])
             }
 

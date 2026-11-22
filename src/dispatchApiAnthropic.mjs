@@ -2,11 +2,10 @@ import get from 'lodash-es/get.js'
 import isarr from 'wsemi/src/isarr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
-import isp0int from 'wsemi/src/isp0int.mjs'
 import delay from 'wsemi/src/delay.mjs'
+import castCountOr from './castCountOr.mjs'
 import castPintOr from './castPintOr.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import buildValidator from './buildValidator.mjs'
@@ -14,6 +13,7 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
+import { readStrOpt } from './readSafeOpt.mjs'
 import redactText, { secretHeaderValues, redactApiKeyText } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
@@ -377,7 +377,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} opt.model 輸入模型ID字串，例如'claude-opus-5-5'、'claude-sonnet-5-5'、'claude-haiku-5-5'(完整ID，不加日期後綴)；Messages API無預設模型故必填
  * @param {String} [opt.key=''] 輸入Anthropic API金鑰字串(sk-ant-…)，置於x-api-key標頭，未給(undefined、null、'')代表不帶認證標頭(僅供不需金鑰之閘道；直連官方端點會回401)；給了非字串之值回params且不送請求(帳本R-KEYOPT-1)
- * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串(不含/v1，尾端/v1會被去除)，將於尾端接上/v1/messages，預設官方端點
+ * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串(不含/v1，尾端/v1會被去除)，將於尾端接上/v1/messages，未給(undefined、null)用官方端點，給了而非非空字串(含'')以params回報、不送請求(不退回官方端點使金鑰改送官方；排程第553項)
  * @param {String} [opt.system=''] 輸入system提示詞字串，置於頂層system欄位(非messages內之角色)，預設''代表不帶
  * @param {String} [opt.effort=''] 輸入思考強度字串，'low'、'medium'、'high'、'xhigh'、'max'之一，以output_config.effort送出，其他值視為未給，預設''代表不送(由API依模型決定：Opus 5.5與Haiku 5.5為medium，Sonnet 5.5為high)
  * @param {Object} [opt.body={}] 輸入額外請求本體物件(如max_tokens、thinking、output_config、fallbacks)，將併入預設body(同名鍵以此為準)，預設{}。預設body為{ model, max_tokens: 16000, messages, system?, output_config? }。注意本轉接器不支援工具，帶入tools而模型回tool_use時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
@@ -386,7 +386,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，預設undefined代表不驗證
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(stop_reason為max_tokens)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；無可見輸出(思考耗盡max_tokens)者一律失敗，預設false代表截斷一律失敗(errorType incomplete)
  * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試(不發真實請求)，簽章同全域fetch(url, init)，預設全域fetch；非函數視為未給
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)、截斷與拒答不重試，預設0
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，4xx(429除外)、截斷與拒答不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆文字，全部text區塊串接)、stderr(失敗時之原始回應本體或refusal之stop_details)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭，本轉接器另有'refusal')、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之usage物件原樣透傳，無則null)、finishReason(已取得回應時之stop_reason小寫原值，缺值為'')、truncated(是否因max_tokens截斷布林值)、apiErrorType(僅HTTP非2xx時，取自錯誤本體error.type之字串，如'rate_limit_error'、'billing_error'，無法解析為'')、failureKind(僅失敗時，細分類字串：'no-credit'沒額度｜'context-too-long'脈絡過長｜'rate-limit'限流｜'overloaded'過載｜'key-invalid'金鑰無效｜'no-permission'無權限｜'network'網路(連不上、逾時)｜'other'其他，判準與依據見failureKind.mjs檔頭)、failureDetail(僅HTTP非2xx時，API錯誤訊息，已遮蔽金鑰，截斷至200字元)，本函數不會reject
  * @example
@@ -439,11 +439,12 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
         fetchFn = fetch
     }
 
-    //baseURL, 無效回退官方端點; 正規化: 去尾端斜線與尾端/v1(端點路徑由本函數接上)
-    let baseURL = get(opt, 'baseURL', null)
-    if (!isestr(baseURL)) {
-        baseURL = DEFAULT_BASE_URL
+    //baseURL, 未給(undefined、null)用官方端點; 給了而無效以params回報、不送請求(帳本R-SAFEOPT-1: 不退回官方端點, 否則金鑰改送官方); 正規化: 去尾端斜線與尾端/v1(端點路徑由本函數接上)
+    let rbase = readStrOpt(get(opt, 'baseURL', null), 'baseURL')
+    if (rbase.err !== '') {
+        return paramsErr(rbase.err)
     }
+    let baseURL = rbase.value === null ? DEFAULT_BASE_URL : rbase.value
     let url = baseURL.replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1/messages'
 
     //key, 未給(undefined、null、'')代表不帶認證標頭; 給了而無效(非字串)以params回報、不送請求(帳本R-KEYOPT-1: 不靜默改送不帶認證之請求)
@@ -485,14 +486,8 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     //timeoutMs
     let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
-    //maxRetries
-    let maxRetries = get(opt, 'maxRetries', null)
-    if (!isp0int(maxRetries)) {
-        maxRetries = 0
-    }
-    else {
-        maxRetries = cint(maxRetries)
-    }
+    //maxRetries, 次數類: iseint count(0～4294967295之整數或其數字字串)才採用, 其餘(Infinity、'0x1'、小數、負數、超過上限等)視為未給用0(帳本R-COUNT-1)
+    let maxRetries = castCountOr(get(opt, 'maxRetries', null), 0)
 
     //retryDelayMs
     let retryDelayMs = castPintOr(get(opt, 'retryDelayMs', null), DEFAULT_RETRY_DELAY_MS)

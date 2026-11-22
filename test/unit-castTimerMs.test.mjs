@@ -112,7 +112,7 @@ describe('src內timeoutMs判定站點之盤點(R-TIMEOUT-1)', function() {
             'checkAgyStdinSupport.mjs': 1,
             'checkTruncation.mjs': 1,
             'createAiCaller.mjs': 1,
-            'dispatchAiFallback.mjs': 2, //entryTimeout: 條目層與共用層逐層判定(各1)
+            'dispatchAiFallback.mjs': 3, //entryTimeout: 條目層與共用層逐層判定(各1); appliedTimeoutMs(轉接器內部結果值, 2026-11-22 排程第446項由ispint＋cint改)
             'dispatchAntigravity.mjs': 1,
             'dispatchApiAnthropic.mjs': 1,
             'dispatchApiOpenaiCompat.mjs': 1,

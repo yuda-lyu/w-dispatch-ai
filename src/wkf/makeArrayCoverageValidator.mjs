@@ -3,9 +3,8 @@ import isarr from 'wsemi/src/isarr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
-import { callHookSync } from '../callUserFn.mjs'
+import castCountOr from '../castCountOr.mjs'
+import { callHookSync, probeReadable } from '../callUserFn.mjs'
 import parseJsonArray from './parseJsonArray.mjs'
 
 
@@ -50,14 +49,14 @@ function hasContent(v) {
  * 任一項任一受限欄位(maxLengths)字數超過上限即整體不合格(不剔除該項)；
  * indices內每個編號須被涵蓋(同一編號可回多筆)，且該筆contentFields任一欄位非空才算有內容，缺項或內容為空即不合格；
  * 每次不合格以onReject(reason)回報原因字串(回調拋錯或回傳Promise皆忽略)，供呼叫端寫日誌；
- * indices給了但非陣列即throw TypeError(不可靜默改空陣列，否則形同放行)，省略視為空陣列；
+ * indices給了但非陣列即throw TypeError(不可靜默改空陣列，否則形同放行)，省略視為空陣列；contentFields、maxLengths給了而不可讀(拋錯之getter、已撤銷之Proxy)亦throw TypeError(不靜默放寬，排程第553項)，可讀而型別不符者視為未給；
  * 其餘鍵型別不符視為未給改用預設(indexField非非空字串、contentFields非陣列、maxLengths非物件、onReject非函數；maxLengths內非正整數之上限略過)
  *
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Array} [opt.indices=[]] 輸入須涵蓋之編號陣列(數字)，預設[]
  * @param {String} [opt.indexField='index'] 輸入編號欄位名字串，預設'index'
  * @param {Array} [opt.contentFields=[]] 輸入內容欄位名字串陣列，任一非空才算該筆有內容；空陣列代表只驗編號，預設[]
- * @param {Object} [opt.maxLengths={}] 輸入欄位名對字數上限(正整數)之物件，如{ summary: 600 }，預設{}
+ * @param {Object} [opt.maxLengths={}] 輸入欄位名對字數上限(正整數: 1至4294967295之整數或其十進位數字字串，其餘略過該欄之上限)之物件，如{ summary: 600 }，預設{}
  * @param {Function} [opt.onReject=null] 輸入不合格回報函數(reason)=>void，預設null代表不回報
  * @returns {Function} 回傳驗證函數(stdout)=>Boolean
  * @example
@@ -107,13 +106,23 @@ function makeArrayCoverageValidator(opt = {}) {
         indexField = 'index'
     }
     let contentFields = get(opt, 'contentFields', null)
-    contentFields = isarr(contentFields) ? contentFields.filter((f) => isestr(f)) : []
     let maxLengths = get(opt, 'maxLengths', null)
+
+    //contentFields、maxLengths給了而不可讀(拋錯之getter、已撤銷之Proxy)即throw(同indices: 組裝期設定錯誤fail fast; 帳本R-SAFEOPT-1, A7):
+    //修前isarr／isobj對其回false而視為未給, 驗證器靜默放寬(不驗內容、不限字數)而照樣通過; 可讀而型別不符者照舊視為未給
+    for (let [k, v] of [['contentFields', contentFields], ['maxLengths', maxLengths]]) {
+        let pr = probeReadable(v, `makeArrayCoverageValidator 之 ${k}`)
+        if (!pr.ok) {
+            throw new TypeError(pr.msg)
+        }
+    }
+    contentFields = isarr(contentFields) ? contentFields.filter((f) => isestr(f)) : []
     let limits = []
     if (isobj(maxLengths)) {
         for (let f of Object.keys(maxLengths)) {
-            if (ispint(maxLengths[f])) {
-                limits.push([f, cint(maxLengths[f])])
+            let lim = castCountOr(maxLengths[f], null, 1) //次數類(字數上限): iseint count且至少1才採用(用轉換值), 其餘略過該欄之上限(帳本R-COUNT-1)
+            if (lim !== null) {
+                limits.push([f, lim])
             }
         }
     }

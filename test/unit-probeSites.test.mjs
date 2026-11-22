@@ -340,9 +340,23 @@ describe('resolveProviders／resolveCatalogue／createAiCaller: 呼叫端物件�
         }
         assert.strict.deepEqual(rows, rr)
 
-        //對照: 可讀而型別不符者照舊視同未給(K3): env為數字改用process.env、pick為字串視同未給(全取)、exes／patch為數字或字串不套用
-        let r = resolveProviders(providers(), { env: 123, pick: 'x', exes: 7, patch: 'y' })
+        //對照: pick、patch可讀而型別不符者照舊視同未給(K3; 此二項非本輪之env／exes裁示範圍): pick為字串視同未給(全取)、patch為字串不套用
+        let r = resolveProviders(providers(), { pick: 'x', patch: 'y' })
         assert.strict.deepEqual([r.providers.map((p) => p.id), r.skipped.map((s) => s.id)], [['a'], ['b']])
+
+        //env、exes可讀而非物件: 排程第553項裁示②起同步throw(不再視同未給而改用process.env、略過exes; 帳本R-SAFEOPT-1規則10, 細案見unit-envExesReject)
+        assert.strict.deepEqual(
+            [{ env: 123 }, { exes: 7 }].map((o) => {
+                try {
+                    resolveProviders(providers(), o)
+                    return ''
+                }
+                catch (err) {
+                    return String(err && err.message).split(' ')[0]
+                }
+            }),
+            ['env', 'exes'],
+        )
     })
 
     it('resolveCatalogue與createAiCaller: catalogue／extraProviders／env／pick／exes／patch／providerTimeouts不可讀 → throw; 可讀而型別不符之catalogue照舊改用內建目錄', function() {

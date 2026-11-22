@@ -8,6 +8,7 @@ import resolveProviders from './resolveProviders.mjs'
 import readEnvFile from './readEnvFile.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import { assertReadable } from './callUserFn.mjs'
+import { assertObjOpt } from './readSafeOpt.mjs'
 
 
 // resolveCatalogue.mjs — 目錄展開: 內建目錄＋安裝方自帶條目合併 → 逾時三層取值寫進patch → resolveProviders
@@ -160,9 +161,9 @@ function timeoutPatch(merged, opt = {}) {
  * @param {Array} [opt.catalogue=內建目錄] 輸入條目物件陣列，非陣列時用內建目錄
  * @param {Array} [opt.extraProviders=[]] 輸入安裝方自帶條目物件陣列(各須含id；新id追加、同id逐欄覆蓋)，預設[]
  * @param {Array} [opt.pick=null] 輸入自選id字串陣列(順序即遞補優先序)，查無之id列入resolved.missing，預設null代表全取
- * @param {Object} [opt.env=null] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，與envFile二擇一，預設null
+ * @param {Object} [opt.env=null] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，與envFile二擇一，預設null；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不改讀envFile或process.env)
  * @param {String} [opt.envFile=null] 輸入.env檔路徑字串，env未給時以readEnvFile讀入(不污染process.env)，預設null
- * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件，預設null
+ * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件，預設null；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)
  * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件，淺合併覆寫且優先於逾時三層，預設null
  * @param {Object} [opt.providerTimeouts=null] 輸入逐id逾時毫秒物件，逾時三層之最優先層，預設null
  * @param {Number} [opt.timeoutMs=null] 輸入全域逾時毫秒正整數，逾時三層之最後備援，預設null
@@ -203,10 +204,14 @@ function resolveCatalogue(opt = {}) {
         assertReadable(get(opt, k, null), k)
     }
 
+    //env、exes給了而非物件一律同步throw(帳本R-SAFEOPT-1規則10; 與resolveProviders、四家CLI同一判定readEnvOpt): 不視為未給而改讀envFile／process.env或略過exes; 未給(undefined、null)照舊
+    assertObjOpt(get(opt, 'env', null), 'env')
+    assertObjOpt(get(opt, 'exes', null), 'exes')
+
     //merged
     let merged = mergeCatalogue(get(opt, 'catalogue', null), get(opt, 'extraProviders', null))
 
-    //env, 物件則用之; 否則envFile有給才讀; 皆無交resolveProviders預設(process.env)
+    //env, 物件則用之; 未給才看envFile(有給才讀); 皆無交resolveProviders預設(process.env)
     let pick = get(opt, 'pick', null)
     let env = get(opt, 'env', null)
     if (!isobj(env)) {

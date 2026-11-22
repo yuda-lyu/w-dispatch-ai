@@ -2,10 +2,9 @@ import get from 'lodash-es/get.js'
 import isarr from 'wsemi/src/isarr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import isp0int from 'wsemi/src/isp0int.mjs'
 import delay from 'wsemi/src/delay.mjs'
+import castCountOr from './castCountOr.mjs'
 import castPintOr from './castPintOr.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import buildValidator from './buildValidator.mjs'
@@ -374,7 +373,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求(含回應串流讀取)，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(status為incomplete且reason為max_output_tokens)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；content_filter與可見輸出為空者一律失敗，預設false代表截斷一律失敗
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)與截斷不重試，預設0
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，4xx(429除外)與截斷不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，欄位名為input_tokens/output_tokens/total_tokens，無則null)、finishReason(已取得回應時之正規化終止原因字串，completed為'stop'、max_output_tokens為'length')、truncated(已取得回應時是否被截斷布林值，僅status為incomplete時為true)，本函數不會reject
  * @example
@@ -457,14 +456,8 @@ async function dispatchApiOpenaiResponses(prompt, opt = {}) {
     //timeoutMs
     let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
-    //maxRetries
-    let maxRetries = get(opt, 'maxRetries', null)
-    if (!isp0int(maxRetries)) {
-        maxRetries = 0
-    }
-    else {
-        maxRetries = cint(maxRetries)
-    }
+    //maxRetries, 次數類: iseint count(0～4294967295之整數或其數字字串)才採用, 其餘(Infinity、'0x1'、小數、負數、超過上限等)視為未給用0(帳本R-COUNT-1)
+    let maxRetries = castCountOr(get(opt, 'maxRetries', null), 0)
 
     //retryDelayMs
     let retryDelayMs = castPintOr(get(opt, 'retryDelayMs', null), DEFAULT_RETRY_DELAY_MS)

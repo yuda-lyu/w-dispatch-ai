@@ -6,7 +6,8 @@ import isestr from 'wsemi/src/isestr.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import splitKeys from './splitKeys.mjs'
-import { errField, errMsg } from './callUserFn.mjs'
+import { errField, errMsg, probeReadable } from './callUserFn.mjs'
+import { readStrOpt } from './readSafeOpt.mjs'
 import { redactApiKeyText } from './redactText.mjs'
 import { classifyRestFailure, classifyFetchError } from './failureKind.mjs'
 
@@ -35,6 +36,9 @@ let DEFAULT_BASE_URL = 'https://api.anthropic.com'
 let DEFAULT_MODEL = 'claude-haiku-5-5'
 let ANTHROPIC_VERSION = '2023-06-01'
 let DEFAULT_TIMEOUT_MS = 20000
+
+//keys陣列元素數上限(超過視為給了而無效, 避免巨大／稀疏陣列卡住事件迴圈; 同readKeyOpt之MAX_KEYS)
+let MAX_PROBE_KEYS = 10000
 
 //每分鐘限額標頭之組名 → 標頭名中段
 let LIMIT_GROUPS = {
@@ -85,7 +89,7 @@ function readLimitHeaders(headers) {
  * @param {String} key 輸入Anthropic API金鑰字串
  * @param {Object} [opt={}] 輸入設定物件
  * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試，預設全域fetch
- * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串(尾端/v1與斜線會去除)，預設官方端點
+ * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串(尾端/v1與斜線會去除)，未給(undefined、null)用官方端點，給了而非非空字串(含'')不送請求(該把回kind 'other'、detail載明；不退回官方端點使金鑰改送官方；排程第553項)
  * @param {String} [opt.model='claude-haiku-5-5'] 輸入模型ID字串，預設claude-haiku-5-5(最便宜)
  * @param {Number} [opt.timeoutMs=20000] 輸入逾時毫秒正整數，預設20000
  * @returns {Promise} 回傳Promise，resolve回傳物件，內含kind(分類字串)、ok(kind是否為'ok')、status(HTTP狀態碼，無回應為null)、apiErrorType(錯誤本體error.type，無為'')、detail(錯誤訊息，已遮蔽金鑰，截斷至200字元，成功為'')、limits(每分鐘限額標頭)、retryAfterSec(retry-after秒數，無為null)、durationMs(耗時毫秒)，本函數不會reject
@@ -140,10 +144,12 @@ async function probeOnce(key, opt) {
     if (fetchFn === null) {
         return mk({ detail: 'fetch is not available' })
     }
-    let baseURL = get(opt, 'baseURL', null)
-    if (!isestr(baseURL)) {
-        baseURL = DEFAULT_BASE_URL
+    //baseURL, 未給(undefined、null)用官方端點; 給了而無效不送請求(帳本R-SAFEOPT-1: 不退回官方端點, 否則金鑰改送官方)
+    let rbase = readStrOpt(get(opt, 'baseURL', null), 'baseURL')
+    if (rbase.err !== '') {
+        return mk({ detail: rbase.err })
     }
+    let baseURL = rbase.value === null ? DEFAULT_BASE_URL : rbase.value
     let url = baseURL.replace(/\/+$/, '').replace(/\/v1$/, '') + '/v1/messages'
     let model = get(opt, 'model', null)
     if (!isestr(model)) {
@@ -231,10 +237,10 @@ async function probeOnce(key, opt) {
  * @param {Array|String} keys 輸入金鑰字串陣列；亦可直接給`ANTHROPIC_KEYS`之原始字串(以逗號分隔，分號視同逗號，同resolveProviders)
  * @param {Object} [opt={}] 輸入設定物件
  * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試，預設全域fetch
- * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串，預設官方端點
+ * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串，未給(undefined、null)用官方端點，給了而非非空字串(含'')整體以params回報(results為空、不送請求；排程第553項)
  * @param {String} [opt.model='claude-haiku-5-5'] 輸入探測用模型ID字串，預設claude-haiku-5-5
  * @param {Number} [opt.timeoutMs=20000] 輸入單把逾時毫秒正整數，預設20000
- * @returns {Promise} 回傳Promise，resolve回傳物件，內含model(探測用模型)、results(逐把結果陣列，各項含index、length、kind、ok、status、apiErrorType、detail、limits、retryAfterSec、durationMs；kind為'ok'｜'no-credit'｜'key-invalid'｜'no-permission'｜'rate-limit'｜'overloaded'｜'network'｜'other')、summary(各kind之把數物件，另含total)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳物件，內含model(探測用模型)、results(逐把結果陣列，各項含index、length、kind、ok、status、apiErrorType、detail、limits、retryAfterSec、durationMs；kind為'ok'｜'no-credit'｜'key-invalid'｜'no-permission'｜'rate-limit'｜'overloaded'｜'network'｜'other')、summary(各kind之把數物件，另含total)；keys或opt不可讀、陣列length讀取拋錯、opt.baseURL給了而無效時不探測任何金鑰，results為空陣列、summary.total為0並另帶error與errorType 'params'(排程第553項)，本函數不會reject
  * @example
  * //need network
  *
@@ -258,14 +264,50 @@ async function probeOnce(key, opt) {
  *
  */
 async function probeAnthropicKeys(keys, opt = {}) {
+
+    //params, 給了而無效之設定(keys或opt不可讀、opt.baseURL無效)不探測任何金鑰、不送請求、不reject: 修前keys不可讀(已撤銷之Proxy等)回空結果(靜默探測0把)、
+    //陣列之length讀取拋錯時reject、baseURL無效退回官方端點(金鑰改送官方); 帳本R-SAFEOPT-1(A5)
+    let paramsFail = (error) => ({ model: DEFAULT_MODEL, results: [], summary: { total: 0 }, error, errorType: 'params' })
+    let pk = probeReadable(keys, 'keys')
+    if (!pk.ok) {
+        return paramsFail(pk.msg)
+    }
+    let po = probeReadable(opt, 'opt')
+    if (!po.ok) {
+        return paramsFail(po.msg)
+    }
+    let rbase = null
+    let rmodel = null
+    try {
+        rbase = readStrOpt(get(opt, 'baseURL', null), 'baseURL')
+        rmodel = get(opt, 'model', null)
+    }
+    catch (err) {
+        return paramsFail(`opt is not readable: ${errMsg(err)}`)
+    }
+    if (rbase.err !== '') {
+        return paramsFail(rbase.err)
+    }
     let list = []
     if (isestr(keys)) {
         list = splitKeys(keys).keys
     }
     else if (isarr(keys)) {
-        list = keys
+        try {
+            let n = keys.length
+            if (!Number.isInteger(n) || n < 0) {
+                return paramsFail('keys is not readable: length is not a valid array length')
+            }
+            if (n > MAX_PROBE_KEYS) {
+                return paramsFail(`keys has too many elements (more than ${MAX_PROBE_KEYS})`)
+            }
+            list = Array.from({ length: n }, (_, i) => keys[i]) //物化(只讀一次; 元素或length之讀取拋錯以params回報, 不reject)
+        }
+        catch (err) {
+            return paramsFail(`keys is not readable: ${errMsg(err)}`)
+        }
     }
-    let model = get(opt, 'model', null)
+    let model = rmodel
     if (!isestr(model)) {
         model = DEFAULT_MODEL
     }

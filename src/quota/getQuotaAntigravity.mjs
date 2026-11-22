@@ -10,6 +10,7 @@ import cdbl from 'wsemi/src/cdbl.mjs'
 import execCli from 'wsemi/src/execCli.mjs'
 import strCompareForVersion from 'wsemi/src/strCompareForVersion.mjs'
 import castTimerMs from '../castTimerMs.mjs'
+import { readStrOpt } from '../readSafeOpt.mjs'
 import { isSpawnFail } from '../getErrorType.mjs'
 import toQuotaLabel from './toQuotaLabel.mjs'
 import toQuotaWindow from './toQuotaWindow.mjs'
@@ -264,20 +265,23 @@ async function getQuotaAntigravity(email = '', opt = {}) {
     //emailWant
     let emailWant = isestr(email) ? email : ''
 
-    //exe
-    let exe = get(opt, 'exe', null)
-    if (!isestr(exe)) {
-        exe = DEFAULT_EXE
+    //exe與cwd: 給了而無效以params回報、不查詢(帳本R-SAFEOPT-1: 不退回預設而換執行檔)
+    let rexe = readStrOpt(get(opt, 'exe', null), 'exe')
+    let rcwd = readStrOpt(get(opt, 'cwd', null), 'cwd')
+    for (let rr of [rexe, rcwd]) {
+        if (rr.err !== '') {
+            return toQuotaResult('antigravity', { emailWant, source, durationMs: Date.now() - t0, error: rr.err, errorType: 'params' })
+        }
     }
+
+    //exe
+    let exe = rexe.value === null ? DEFAULT_EXE : rexe.value
 
     //timeoutMs
     let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
     //cwd
-    let cwd = get(opt, 'cwd', null)
-    if (!isestr(cwd)) {
-        cwd = os.tmpdir()
-    }
+    let cwd = rcwd.value === null ? os.tmpdir() : rcwd.value
 
     //checkVersion與withCredits
     let checkVersion = get(opt, 'checkVersion', true) !== false

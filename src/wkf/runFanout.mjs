@@ -3,8 +3,7 @@ import isarr from 'wsemi/src/isarr.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
+import castCountOr from '../castCountOr.mjs'
 import callAiWithFallback from './callAiWithFallback.mjs'
 import castTimerMs from '../castTimerMs.mjs'
 import castBudgetMs from '../castBudgetMs.mjs'
@@ -61,7 +60,7 @@ ${candidates.map((c, i) => `【候選 ${i + 1}】\n${JSON.stringify(c)}`).join('
  * @param {Object} opt.integrate 輸入整合名額規格物件{ use, fallback, prompt?, check?, ... }，prompt可為(candidates)=>String或回傳Promise之自訂整合提示詞(省略用預設模板；等待上限為整合名額timeoutMs與budgetMs取小，拋錯、reject、逾時以整合失敗回報並保留候選)；check為終稿專屬檢核(終稿判準常與候選不同，如須含固定段落)，未給則沿用頂層check；meta為保留鍵同agents
  * @param {Function} [opt.check=null] 輸入檢核函數(json)=>Boolean，作為候選與終稿之共用預設，名額規格與integrate可各自帶check覆寫，預設null
  * @param {String} [opt.schema=''] 輸入輸出格式示意字串，供預設整合模板嵌入，預設''
- * @param {Number} [opt.minCandidates=2] 輸入進入整合所需之最少成功候選數正整數，未達門檻以首位候選為成果，預設2
+ * @param {Number} [opt.minCandidates=2] 輸入進入整合所需之最少成功候選數正整數(1至4294967295之整數或其十進位數字字串，Infinity與'0x3'等視為未給)，未達門檻以首位候選為成果，預設2
  * @param {Object} [opt.callOpt={}] 輸入透傳callAiWithFallback之共用設定(cwd、store、onEvent、timeoutMs、promptPrefix等)，預設{}
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(布林值)、result(工作流成果)、integrated(是否經過整合布林值)、agents(各名額完整結果陣列)、candidates(成功候選陣列)、integrateDetail(整合呼叫完整結果)、totalMs(總耗時毫秒)、error(錯誤訊息字串)，本函數不會reject
  * @example
@@ -119,13 +118,8 @@ async function runFanout(opt = {}) {
         return { ok: false, result: null, integrated: false, agents: [], candidates: [], totalMs: 0, error: 'agents must be a non-empty array' }
     }
 
-    let minCandidates = get(opt, 'minCandidates', null)
-    if (!ispint(minCandidates)) {
-        minCandidates = 2
-    }
-    else {
-        minCandidates = cint(minCandidates)
-    }
+    //minCandidates, 次數類: iseint count且至少1才採用(用轉換值), 其餘(Infinity、'0x3'、超過4294967295等)視為未給用2(帳本R-COUNT-1)
+    let minCandidates = castCountOr(get(opt, 'minCandidates', null), 2, 1)
 
     //前段: 並行多開, 個別失敗不炸整輪
     //各名額可自帶check覆寫頂層(候選與終稿判準本可不同); 自spec抽出而非留在overrides,

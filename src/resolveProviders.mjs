@@ -6,7 +6,9 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import strFindSimilar from 'wsemi/src/strFindSimilar.mjs'
 import splitKeys from './splitKeys.mjs'
+import { readKeys } from './readKeyOpt.mjs'
 import { assertReadable } from './callUserFn.mjs'
+import { assertObjOpt } from './readSafeOpt.mjs'
 
 
 // resolveProviders.mjs — 把providers定義檔展開為可直接使用的條目
@@ -42,10 +44,10 @@ import { assertReadable } from './callUserFn.mjs'
  *
  * @param {Array} providers 輸入providers條目物件陣列(如providers.mjs之預設匯出)
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，預設process.env。建議以readEnvFile('./.env')讀成物件傳入，不污染process.env
+ * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，未給(undefined、null)用process.env；給了而非物件(字串、數字、陣列、Map等)或不可讀者同步throw(不改用process.env)。建議以readEnvFile('./.env')讀成物件傳入，不污染process.env
  * @param {Boolean} [opt.splitSemicolon=true] 輸入名稱以_KEYS結尾之環境變數遇分號時是否視同逗號拆開布林值，預設true(拆開並於warnings回報)；false代表分號保留於金鑰內(仍回報warning)。使用者曾以分號分隔多把金鑰致整串被當成一把(送出後為401金鑰無效而非明顯的設定錯誤)；已知內建供應商之金鑰字元皆為英數、底線與連字號，不含分號。其他變數名(如單數形FOO_KEY)只認逗號
  * @param {Array} [opt.pick=null] 輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)
- * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件(如{claude:'C:/.../claude.exe'})，命中kind之條目補上exe欄位(條目已自帶exe者不覆寫——條目層設定優先)，預設null代表不注入
+ * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件(如{claude:'C:/.../claude.exe'})，命中kind之條目補上exe欄位(條目已自帶exe者不覆寫——條目層設定優先)，未給(undefined、null)代表不注入；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)
  * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件(如{'claude:sonnet':{timeoutMs:360000}})，命中id之條目淺合併覆寫，於exes之後施作故可覆寫exe，預設null代表不覆寫
  * @returns {Object} 回傳物件，內含providers(可直接餵dispatchAiFallback之條目陣列)、table(id對條目之物件，可直接餵dispatchAiWkf)、skipped(缺環境變數而停用之{id,envVar}陣列)、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之拼寫提示物件，pick查無多半是打錯字，附最接近id供直接定位；僅為相似度最高者非保證正解，無missing時為空物件)，warnings(設定疑慮之陣列，目前只有'KEYS_SEMICOLON'：各項含envVar、code、message與ids(受影響之條目id)，不含金鑰值；無疑慮時為空陣列)
  * @example
@@ -101,7 +103,12 @@ function resolveProviders(providers, opt = {}) {
         assertReadable(get(opt, k, null), k)
     }
 
-    //env, 無效回退process.env(瀏覽器環境無process則空物件)
+    //env、exes給了而非物件(字串、數字、陣列、Map等; 含空字串)一律同步throw, 不視為未給(帳本R-SAFEOPT-1規則10; 與四家CLI、額度讀者之env同一判定readEnvOpt):
+    //env非物件而改用process.env即悄悄換掉金鑰來源, exes非物件而略過即悄悄改用PATH上之預設執行檔; 未給(undefined、null)照舊。判定只驗不取值(env、exes仍以呼叫端原物件使用)
+    assertObjOpt(get(opt, 'env', null), 'env')
+    assertObjOpt(get(opt, 'exes', null), 'exes')
+
+    //env, 未給回退process.env(瀏覽器環境無process則空物件)
     let env = get(opt, 'env', null)
     if (!isobj(env)) {
         env = (typeof process !== 'undefined' && process && isobj(process.env)) ? process.env : {}
@@ -145,8 +152,11 @@ function resolveProviders(providers, opt = {}) {
     for (let entry of selected) {
         let envVar = get(entry, 'envVar', null)
 
-        //無envVar(訂閱登入態CLI)或已自帶有效keys, 原樣通過(僅移除envVar欄位)
-        if (!isestr(envVar) || isearr(get(entry, 'keys', null))) {
+        //無envVar(訂閱登入態CLI)、已自帶有效keys、或自帶keys而給了無效(帳本R-KEYOPT-1／R-SAFEOPT-1, B2): 原樣通過(僅移除envVar欄位);
+        //keys判定與dispatchAiFallback同源(readKeys): 未給(undefined、null、[]、元素全為空)才依envVar展開; 給了而無效者不以環境變數之金鑰取代
+        //(修前isearr判「已自帶」: 字串、物件等非陣列之無效keys被環境變數靜默取代, 原指定之金鑰意圖遭換掉), 留待遞補層以params拒絕
+        let rk = readKeys(get(entry, 'keys', null))
+        if (!isestr(envVar) || rk.err !== '' || rk.keys.length > 0) {
             out.push(omit(entry, ['envVar']))
             continue
         }

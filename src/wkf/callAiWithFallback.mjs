@@ -133,7 +133,7 @@ function buildChain(providers, spec) {
  * @param {Number} [opt.timeoutMs=300000] 輸入單次嘗試逾時毫秒正整數，全套件統一預設300000
  * @param {Number} [opt.budgetMs=null] 輸入整條遞補鏈之時間預算毫秒正整數，預設null代表不限
  * @param {Number} [opt.minAttemptMs=20000] 輸入搭配budgetMs之開工門檻毫秒正整數，剩餘預算低於此值即不再開工，預設20000
- * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試；截斷不重試)
+ * @param {Number} [opt.maxRetries=0] 輸入同家重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，預設0(韌性交給遞補；端點不穩偶發空回之模型可調高令同鍵重試；截斷不重試)
  * @param {String} [opt.cwd=process.cwd()] 輸入子進程工作目錄字串，預設process.cwd()
  * @param {Object} [opt.store=null] 輸入游標持久化物件{get,set}，預設null代表用行程內記憶體
  * @param {*} [opt.meta=undefined] 輸入呼叫端自有資訊(分類、標籤、註記)，保留鍵保證永不轉傳下層，預設undefined

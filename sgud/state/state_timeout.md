@@ -21,7 +21,7 @@
 
 ## 三、已知待辦
 
-- **次數／索引類仍以 `ispint`／`isp0int`＋`cint` 判定(G17② 順改,非毫秒,本輪不動)**:`maxRetries`(REST 四家 `dispatchApi*.mjs`、`runExecCli.mjs`:`Infinity` 轉為極大有限數而近乎無限重試,外審 #4)、`keepDays`(`createUsageCounter`)、`maxLengths`(`makeArrayCoverageValidator`)、`minCandidates`(`runFanout`)、`parseIndexList` 之 `min`／`max`／`topN`、遞補層 `cursor`、舊式冷卻時間戳 `ts`、內部結果值 `appliedTimeoutMs`.待主控裁示是否另案一次改(語意:次數類以 `iseint` 之 `count`).
+- **(已於 2026-11-22 tdai1〔排程第 446 項〕完成,見 `state_tdai1.md` 與 `rulebook_count.md`;`castTimerMs` 站點增為 33〔`appliedTimeoutMs`〕;原文保留供對照)次數／索引類仍以 `ispint`／`isp0int`＋`cint` 判定(G17② 順改,非毫秒,本輪不動)**:`maxRetries`(REST 四家 `dispatchApi*.mjs`、`runExecCli.mjs`:`Infinity` 轉為極大有限數而近乎無限重試,外審 #4)、`keepDays`(`createUsageCounter`)、`maxLengths`(`makeArrayCoverageValidator`)、`minCandidates`(`runFanout`)、`parseIndexList` 之 `min`／`max`／`topN`、遞補層 `cursor`、舊式冷卻時間戳 `ts`、內部結果值 `appliedTimeoutMs`.待主控裁示是否另案一次改(語意:次數類以 `iseint` 之 `count`).
 - **僅「站點盤點」固定、無行為測試之站點**:`checkTruncation`、`filterOpencodeFree`、`opencodeGoUsage`、`getQuotaClaude`、`getQuotaCodex`、`wkf/callAiWithFallback`、`wkf/runFanout`、`wkf/runRolePipeline`(變異 M03、M14、M15、M19、M20、M23～M25 各只被盤點 3 案抓到;盤點含逐行固定運算式,改回舊判定必紅);`fetchQuotaJson`、`probeAnthropicKey` 已補行為案.
 - 整數(execCli 同,本套件 `timeoutMs`)與允許小數(閘門快取間隔 `ms()`:`isenum` timer、`gt: 0`)兩種判定並存,屬規格層(dspec §7.1 寫「計時毫秒一般用 `isenum` timer」,wsemi `execCli` 實作用 `iseint`),見 `sgud/feedback/feedback.md`.
 - `dist/` 為發布時自動產製(全域 §5.1),未隨本輪更新;從套件主入口載入之測試不在本輪範圍.

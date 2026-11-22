@@ -71,7 +71,7 @@ function errorMessageOf(err) {
  * @param {String} text 輸入stdout字串(逐行一個JSON事件)
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Boolean} [opt.lastSessionOnly=false] 輸入是否只取最後一個sessionID之事件布林值(同一串流含多次嘗試時用)，預設false
- * @returns {Object} 回傳物件，內含hasEvents(是否解出至少一個事件布林值)、stdout(重建之文字字串，text事件去頭尾空白後各接os.EOL，非JSON行原樣保留)、stderr(錯誤事件還原之`Error: 訊息`文字字串)、finishReason(最後一個step_finish之終止原因，正規化為小寫並以底線取代連字號，無則空字串)、truncated(finishReason屬TRUNCATION_REASONS布林值)、tokens(最後一個step_finish之tokens物件，無則null)、sessionID(事件中的session id字串，無則空字串)、steps(step_finish事件數)
+ * @returns {Object} 回傳物件，內含hasEvents(是否解出至少一個事件布林值)、stdout(重建之文字字串，text事件去頭尾空白後各接os.EOL，非JSON行原樣保留)、stderr(錯誤事件還原之`Error: 訊息`文字字串)、finishReason(最後一個step_finish之終止原因，正規化為小寫並以底線取代連字號，無則空字串)、truncated(finishReason屬TRUNCATION_REASONS布林值)、tokens(最後一個step_finish之tokens物件，無則null)、sessionID(事件中的session id字串，無則空字串)、steps(step_finish事件數)、denied(ask被自動拒絕而結束時為{ tool }，tool為被拒之工具名；判準: 事件流最後一筆為step_finish且其reason為tool_calls、該步內有status為error且訊息含`rejected permission`之tool_use；否則null)
  * @example
  *
  * import parseOpencodeEvents from './src/parseOpencodeEvents.mjs'
@@ -95,6 +95,7 @@ function parseOpencodeEvents(text, opt = {}) {
         tokens: null,
         sessionID: '',
         steps: 0,
+        denied: null,
     }
     if (!isestr(text)) {
         return res
@@ -129,6 +130,11 @@ function parseOpencodeEvents(text, opt = {}) {
     }
 
     let lastFinish = null
+    let stepRejected = null //目前這一步內被拒(ask被自動拒絕)之工具名(無則null); 每遇step_start重置
+    let stepHasText = false //目前這一步內是否已有可見文字(非空text事件); 每遇step_start重置
+    let finishRejected = null //最後一個step_finish所屬步驟內被拒之工具名
+    let finishHasText = false //最後一個step_finish所屬步驟內是否已有可見文字
+    let lastKnownIsFinish = false //事件流(已知類型)之最後一筆是否為step_finish
     for (let { s, ev } of rows) {
         if (ev === null) {
 
@@ -143,6 +149,7 @@ function parseOpencodeEvents(text, opt = {}) {
         if (!KNOWN_TYPES.includes(type)) {
             continue
         }
+        lastKnownIsFinish = type === 'step_finish'
         res.hasEvents = true
         if (res.sessionID === '' && isestr(get(ev, 'sessionID', ''))) {
             res.sessionID = ev.sessionID
@@ -152,10 +159,30 @@ function parseOpencodeEvents(text, opt = {}) {
             t = isestr(t) ? t.trim() : ''
             if (t !== '') {
                 res.stdout += (type === 'reasoning' ? `Thinking: ${t}` : t) + EOL
+                if (type === 'text') {
+                    stepHasText = true
+                }
+            }
+        }
+        else if (type === 'step_start') {
+            stepRejected = null
+            stepHasText = false
+        }
+        else if (type === 'tool_use') {
+
+            //ask被自動拒絕: 工具狀態為error且訊息含`rejected permission`(PermissionRejectedError: 'The user rejected permission to use this specific tool call.');
+            //規則明訂deny者之訊息為'The user has specified a rule…'(不含此字樣, 不設blocked、工作階段續跑), 不屬此類(2026-11-22 排程第454項, 依技能dispatch-opencode〈ask被自動拒絕〉判別法第1點)
+            let st = get(ev, 'part.state', null)
+            let em = get(st, 'error', '')
+            if (get(st, 'status', '') === 'error' && isestr(em) && /rejected permission/i.test(em)) {
+                let tn = get(ev, 'part.tool', '')
+                stepRejected = isestr(tn) ? tn : 'unknown'
             }
         }
         else if (type === 'step_finish') {
             lastFinish = ev
+            finishRejected = stepRejected
+            finishHasText = stepHasText
             res.steps++
         }
         else if (type === 'error') {
@@ -168,6 +195,12 @@ function parseOpencodeEvents(text, opt = {}) {
         res.truncated = TRUNCATION_REASONS.includes(res.finishReason)
         let tk = get(lastFinish, 'part.tokens', null)
         res.tokens = isobj(tk) ? tk : null
+
+        //被拒而結束: 事件流之最後一筆為step_finish、其reason為tool_calls、且該步內有被拒之工具呼叫(無收尾之stop步驟、無最終text);
+        //該步內已有可見文字者(模型於被拒之同一步已交出答案, 如被拒者為附帶之todowrite)不判——答案已在, 改標失敗反使完整答案被裁為失敗結果之前段(同預設格式「stdout非空不判」)
+        if (lastKnownIsFinish && res.finishReason === 'tool_calls' && finishRejected !== null && !finishHasText) {
+            res.denied = { tool: finishRejected }
+        }
     }
     return res
 }

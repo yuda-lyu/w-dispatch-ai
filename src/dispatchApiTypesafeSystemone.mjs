@@ -2,17 +2,17 @@ import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import iseobj from 'wsemi/src/iseobj.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
-import cint from 'wsemi/src/cint.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import isp0int from 'wsemi/src/isp0int.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
+import castCountOr from './castCountOr.mjs'
 import castPintOr from './castPintOr.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import buildValidator from './buildValidator.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
+import { readStrOpt } from './readSafeOpt.mjs'
 import redactText, { secretHeaderValues } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { safeValidateAsync } from './checkTruncation.mjs'
@@ -252,14 +252,14 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
  * @param {String} prompt 輸入被評估之內容字串，作為state置於HTTP body，結構化內容請先JSON.stringify
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Object} opt.questions 輸入題目物件(必填且非空)，鍵為自訂題目id，值為{type:'noul'|'choice'|'score', instructions, criteria}，格式見檔頭與https://docs.typesafe.ai/api
- * @param {String} [opt.baseURL='https://api.typesafe.ai/v1'] 輸入API基底網址字串，將於尾端接上/systemone，預設官方端點
+ * @param {String} [opt.baseURL='https://api.typesafe.ai/v1'] 輸入API基底網址字串，將於尾端接上/systemone，未給(undefined、null)用官方端點，給了而非非空字串(含'')以params回報、不送請求(不退回官方端點使金鑰改送官方；排程第553項)
  * @param {String} [opt.model='jev-latest'] 輸入模型名稱字串，預設'jev-latest'(另有'jev-preview')
  * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，未給(undefined、null、'')代表不帶認證標頭；給了非字串之值回params且不送請求(帳本R-KEYOPT-1)
  * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，預設{}
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
- * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數，4xx(429除外)不重試，預設0
+ * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，4xx(429除外)不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(answers之JSON字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，欄位名為input_tokens/output_tokens，無則null)、answers(成功時為已解析之答案物件，否則null)、modelResolved(回應所載之實際模型版本字串，如'jev-1.13.0'，無則'')，本函數不會reject
  * @example
@@ -316,11 +316,12 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
         return getErrorResult('questions must be a non-empty object')
     }
 
-    //baseURL, 無效回退官方端點
-    let baseURL = get(opt, 'baseURL', null)
-    if (!isestr(baseURL)) {
-        baseURL = DEFAULT_BASE_URL
+    //baseURL, 未給(undefined、null)用官方端點; 給了而無效以params回報、不送請求(帳本R-SAFEOPT-1: 不退回官方端點, 否則金鑰改送官方)
+    let rbase = readStrOpt(get(opt, 'baseURL', null), 'baseURL')
+    if (rbase.err !== '') {
+        return getErrorResult(rbase.err)
     }
+    let baseURL = rbase.value === null ? DEFAULT_BASE_URL : rbase.value
 
     //model, 無效回退官方預設
     let model = get(opt, 'model', null)
@@ -358,14 +359,8 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     //timeoutMs
     let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
-    //maxRetries
-    let maxRetries = get(opt, 'maxRetries', null)
-    if (!isp0int(maxRetries)) {
-        maxRetries = 0
-    }
-    else {
-        maxRetries = cint(maxRetries)
-    }
+    //maxRetries, 次數類: iseint count(0～4294967295之整數或其數字字串)才採用, 其餘(Infinity、'0x1'、小數、負數、超過上限等)視為未給用0(帳本R-COUNT-1)
+    let maxRetries = castCountOr(get(opt, 'maxRetries', null), 0)
 
     //retryDelayMs
     let retryDelayMs = castPintOr(get(opt, 'retryDelayMs', null), DEFAULT_RETRY_DELAY_MS)

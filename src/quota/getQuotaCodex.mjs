@@ -8,6 +8,7 @@ import isnum from 'wsemi/src/isnum.mjs'
 import cdbl from 'wsemi/src/cdbl.mjs'
 import execCliJsonRpc from 'wsemi/src/execCliJsonRpc.mjs'
 import castTimerMs from '../castTimerMs.mjs'
+import { readEnvOpt, readStrOpt } from '../readSafeOpt.mjs'
 import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
 import readJsonOrNull from './readJsonOrNull.mjs'
 import fetchQuotaJson from './fetchQuotaJson.mjs'
@@ -330,7 +331,7 @@ async function viaHttp(opt, codexHome, timeoutMs) {
  * @param {String} [opt.userAgent='codex-cli/0.153.0'] 輸入備援端點之User-Agent字串
  * @param {String} [opt.originator='codex_cli_rs'] 輸入備援端點之originator標頭字串
  * @param {String} [opt.usageUrl='https://chatgpt.com/backend-api/wham/usage'] 輸入備援端點網址字串，供測試指向假伺服器或經企業代理，預設官方端點
- * @param {Object} [opt.env=process.env] 輸入環境變數來源物件(讀CODEX_HOME與API key模式判定用之OPENAI_API_KEY)，供測試隔離本機環境，預設process.env
+ * @param {Object} [opt.env=process.env] 輸入環境變數來源物件(讀CODEX_HOME與API key模式判定用之OPENAI_API_KEY)，供測試隔離本機環境，未給(undefined、null)用process.env，給了而非一般物件或不可讀者回ok false、errorType 'params'(不退回process.env而改查預設帳號；排程第553項)
  * @param {Number} [opt.timeoutMs=20000] 輸入逾時毫秒正整數(app-server整體或單次HTTP)，預設20000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok、provider('codex')、email、matched、plan(例如'plus')、planTier(空字串)、source('codex-app-server'或'chatgpt-wham-usage-api')、windows(含5小時與7天，另有依limitId分列之窗口)、credits(點數、重置券清單、限額狀態)、raw、error、errorType、durationMs，本函數不會reject
  * @example
@@ -355,21 +356,30 @@ async function getQuotaCodex(email = '', opt = {}) {
     //emailWant
     let emailWant = isestr(email) ? email : ''
 
-    //env, 環境變數來源可注入(測試以替身隔離本機環境), 預設process.env
-    let env = get(opt, 'env', null)
-    if (!isobj(env)) {
-        env = process.env
+    //env, 環境變數來源可注入(測試以替身隔離本機環境), 未給(undefined、null)用process.env;
+    //給了而無效(非一般物件、不可讀)以params回報、不查詢(帳本R-SAFEOPT-1, A3: 不退回process.env而改查預設帳號)
+    let renv = readEnvOpt(get(opt, 'env', null), 'env')
+    if (renv.err !== '') {
+        return toQuotaResult('codex', { emailWant, source: 'params', durationMs: Date.now() - t0, error: renv.err, errorType: 'params' })
+    }
+    let env = renv.env === null ? process.env : renv.env
+
+    //exe、homeDir、codexHome: 給了而無效以params回報、不查詢(帳本R-SAFEOPT-1: 不退回預設而換執行檔或查預設帳號之目錄)
+    let rexe = readStrOpt(get(opt, 'exe', null), 'exe')
+    let rhome = readStrOpt(get(opt, 'homeDir', null), 'homeDir')
+    let rchome = readStrOpt(get(opt, 'codexHome', null), 'codexHome')
+    for (let rr of [rexe, rhome, rchome]) {
+        if (rr.err !== '') {
+            return toQuotaResult('codex', { emailWant, source: 'params', durationMs: Date.now() - t0, error: rr.err, errorType: 'params' })
+        }
     }
 
     //homeDir
-    let homeDir = get(opt, 'homeDir', null)
-    if (!isestr(homeDir)) {
-        homeDir = os.homedir()
-    }
+    let homeDir = rhome.value === null ? os.homedir() : rhome.value
 
     //codexHome, 依序取opt、CODEX_HOME、<homeDir>/.codex(codex --help: auth still uses CODEX_HOME);
     //僅備援路徑用, app-server主路徑之子進程繼承本進程環境而不看此值(見檔頭)
-    let codexHome = get(opt, 'codexHome', null)
+    let codexHome = rchome.value
     if (!isestr(codexHome)) {
         codexHome = get(env, 'CODEX_HOME', '')
         if (!isestr(codexHome)) {
@@ -397,7 +407,7 @@ async function getQuotaCodex(email = '', opt = {}) {
     //app-server
     let appErr = null
     if (useAppServer) {
-        let a = await viaAppServer({ ...opt, timeoutMs })
+        let a = await viaAppServer({ ...opt, exe: rexe.value === null ? undefined : rexe.value, timeoutMs })
         if (a.ok) {
             return fin('codex-app-server', {
                 email: a.email,
@@ -419,7 +429,7 @@ async function getQuotaCodex(email = '', opt = {}) {
     }
 
     //http fallback
-    let h = await viaHttp(opt, codexHome, timeoutMs)
+    let h = await viaHttp({ ...opt, env }, codexHome, timeoutMs) //env為上方已判定並物化者(不再重讀呼叫端物件)
     let note = appErr !== null ? ` (app-server path failed: ${appErr.error})` : ''
     if (!h.ok) {
         return fin('chatgpt-wham-usage-api', {

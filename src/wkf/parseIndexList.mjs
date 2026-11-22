@@ -1,7 +1,6 @@
 import get from 'lodash-es/get.js'
-import isint from 'wsemi/src/isint.mjs'
-import ispint from 'wsemi/src/ispint.mjs'
-import cint from 'wsemi/src/cint.mjs'
+import iseint from 'wsemi/src/iseint.mjs'
+import castCountOr from '../castCountOr.mjs'
 import { asText } from '../callUserFn.mjs'
 
 
@@ -31,9 +30,9 @@ let RUN = /\d+(?:[ \t]*[,，、][ \t]*\d+)*/g
  *
  * @param {String} text 輸入AI回覆文字字串
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Number} [opt.min=1] 輸入保留之最小編號整數，預設1
- * @param {Number} [opt.max=Infinity] 輸入保留之最大編號整數，預設Infinity代表不限
- * @param {Number} [opt.topN=Infinity] 輸入最多保留之編號個數正整數，預設Infinity代表不限
+ * @param {Number} [opt.min=1] 輸入保留之最小編號整數(安全整數或其十進位數字字串，Infinity與'0x2'等視為未給)，預設1
+ * @param {Number} [opt.max=Infinity] 輸入保留之最大編號整數(安全整數或其十進位數字字串，Infinity與'0x2'等視為未給)，預設Infinity代表不限
+ * @param {Number} [opt.topN=Infinity] 輸入最多保留之編號個數正整數(1至4294967295之整數或其十進位數字字串，Infinity與'0x2'等視為未給)，預設Infinity代表不限
  * @returns {Object} 回傳物件，內含isZero(是否為單一個0之空集合約定)與indices(編號整數陣列)
  * @example
  *
@@ -57,13 +56,12 @@ let RUN = /\d+(?:[ \t]*[,，、][ \t]*\d+)*/g
  */
 function parseIndexList(text, opt = {}) {
 
-    //opt各鍵: 無效視為未給
+    //opt各鍵: 無效視為未給; min、max為編號界限(iseint之safe, 可為負), topN為個數(iseint count且至少1); 皆用轉換值, Infinity、'0x2'等不收(帳本R-COUNT-1)
     let min = get(opt, 'min', null)
-    min = isint(min) ? cint(min) : 1
+    min = iseint(min) ? Number(typeof min === 'string' ? min.trim() : min) : 1
     let max = get(opt, 'max', null)
-    max = isint(max) ? cint(max) : Infinity
-    let topN = get(opt, 'topN', null)
-    topN = ispint(topN) ? cint(topN) : Infinity
+    max = iseint(max) ? Number(typeof max === 'string' ? max.trim() : max) : Infinity
+    let topN = castCountOr(get(opt, 'topN', null), Infinity, 1)
 
     //best, 數字個數最多之串(同長度取最先)
     let s = asText(text)

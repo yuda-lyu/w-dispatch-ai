@@ -1,11 +1,11 @@
 import os from 'os'
 import path from 'path'
 import get from 'lodash-es/get.js'
-import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import isearr from 'wsemi/src/isearr.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
 import castTimerMs from '../castTimerMs.mjs'
+import { readEnvOpt, readStrOpt } from '../readSafeOpt.mjs'
 import dfQuotaTimeoutMs from './dfQuotaTimeoutMs.mjs'
 import readJsonOrNull from './readJsonOrNull.mjs'
 import fetchQuotaJson from './fetchQuotaJson.mjs'
@@ -162,7 +162,7 @@ function fromTopField(data, key, windowSeconds, scope) {
  * @param {Boolean} [opt.profileFallback=true] 輸入本機帳號檔無email時是否改打/api/oauth/profile取得布林值，預設true
  * @param {String} [opt.usageUrl='https://api.anthropic.com/api/oauth/usage'] 輸入額度端點網址字串，供測試指向假伺服器或經企業代理，預設官方端點
  * @param {String} [opt.profileUrl='https://api.anthropic.com/api/oauth/profile'] 輸入帳號端點網址字串，用途同usageUrl，預設官方端點
- * @param {Object} [opt.env=process.env] 輸入環境變數來源物件(讀CLAUDE_CONFIG_DIR、非訂閱模式判定用之ANTHROPIC_API_KEY等；CLAUDE_CODE_OAUTH_TOKEN不作為權杖來源，僅於無憑證時用於錯誤提示)，供測試隔離本機環境，預設process.env
+ * @param {Object} [opt.env=process.env] 輸入環境變數來源物件(讀CLAUDE_CONFIG_DIR、非訂閱模式判定用之ANTHROPIC_API_KEY等；CLAUDE_CODE_OAUTH_TOKEN不作為權杖來源，僅於無憑證時用於錯誤提示)，供測試隔離本機環境，未給(undefined、null)用process.env，給了而非一般物件或不可讀者回ok false、errorType 'params'(不退回process.env而改查預設帳號；排程第553項)
  * @param {Number} [opt.timeoutMs=20000] 輸入單次請求之逾時毫秒正整數，預設20000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok、provider('claude')、email(本機實際登入帳號)、matched、plan(方案別，例如'max')、planTier(級距，例如'default_claude_max_20x')、source('anthropic-oauth-usage-api')、windows(額度窗口陣列，含5小時、7天、7天模型別)、credits(額外用量與花費資訊)、raw(原始回應)、error、errorType、durationMs，本函數不會reject
  * @example
@@ -188,21 +188,29 @@ async function getQuotaClaude(email = '', opt = {}) {
     //emailWant, 非有效字串視為不比對
     let emailWant = isestr(email) ? email : ''
 
-    //env, 環境變數來源可注入(測試以替身隔離本機環境; 亦供多帳號部署逐呼叫給定), 預設process.env
-    let env = get(opt, 'env', null)
-    if (!isobj(env)) {
-        env = process.env
+    //env, 環境變數來源可注入(測試以替身隔離本機環境; 亦供多帳號部署逐呼叫給定), 未給(undefined、null)用process.env;
+    //給了而無效(非一般物件、不可讀)以params回報、不查詢(帳本R-SAFEOPT-1, A3: 不退回process.env而改查預設帳號)
+    let renv = readEnvOpt(get(opt, 'env', null), 'env')
+    if (renv.err !== '') {
+        return toQuotaResult('claude', { emailWant, source, durationMs: Date.now() - t0, error: renv.err, errorType: 'params' })
+    }
+    let env = renv.env === null ? process.env : renv.env
+
+    //homeDir與configDir: 給了而無效以params回報、不查詢(帳本R-SAFEOPT-1: 不退回預設而查預設帳號之目錄)
+    let rhome = readStrOpt(get(opt, 'homeDir', null), 'homeDir')
+    let rconf = readStrOpt(get(opt, 'configDir', null), 'configDir')
+    for (let rr of [rhome, rconf]) {
+        if (rr.err !== '') {
+            return toQuotaResult('claude', { emailWant, source, durationMs: Date.now() - t0, error: rr.err, errorType: 'params' })
+        }
     }
 
     //homeDir
-    let homeDir = get(opt, 'homeDir', null)
-    if (!isestr(homeDir)) {
-        homeDir = os.homedir()
-    }
+    let homeDir = rhome.value === null ? os.homedir() : rhome.value
 
     //configDir, 依序取opt、CLAUDE_CONFIG_DIR、<homeDir>/.claude; 前二者代表使用者刻意搬遷,
     //此時.claude.json亦在該目錄(實測), 否則在家目錄
-    let configDir = get(opt, 'configDir', null)
+    let configDir = rconf.value
     let relocated = true
     if (!isestr(configDir)) {
         configDir = get(env, 'CLAUDE_CONFIG_DIR', '')

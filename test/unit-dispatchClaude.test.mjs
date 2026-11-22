@@ -76,14 +76,18 @@ describe('dispatchClaude', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('skipPermissions非布林值時回退預設true', async function() {
+    it('skipPermissions未給(null、undefined)用預設true; 給了而非布林(1、\'false\'、{})以params拒絕、不起子行程、不退回true關掉權限閘門(排程第553項: 安全相關opt給了而無效即拒絕, 帳本R-SAFEOPT-1; 修前此案斷言「非布林值回退預設true」)', async function() {
         let r = []
-        for (let skipPermissions of [null, undefined, 1, 'false', {}]) {
+        for (let skipPermissions of [null, undefined]) {
             let t = await dispatchClaude('abc', { exe: fake.exe, skipPermissions })
             let o = JSON.parse(t.stdout)
             r.push(o.args.includes('--dangerously-skip-permissions'))
         }
-        let rr = [true, true, true, true, true]
+        for (let skipPermissions of [1, 'false', {}]) {
+            let t = await dispatchClaude('abc', { exe: fake.exe, skipPermissions })
+            r.push([t.ok, t.errorType, t.attempts])
+        }
+        let rr = [true, true, [false, 'params', 0], [false, 'params', 0], [false, 'params', 0]]
         assert.strict.deepEqual(r, rr)
     })
 

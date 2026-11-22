@@ -53,6 +53,9 @@ import { baseErrorOf } from './failureDiag.mjs'
 //                      2026-11-15起(Gitea #156)CLI類之dispatchOpencode於主要請求之免費池用盡(`Free usage limit reached`)時亦回此類(樹狀終止子行程後, 帶failureKind 'no-credit'、failureDetail;
 //                      error保留execCli原生形狀加分類, 如`Exit code 1 [Free usage limit]: …`; 由dispatchOpencode直接給定, 非本函數推導; 見其檔頭【免費池用盡與免費層429】);
 //                      2026-11-16起(Gitea #158)訂閱(opencode-go)到頂(`OpenCode Go usage limit reached`)時同形(分類詞`[Go usage limit]`, 另帶limitScope 'key'與可解析時之limitWindow／limitResetsInMs／limitUntil)
+//   'denied'           opencode之`ask`權限被自動拒絕而整個工作階段結束(離開碼仍為0; 僅dispatchOpencode; 2026-11-22起, 排程第454項, 判讀見opencodeDeny.mjs檔頭):
+//                      error以'PERMISSION_DENIED:'開頭, 另帶failureDetail(被拒之簽章行或工具)、deniedTool(事件流所見被拒之工具名, 無則空字串)、deniedRule(stderr所見之類別與樣式, 無則空字串);
+//                      屬規則決定(同規則下模型再發同樣之呼叫必被拒), 遞補層整組跳過、改派下一條目; 由dispatchOpencode直接給定, 非本函數推導
 //   'budget'           時間預算用盡(僅dispatchAiFallback)
 //
 // 【failureKind: 與errorType並存之另一欄位(2026-10-25 dispatch-run01)】errorType只機械分「http/exec/fetch…」, 同為HTTP 400就分不出「沒額度」與「脈絡過長」,

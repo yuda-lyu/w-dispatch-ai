@@ -100,7 +100,7 @@ function fail(errorType, error, code, t0, extra = {}) {
  *
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} opt.key 輸入已訂閱Go之工作區金鑰字串(oc_sk_開頭)，須為6字元以上之可見ASCII且無空白，否則回params失敗且不發請求
- * @param {String} [opt.baseURL='https://opencode.ai/inference/go/v1'] 輸入Go基底網址字串(http或https，尾端斜線會去除，實際請求<baseURL>/usage)，金鑰會送往該主機；非http(s)網址者視為未給而改用預設，預設官方網址
+ * @param {String} [opt.baseURL='https://opencode.ai/inference/go/v1'] 輸入Go基底網址字串(http或https，尾端斜線會去除，實際請求<baseURL>/usage)，金鑰會送往該主機；未給(undefined、null)用預設官方網址，給了而非http(s)網址者以params回報、不送請求(不退回官方網址使金鑰改送官方；排程第553項)
  * @param {Number} [opt.timeoutMs=10000] 輸入逾時毫秒正整數，涵蓋連線至本文讀完，預設10000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件。成功：ok(true)、provider('opencode-go')、source、code(200)、usage(物件，內含rolling、weekly、monthly三視窗之原始物件{status,percent,resetsAt}，端點缺漏者為null)、limited(任一視窗status為'rate-limited'布林值)、limitedWindows(被限視窗名字串陣列)、unknownStatus(缺漏或狀態未知之視窗名字串陣列)、available(三視窗皆為'ok'布林值)、nextResetAt(被限視窗全部解除之時刻ISO字串，無被限或無從得知為null)、durationMs。失敗：ok(false)、provider、source、code(HTTP狀態碼，未收到回應為null)、error、errorType、noGoSubscription(403且為Go訂閱不足時true)、durationMs。本函數不會reject
  * @example
@@ -170,10 +170,14 @@ async function run(opt, t0, setKey) {
     }
     setKey(key)
 
-    //baseURL, 非http(s)網址視為未給、改用預設(dspec K3: opt鍵之非預期輸入改用預設, 只有必須參數〔此處為key〕才報錯); 尾端斜線去除
+    //baseURL, 未給(undefined、null)用預設; 給了而非http(s)網址以params回報、不送請求(帳本R-SAFEOPT-1; dspec §11安全相關opt為K3之例外:
+    //金鑰以Bearer送往該網址, 退回官方端點即金鑰改送官方); 尾端斜線去除。訊息依V19, 固定詞彙、不回顯輸入值(K9)
     let baseURL = get(opt, 'baseURL', null)
-    if (!isestr(baseURL) || !/^https?:\/\/[^\s/]/i.test(baseURL)) {
+    if (baseURL === null || baseURL === undefined) {
         baseURL = DEFAULT_BASE_URL
+    }
+    else if (!isestr(baseURL) || !/^https?:\/\/[^\s/]/i.test(baseURL)) {
+        return fail('params', 'invalid opt.baseURL: must be an http(s) URL string', null, t0)
     }
     let url = baseURL.replace(/\/+$/, '') + '/usage'
 

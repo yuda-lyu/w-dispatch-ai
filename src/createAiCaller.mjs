@@ -7,7 +7,7 @@ import resolveCatalogue from './resolveCatalogue.mjs'
 import castPintOr from './castPintOr.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import castBudgetMs from './castBudgetMs.mjs'
-import { callHookSync } from './callUserFn.mjs'
+import { callHookSync, readCallerObj } from './callUserFn.mjs'
 
 
 // createAiCaller.mjs — 原始遞補呼叫器: 設定轉dispatchAiFallback參數, 回「原始結果」(不解析、不加前綴)
@@ -50,11 +50,11 @@ import { callHookSync } from './callUserFn.mjs'
  *
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Array} [opt.pick=null] 輸入自選id字串陣列(順序即遞補優先序)，預設null代表全取內建目錄(含計費條目，通常應明給pick)
- * @param {Object} [opt.env=null] 輸入金鑰來源物件，與envFile二擇一，預設null
+ * @param {Object} [opt.env=null] 輸入金鑰來源物件，與envFile二擇一，預設null；給了而非物件(字串、數字、陣列等)或不可讀者建構時同步throw(經resolveCatalogue，不改讀envFile／process.env)
  * @param {String} [opt.envFile=null] 輸入.env檔路徑字串，預設null(皆無時用process.env)
  * @param {Array} [opt.catalogue=內建目錄] 輸入條目物件陣列，非陣列時用內建目錄
  * @param {Array} [opt.extraProviders=[]] 輸入安裝方自帶條目陣列(各須含id；新id追加、同id逐欄覆蓋)，預設[]
- * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件，預設null
+ * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件，預設null；給了而非物件或不可讀者建構時同步throw(不略過)
  * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件，優先於逾時三層，預設null
  * @param {Object} [opt.providerTimeouts=null] 輸入逐id逾時毫秒物件(逾時三層最優先層)，預設null
  * @param {Number} [opt.timeoutMs=null] 輸入全域逾時毫秒正整數(逾時三層最後備援，寫入各條目)，預設null
@@ -152,7 +152,26 @@ function createAiCaller(opt = {}) {
     let onEventB = get(opt, 'onEvent', null)
 
     let callAI = async (prompt, o = {}) => {
-        let co = isobj(o) ? o : {}
+
+        //逐次設定物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報、不送出(帳本R-SAFEOPT-1, A7): 修前isobj對其回false而視為{}, 逐次之budgetMs(收緊預算)、validate(驗收)被靜默略過而放寬;
+        //可讀者取物化之淺層副本(只讀一次); 非物件之定義值照舊視為未給(K3)
+        let ro = readCallerObj(o, 'callAI opt')
+        if (!ro.ok) {
+            return {
+                ok: false,
+                stdout: '',
+                stderr: '',
+                code: null,
+                durationMs: 0,
+                attempts: 0,
+                error: ro.msg,
+                errorType: 'params',
+                tried: [],
+                providersSkipped: [...skipped],
+                providersMissing: [...missing],
+            }
+        }
+        let co = isobj(ro.value) ? ro.value : {}
 
         //零供應商: 回與套件同形之失敗(attempts為0); error括號內只列skipped(以「、」相接, 無則無括號), missing由providersMissing與logAiOutcome之ERROR行表達
         if (providers.length === 0) {
