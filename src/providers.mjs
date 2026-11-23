@@ -420,6 +420,14 @@
 //     不論何者, 以現有金鑰兩條目必失敗, 全取遞補時每輪白耗兩格, 屬結構性失效而非暫時限流, 依先例(2026-09-22之zen:laguna-s-2.1-free、2026-11-10之crouton-alpha-free)自目錄移除。
 //     「/models清單仍列」不等於可用(同檔頭「文件與目錄皆列不等於可用」之又一例): 判可用須以實際POST /chat/completions為準。
 //     內建providers 37 → 35條(oc:群組少1條、REST群組少1條; 群組順序oc→ocgo→agy→claude→codex→typesafe→zen→agnes→claude-api→anthropic, 其餘條目之id、內容與順序零改動)。
+//   2026-11-24之漂移(opencode 1.19.5; 主控任務20261124014253之tdai3, 排程第341項): `opencode models opencode --refresh --verbose`(兩次查詢)列10個、cost皆0——目錄之7個oc:opencode/*皆仍在清單(removed為空)、
+//     單價皆仍為0; 清單有列而目錄未收者3個: hy4-flash-free(release 2026-11-16)、iceman-free(2026-11-06)、tidepool-alpha-free(2026-11-18); 11-18紀錄之inkling-2-small-free與longcat-2.5-free本輪CLI清單已不列。
+//     依R-OCFREE-2②逐一實測(匿名CLI簡答、推理題、read、寫檔金絲雀、目錄欄位、REST對照、脈絡長度; 外部呼叫界線內): 新增oc:opencode/hy4-flash-free(七項全過, 數據見該條)。
+//     不收tidepool-alpha-free與iceman-free: 官方〈Privacy〉載明二者「During its free period, collected data is retained and used to improve the model」(資料保留且用於改進模型, 非零保留),
+//       tidepool-alpha-free於得知其Privacy前已做四項CLI實測(簡答7.5s、推理題6.9s答對、read工具17.9s正確、寫檔金絲雀29.4s被擋下未落地)與匿名REST 429(對照組同), 但依外部呼叫界線不對可能以資料訓練者送大脈絡之針在乾草堆,
+//       ②之「脈絡長度」缺項故不收; iceman-free只送「請只回覆兩個字：完成」類提示(CLI簡答7.0s成功、匿名REST 429),推理題、read、寫檔金絲雀、脈絡長度皆缺故不收。
+//       若日後收錄此二者, 須殿後排序(置於nemotron兩條之後)並於條目註解標隱私(官方Privacy原文); 缺項補測前不得收。
+//     deepseek-v4.1-flash-free之CLI目錄release_date現為2026-10-17(本檔該條註解記2026-09-10), context 200000、輸出32000不變(僅記錄, 不改條目); 其餘條目註解載有目錄欄位者(beam、flint、nemotron兩條)之context、輸出上限、release_date、檔位皆與當日目錄一致。
 //     POOLSIDE_KEYS已無內建條目使用(使用端.env內之變數不動; 通用機制readEnvFile／resolveProviders／splitKeys仍接受自訂條目之任意envVar, 含POOLSIDE_KEYS)。
 //     上方2026-09-22紀錄所稱poolside兩條目「實測仍可用故保留」為當時事實, 自本日起不成立。
 //     日後Poolside恢復啟用(POST /chat/completions回200)時, 依檔頭收錄檢核重新收錄即可; 原條目欄位: baseURL https://inference.poolside.ai/v1、model poolside/laguna-s-2.1
@@ -613,6 +621,26 @@ let providers = [
         //stdout會混入摘要文字(如「## Objective…」)而仍ok:true——長提示詞宜控制在約160K以下, 或呼叫端自行於config覆寫
         //provider.opencode.models['deepseek-v4.1-flash-free'].limit.context(上限勿超過約230000, 須留輸出空間);
         //本條目不覆寫(維持型錄值, 免伺服器日後下調時由壓縮變為溢出錯誤)。證據: opensrcOper dhist/20261019203639
+    },
+    //hy4-flash-free(2026-11-24新增, 排程第341項, 見檔頭漂移紀錄): 置於deepseek-v4.1-flash-free之後、flint-40b-free之前(官方載明供應商零保留且不以資料訓練者在前, 與beam、deepseek同組)。
+    //官方〈Zen〉Free models與Privacy段(2026-11-24讀取): 「Hy4 flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training」(無地區限制字樣);
+    //CLI目錄(`opencode models opencode --refresh --verbose`, opencode 1.19.5)有, status active、cost全0、release_date 2026-11-16; 推理模型、context 1048576、輸出上限65536、可輸入文字與圖片、檔位none/high(故帶--variant high)。
+    //匿名CLI實測(2026-11-24, opencode 1.19.5、variant high、OC_READONLY, 皆經dispatchOpencode): 簡答11.7s(回「完成」)、推理題8.8s答對(16)、read工具讀相對路徑24.2s正確(Glob＋Read)、
+    //寫檔金絲雀21.0s被OC_READONLY擋下未落地(bash自動拒絕, 轉接器回errorType 'denied', 見檔頭與帳本R-OCDENY; out.txt不存在)。
+    //REST不收zen:版——同日匿名POST /inference/openai/v1/chat/completions回429 FreeUsageLimitError, 同時段已收錄之big-pickle對照組亦同(免費層閘門之現行形態, 見檔頭)。
+    //【脈絡長度(2026-11-24實測, opencode 1.19.5)】與型錄一致(1M): 以針在乾草堆(針在開頭、問題在結尾; 本機覆寫limit{context:1048576, output:8000}且outputTokenMax 8000令本機不先壓縮、由伺服器自判)經CLI實測,
+    //伺服器回報總token 278235答對(20.4s)與950292答對(57.7s; 型錄上限之90.6%, 與beam先例949411相當)。未測更接近上限處, 未二分逼近確切上限(不寫成已逼近); 本條目不覆寫limit。
+    //證據: 本輪報告(opensrcOper dnow/20261124014253/agent-out/tdai3-修正報告.md)與其外部呼叫證據檔。
+    {
+        id: 'oc:opencode/hy4-flash-free',
+        model: 'opencode/hy4-flash-free',
+        kind: 'opencode',
+        provider: 'opencode',
+        useStoredAuth: false,
+        config: {
+            permission: OC_READONLY,
+        },
+        extraArgs: OC_EFFORT,
     },
     //(oc:opencode/glm-5.3-flash-free已於2026-11-18下架並移除, 見檔頭漂移紀錄; 付費Go路徑之同名ocgo:opencode-go/glm-5.3-flash不受影響)
     //flint-40b-free(2026-10-30新增, 見檔頭漂移紀錄): 置於deepseek-v4.1-flash-free之後、額度少且慢之nemotron兩條之前(2026-11-18前原置於上游不穩之glm之後)。
@@ -822,8 +850,14 @@ let providers = [
         //無此鎖時要求建檔會真的落地(12.5s); false之下寫入被擋且不卡逾時(6.4s正常返回)、
         //唯讀工具照常(8.0s讀檔答對)。注意被擋時agy回ok:true且stdout為空(非報錯; agy 1.4.0起stderr帶
         //「jetski: no output produced — a tool required the "write_file" permission ...」說明, 仍以空輸出判別),
-        //工作流層無害(空回覆過不了validate而自動遞補); 需要寫入能力請於條目覆寫為true
+        //工作流層無害(空回覆過不了validate而自動遞補); 需要寫入能力請於條目覆寫skipPermissions為true並把readOnly覆寫為false
+        //【真防寫(2026-11-24 tdai3, 排程第445項, 帳本R-AGY-5)】上述「防寫」只擋工作區外之寫入: agy 1.5.7本機實測(1.5.12重測Hydrogen同), 要求寫到工作區(addDirs['.']＝cwd)內之檔,
+        //Hydrogen、3.8、Argon皆放行落地(官方〈Agent permissions〉頁: write_file與工作區內之shell指令預設為Ask而「工作區內自動允許」)。
+        //故本條目(及其餘agy條目)另帶readOnly:true, 轉接器加`--settings`內聯permissions.deny[write_file(*), command(*)](本次工作階段限定、不存檔):
+        //1.5.12本機實測(經dispatchAntigravity, 各1次): Hydrogen、Argon、3.8要求寫入工作區內out.txt皆被擋(模型回Permission denied…Matches user-configured deny rule)而未落地,
+        //Hydrogen讀取工作區內檔案照常; 被擋時回ok:true且stdout為模型之說明文字(非空)。只deny write_file時模型改用shell繞過而落地(Hydrogen實測), 故command(*)缺一不可。
         skipPermissions: false,
+        readOnly: true,
     },
     //agy之Gemini 4 Hydrogen(2026-11-13新增, 來源: 使用端建議, Gitea #137): 使用端稱Gemini 4 Hydrogen於2026-11-13推出、Google以之取代Flash品牌(使用端轉述, 本套件無官方出處);
     //agy 1.5.7之`agy models`列gemini-4-hydrogen-low/medium/high/xhigh(顯示名Gemini 4 Hydrogen (Low/Medium/High/XHigh)), 3.8 Flash三條仍在列(尚未下架);
@@ -838,7 +872,7 @@ let providers = [
     //①resolveCatalogue回1條、skipped 0、model／skipPermissions／addDirs如上; `agy models`列四個hydrogen slug; `/effort`之available為["low","medium","high","xhigh"]、current為high。
     //②簡答「請只回覆兩個字：完成」共5次皆ok、stdout「完成」(5.9s、4.5s、8.7s、8.0s、6.0s; agy耗時起伏大, 不可據以比較快慢)。
     //③寫檔金絲雀(skipPermissions:false, 與3.8、Argon同條件各1次對照): 要求寫到「工作區(addDirs['.']＝cwd)外」之絕對路徑 → 三者皆被擋(ok:true、stdout空、stderr帶「write_file」permission「auto-denied」說明、檔案未落地);
-    //要求寫到工作區內(cwd)之檔 → 三者皆放行而落地(agy 1.5.7之行為, 非Hydrogen特有; 即本欄「防寫」只擋工作區外之寫入, 見sgud/state/state_agy.md待辦)。
+    //要求寫到工作區內(cwd)之檔 → 三者皆放行而落地(agy 1.5.7之行為, 非Hydrogen特有; 即skipPermissions:false之「防寫」只擋工作區外之寫入; 2026-11-24起由readOnly:true補上真防寫, 見agy:gemini-3.8-flash-high條目註解與帳本R-AGY-5)。
     //④額度前後對照(只呼叫Hydrogen 4次, 前後各讀兩次/usage): 「Gemini 4 Argon」7天窗口1.01→1.01→1.01(不動); 「Gemini Models」5小時窗口7.51→8.09(+0.58)、7天窗口讀數跳動(前41.06／40.3、後40.36／40.46, 跳動幅度大於4次之增量, 無法判別);
     //無Hydrogen專屬群組; 同帳號他行程之用量可能混入(單次對照, 僅作量級與歸屬之參考, 不可精算單次耗用)。
     {
@@ -847,6 +881,7 @@ let providers = [
         kind: 'antigravity',
         addDirs: ['.'],
         skipPermissions: false,
+        readOnly: true, //真防寫(帳本R-AGY-5): 上列③「防寫只擋工作區外」之補救, 見agy:gemini-3.8-flash-high條目註解
     },
     //agy之Gemini 4 Argon(2026-10-16新增, 使用者指示): agy 1.4.0之`agy models`列gemini-4-argon-low/medium/high, `/effort`之available為
     //["low","medium","high"], 取-high符合EFFORT, 硬帶--effort max/xhigh回「has no "max" effort (available: low, medium, high)」。
@@ -867,6 +902,7 @@ let providers = [
         kind: 'antigravity',
         addDirs: ['.'],
         skipPermissions: false,
+        readOnly: true, //真防寫(帳本R-AGY-5): 本機1.5.12實測寫入工作區內被擋(見agy:gemini-3.8-flash-high條目註解)
     },
     //agy之Claude兩條(2026-10-03新增, 使用者指示): agy 1.2.16之`agy models`已列claude-sonnet-5-5與claude-opus-5-5各low/medium/high,
     //取-high符合EFFORT(agy以slug檔位表示); high即agy對此兩模型開放之上限——`agy -p /effort --model <slug> --output-format json`
@@ -883,6 +919,7 @@ let providers = [
         kind: 'antigravity',
         addDirs: ['.'],
         skipPermissions: false,
+        readOnly: true, //真防寫(帳本R-AGY-5): 同Gemini條目之旗標; 本條目未於1.5.12實測(Claude/GPT額度群組用量近滿), 規則由agy權限引擎執行、與模型無關
         //實測: 簡答10.5~100.6s、推理題44.3s答對(但附解題過程, 未照「只回一行」)、讀檔80.5s正確
     },
     {
@@ -891,6 +928,7 @@ let providers = [
         kind: 'antigravity',
         addDirs: ['.'],
         skipPermissions: false,
+        readOnly: true, //真防寫(帳本R-AGY-5): 同claude-sonnet條目(未於1.5.12實測)
         //實測: 簡答9.8~77.4s、推理題53.5s答對且照格式、讀檔61.9s正確(首次遇503, 重試成功)
     },
     //claude兩條、codex三條: claude在前者(sonnet)與codex之luna為預設(全取遞補時先試), 其後為較強之新模型(2026-09-23使用者指示);

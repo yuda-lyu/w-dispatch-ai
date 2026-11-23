@@ -542,7 +542,7 @@ let SAFE_SPEC = {
     'claude': [['exe', 'str'], ['cwd', 'str'], ['skipPermissions', 'bool'], ['env', 'env'], ['model', 'name'], ['crossCheck', 'bool'], ['fetch', 'fun']],
     'codex': [['exe', 'str'], ['cwd', 'str'], ['sandbox', 'str'], ['cleanCodexRefs', 'bool'], ['env', 'env'], ['model', 'name']],
     'opencode': [['exe', 'str'], ['cwd', 'str'], ['useStoredAuth', 'bool'], ['provider', 'provider'], ['env', 'env'], ['model', 'name'], ['outputTokenMax', 'tokmax'], ['config', 'config']],
-    'antigravity': [['exe', 'str'], ['cwd', 'str'], ['skipPermissions', 'bool'], ['addDirs', 'dirs'], ['env', 'env'], ['model', 'name'], ['effort', 'name']],
+    'antigravity': [['exe', 'str'], ['cwd', 'str'], ['skipPermissions', 'bool'], ['readOnly', 'bool'], ['addDirs', 'dirs'], ['env', 'env'], ['model', 'name'], ['effort', 'name']],
     'api-anthropic': [['baseURL', 'str'], ['effort', 'enum', ANTHROPIC_EFFORTS], ['body', 'obj'], ['fetch', 'fun']],
     'api-typesafe-systemone': [['baseURL', 'str'], ['model', 'name'], ['body', 'obj']],
     'api-openai-compat': [['body', 'obj']],

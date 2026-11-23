@@ -32,8 +32,8 @@
 
 ### R-AGY-1 內建 agy 條目與型錄對齊;檔位以 slug 表示
 
-- 規則:`kind:'antigravity'` 之內建條目 id 恆為 `agy:`+`model`;`model` 須為 `agy models < /dev/null` 第一欄之 slug 且取 `-high`(檔位以 slug 表示,不另帶 `--effort`;Argon/3.8 之 `/effort` available 僅 low/medium/high);自帶防寫(`skipPermissions:false`)與 `addDirs:['.']`;文件範例 slug 須為型錄第一欄之 slug,**或其去掉檔位之基礎 slug**(agy 接受,預設檔位 medium;2026-10-16 以 `/effort --model gemini-4-argon` 與生成呼叫〔`gemini-4-argon`+`effort:'low'`,12.7s〕皆驗證;以 `/effort --model <slug>` 驗證新增者)(2026-10-16 `gemini-3.6-flash-low`、`gemini-3.1-pro` 已不在,以 `gemini-3.8-flash-low`、基礎 slug `gemini-4-argon` 取代)。**不刪除已被下游引用之 id**(w-knowledge-extract `settingsDefault.mjs` 寫死 `agy:gemini-3.8-flash-high`)。`Gemini 4 Argon` 條目置 3.8 之後、`agy:claude-sonnet-5-5-high` 之前(本機 Pro 方案觀察到獨立額度群組、僅 7 天窗口;**額度池獨立不等於故障域獨立**——CLI、登入、網路仍共用;Ultra 依官方描述計入 Gemini 群組,**未驗證**)。
-- **Gemini 4 Hydrogen 條目(2026-11-13 da-hy,Gitea #137,使用端建議)**:`agy:gemini-4-hydrogen-high`(model `gemini-4-hydrogen-high`、`skipPermissions:false`、`addDirs:['.']`)置 3.8 之後、Argon 之前,**不取代不刪除 3.8**;`agy models` 列 `gemini-4-hydrogen-low/medium/high/xhigh`,`/effort` 之 available 為 low/medium/high/xhigh(與 Argon、3.8 之 low/medium/high 不同),**取 `-high`、不收 `-xhigh`**(未實測,需要者以 `extraProviders` 自帶);額度群組:agy 1.5.7 之 `/usage` 無 Hydrogen 專屬群組,`agyGroupOf` 依既有規則(`gemini-*`)歸「Gemini Models」,**規則不改**(`unit-subQuotaGate` 加 `gemini-4-hydrogen-high`、`Gemini-4-Hydrogen-XHigh` 兩例固定);內建條目 37 → 38,連動 README、`resolveProviders.mjs` 註解與三個測試檔之條目數斷言.實測分〔提出端〕與〔本機 2026-11-13〕寫入條目註解(`unit-providersHydrogenDocs` 守門):本機簡答 5 次皆成交;寫檔金絲雀**分工作區內外**——要求寫到工作區(`addDirs['.']`＝cwd)**外**之絕對路徑,Hydrogen、3.8、Argon 三者皆被擋(`ok:true`、stdout 空、stderr 帶 `write_file` permission `auto-denied`、檔案未落地);要求寫到工作區**內**之檔,三者皆放行落地(agy 1.5.7 之行為,**非 Hydrogen 特有**;「防寫」只擋工作區外,見 `state_agy.md` 待辦);額度對照(只呼叫 Hydrogen 4 次,前後各讀兩次 `/usage`):Argon 7 天 1.01→1.01→1.01、「Gemini Models」5 小時 7.51→8.09、7 天讀數跳動(41.06／40.3 → 40.36／40.46)無法判別.
+- 規則:`kind:'antigravity'` 之內建條目 id 恆為 `agy:`+`model`;`model` 須為 `agy models < /dev/null` 第一欄之 slug 且取 `-high`(檔位以 slug 表示,不另帶 `--effort`;Argon/3.8 之 `/effort` available 僅 low/medium/high);自帶防寫(`skipPermissions:false`,只擋工作區外)、真防寫 `readOnly:true`(2026-11-24 起,見 R-AGY-5)與 `addDirs:['.']`;文件範例 slug 須為型錄第一欄之 slug,**或其去掉檔位之基礎 slug**(agy 接受,預設檔位 medium;2026-10-16 以 `/effort --model gemini-4-argon` 與生成呼叫〔`gemini-4-argon`+`effort:'low'`,12.7s〕皆驗證;以 `/effort --model <slug>` 驗證新增者)(2026-10-16 `gemini-3.6-flash-low`、`gemini-3.1-pro` 已不在,以 `gemini-3.8-flash-low`、基礎 slug `gemini-4-argon` 取代)。**不刪除已被下游引用之 id**(w-knowledge-extract `settingsDefault.mjs` 寫死 `agy:gemini-3.8-flash-high`)。`Gemini 4 Argon` 條目置 3.8 之後、`agy:claude-sonnet-5-5-high` 之前(本機 Pro 方案觀察到獨立額度群組、僅 7 天窗口;**額度池獨立不等於故障域獨立**——CLI、登入、網路仍共用;Ultra 依官方描述計入 Gemini 群組,**未驗證**)。
+- **Gemini 4 Hydrogen 條目(2026-11-13 da-hy,Gitea #137,使用端建議)**:`agy:gemini-4-hydrogen-high`(model `gemini-4-hydrogen-high`、`skipPermissions:false`、`addDirs:['.']`)置 3.8 之後、Argon 之前,**不取代不刪除 3.8**;`agy models` 列 `gemini-4-hydrogen-low/medium/high/xhigh`,`/effort` 之 available 為 low/medium/high/xhigh(與 Argon、3.8 之 low/medium/high 不同),**取 `-high`、不收 `-xhigh`**(未實測,需要者以 `extraProviders` 自帶);額度群組:agy 1.5.7 之 `/usage` 無 Hydrogen 專屬群組,`agyGroupOf` 依既有規則(`gemini-*`)歸「Gemini Models」,**規則不改**(`unit-subQuotaGate` 加 `gemini-4-hydrogen-high`、`Gemini-4-Hydrogen-XHigh` 兩例固定);內建條目 37 → 38,連動 README、`resolveProviders.mjs` 註解與三個測試檔之條目數斷言.實測分〔提出端〕與〔本機 2026-11-13〕寫入條目註解(`unit-providersHydrogenDocs` 守門):本機簡答 5 次皆成交;寫檔金絲雀**分工作區內外**——要求寫到工作區(`addDirs['.']`＝cwd)**外**之絕對路徑,Hydrogen、3.8、Argon 三者皆被擋(`ok:true`、stdout 空、stderr 帶 `write_file` permission `auto-denied`、檔案未落地);要求寫到工作區**內**之檔,三者皆放行落地(agy 1.5.7 之行為,**非 Hydrogen 特有**;`skipPermissions:false` 之「防寫」只擋工作區外;2026-11-24 起以 `readOnly:true` 補上真防寫,見 R-AGY-5);額度對照(只呼叫 Hydrogen 4 次,前後各讀兩次 `/usage`):Argon 7 天 1.01→1.01→1.01、「Gemini Models」5 小時 7.51→8.09、7 天讀數跳動(41.06／40.3 → 40.36／40.46)無法判別.
 - 盤點指令:`agy models < /dev/null`(不耗額度;無 agy 之機器跳過)對 `Grep "kind: 'antigravity'" -B3 src/providers.mjs`;`Grep "gemini-[0-9]|claude-.*-5-5" README.md src/dispatchAntigravity.mjs`(範例 slug)。
 - 對應測試:T-B1 `test/unit-agyFailShapes.test.mjs`「內建agy條目…」(id 命名、Argon 條目位置/防寫/addDirs;Hydrogen 條目位置/欄位/3.8 仍在)、`test/unit-providersHydrogenDocs.test.mjs`(條目註解之來源與實測標註、檔頭 agy 檔位說明、README 第 73 條、公開庫不含使用端專案名);既有 `unit-providers.test.mjs`(防寫、檔位 high、id 唯一)。型錄對照需真 agy,不入 `npm test`。
 
@@ -93,6 +93,62 @@
 - 修前紅:`git archive HEAD src` 解到 `./tmp/<案名>/pre`(補 `checkAgyStdinSupport` 存根)跑新測試 → 25 案中 22 案紅(3 案為保留行為／修前即不受影響:`argv` 超長仍 `prompt too long`、近似旗標不誤拒、版本邊界 1.1.15／1.10.0 走 argv 皆綠)。
 - 變異(複製 `src` 與測試到 `./tmp/<案名>/mut<X>`):A 拿掉「無 result 判失敗」→ 4 案紅;B validate 移到改寫前 → 2 案紅;C 輸入不經 `JSON.stringify` → 18 案紅;E 拿掉版本檢查 → 3 案紅;F 任何 result 皆當成功 → 1 案紅。
 - 真 agy(耗額度,不入 `npm test`):`gemini-3.8-flash-low` 經 stdin 短提示詞、36060 字元(預設 auto)、argv 短提示詞各 1 次,皆 `result:SUCCESS`、`stdout` 為「完成」。
+
+### R-AGY-5 真防寫:`readOnly` 以 `--settings` 帶 `permissions.deny`(2026-11-24 tdai3,排程第 445 項)
+
+> 狀態:**生效**(2026-11-24;主控任務 20261124014253 之 tdai3,依 da-hy 2026-11-13 金絲雀之待裁示「`skipPermissions:false` 只擋工作區外」查真防寫之作法).
+> 來源:官方〈Agent permissions〉〈Choose an execution mode〉〈Terminal sandbox〉頁(2026-11-24 讀取)與本機 agy 1.5.12 實測(下表).**未驗證(明標)**:Claude 兩個 agy 條目(額度群組用量近滿,未呼叫;規則由 agy 權限引擎執行,與模型無關,但未以該二模型實證);舊版 agy 是否有 `--settings`(changelog 只含近期版本,最低版本未查);Windows 以外平台;使用者自設 MCP 工具或外掛 hook 之寫入;`agentMode:""` 之 shell 繞過路徑.
+
+#### 軸
+
+- 呼叫端設定:`skipPermissions`(true／false)×`readOnly`(未給、`undefined`、`null`、`false`、`true`、無效值)×傳法(argv／stdin)×`extraArgs` 是否自帶 `--settings`(無／`--settings`／`--settings=…`／`-settings`／近似旗標)。
+- 寫入途徑:檔案工具 `write_file`／shell 指令 `command`(`run_command`)／工作區內／工作區外;讀取(`read_file`)。
+- 模型:Hydrogen、Argon、3.8 Flash(本輪實測);Claude Sonnet／Opus(未測)。
+- 防寫作法:`skipPermissions:false`、`--settings` deny(只 write_file／write_file＋command)、`agentMode:""`、`--mode plan`、OS 層唯讀工作區(ACL)、`--sandbox`(只限終端機,未測,官方載明專案資料夾掛為可讀寫)。
+
+#### 規則
+
+1. **`readOnly` 預設 `false`**:未給(`undefined`、`null`)與 `false` 不帶 `--settings`,args 與 1.0.110 逐位相同;`true` 加 `--settings <JSON>`,JSON 恰為 `{"permissions":{"deny":["write_file(*)","command(*)"]}}`(常數 `READ_ONLY_SETTINGS`,`src/dispatchAntigravity.mjs`),位置在 `--dangerously-skip-permissions`(若有)之後、`--print-timeout` 之前;argv 與 stdin 兩路徑相同。
+2. **兩條 deny 缺一不可**:只 deny `write_file` 時,模型改用 shell(`command`,於終端機沙箱內自動允許)繞過而落地(Hydrogen 實測 70s、`out.txt` 落地);只 deny 兩者之一不得視為防寫.
+3. **給了而非布林即 `params` 拒絕**(不退回 `false` 放寬):轉接器以 `readBoolOpt` 判於起任何子行程之前;遞補層 `checkSafeOpts('antigravity', …)`(`readSafeOpt.mjs` 之 `SAFE_SPEC`)同判,令條目層失敗不發 `try` 事件(R-SAFEOPT-1)。
+4. **`extraArgs` 自帶 `--settings`(含 `=值`、單橫線寫法)與 `readOnly:true` 並用 → `params`、不 spawn**(不依賴 agy 對重複 `--settings` 之合併語意,未實測);`readOnly` 未開時 `extraArgs` 之 `--settings` 原樣轉傳。
+5. **內建 5 個 agy 條目皆自帶 `readOnly:true`**(`skipPermissions:false`、`addDirs:['.']` 不變);需寫入者覆寫 `{ readOnly:false, skipPermissions:true }`。deny 規則於 `skipPermissions:true` 下仍有效(實測),故只覆寫 `skipPermissions` 不足。
+6. **被擋時回 `ok:true` 與非空說明文字**(模型轉述「Permission denied for write_file(…). Matches user-configured deny rule」),不同於工作區外寫入之空輸出(stderr 帶 auto-denied);呼叫端以「檔案是否落地」判是否被擋,不以 stdout 是否為空。
+7. **不提供 OS 層唯讀副本**:ACL 唯讀工作區實測亦擋得住(`write_file` 得 `Access is denied`、shell 亦被擋),但須呼叫端管理副本與權限且平台相依,不屬轉接器;`--mode plan` 只在提示詞前加 `/plan`(官方 modes 頁),不是防線。
+
+#### 實測表(agy 1.5.12,Windows;固定無害提示詞「請在目前工作目錄建立 out.txt，內容寫入 x…」、讀取題「讀取 a.txt 第一行」;工作區為本庫 `./tmp/tdai3/agyws` 夾具;證據檔為任務夾 `agent-out/tdai3-外部呼叫證據.jsonl`,agy 共 13 次呼叫〔上限 15〕,其中 seq 1 因 OAuth 刷新網路逾時無結果)
+
+| # | 作法 | 模型 | 結果(`out.txt` 是否落地) |
+|---|---|---|---|
+| E0 | `skipPermissions:false`,無旗標(基準) | Hydrogen | **落地**(8.9s;`stdout`「完成」) |
+| E1 | `--settings` deny `write_file(*)`＋`command(*)` | Hydrogen | 被擋(10.6s;「Permission denied for write_file(…). Matches user-configured deny rule」) |
+| E1r | 同 E1,讀取 `a.txt` 首行 | Hydrogen | 讀取成功(8.7s;回 `KX-7304-ALPHA`) |
+| E1b | `--settings` 只 deny `write_file(*)`,提示詞鼓勵改用其他方式 | Hydrogen | **落地**(70.5s,模型改用 shell) |
+| E2 | `--settings` `{"agentMode":""}`(default 模式) | Hydrogen | 被擋(7.0s;stderr「write_file permission that headless mode cannot prompt for … auto-denied」);shell 繞過路徑未測 |
+| E4 | `--mode plan` | Hydrogen | 未落地(7.1s;因要求 `command` 權限被自動拒絕而結束;非設計,1 次樣本) |
+| E3 | OS 層唯讀工作區(ACL 拒絕寫入／新增／刪除),`skipPermissions:false`,提示詞鼓勵改用其他方式 | Hydrogen | 被擋(52.4s;`write_file`「Access is denied」、PowerShell 寫入亦失敗) |
+| A1 | 經轉接器 `readOnly:true`,`skipPermissions:false`,鼓勵改用其他方式 | Hydrogen | 被擋(33.6s;`write_file`、`run_command` 皆被 deny) |
+| A2 | 經轉接器 `readOnly:true`＋`skipPermissions:true` | Hydrogen | 被擋(35.9s;deny 不被 always-proceed 取代) |
+| A3 | 經轉接器 `readOnly:true` | Argon | 被擋(50.1s) |
+| A4 | 經轉接器 `readOnly:true` | 3.8 Flash | 被擋(25.6s) |
+| A5 | 經轉接器 `readOnly:true`,讀取 `a.txt` 首行 | Hydrogen | 讀取成功(6.8s) |
+
+#### 站點全集與盤點指令
+
+- 旗標組裝:`Grep "readOnly|READ_ONLY" src/dispatchAntigravity.mjs`——`--settings` 只出現在 `readOnly ? […] : []` 一處;`OWN_KEYS` 含 `readOnly`(不外傳 execCli)。
+- 安全 opt 判定:`Grep "readOnly" src/readSafeOpt.mjs`——`SAFE_SPEC.antigravity` 含 `['readOnly','bool']`。
+- 內建條目:`Grep "readOnly: true" src/providers.mjs`——恰 5 筆,皆在 `kind:'antigravity'` 條目內。
+- 文件:`Grep "readOnly" README.md`——選項表一列、行為變更第 90 條、「內建 CLI 條目之防寫機制對照」之 antigravity 列與邊界段。
+
+#### 判準
+
+- 已套:`kind:'antigravity'` 之內建條目 5 筆皆帶 `readOnly:true`;`--settings` 之 JSON 恰為上列;無效值拒絕;`extraArgs` 衝突拒絕。未套:任一內建 agy 條目缺 `readOnly:true`、deny 只含一條、無效值退回 `false`、README 仍稱「防寫」而未載只擋工作區外。刻意不套:直接呼叫 `dispatchAntigravity` 之預設不開(行為同 1.0.110,是否改預設列主控裁示);不提供 OS 層唯讀副本。
+
+#### 對應測試
+
+- `test/unit-dispatchAntigravityReadOnly.test.mjs`(13 案:R1 argv 旗標順序與 JSON、R2 與 `skipPermissions` 正交、R3 未開時 args 不變、R4 stdin 路徑、R5 無效值 `params`、R6 `extraArgs` 衝突、R7 近似旗標不誤拒、R8 `checkSafeOpts`、R9 條目層不發 `try`、R10 內建 5 條目欄位、R11 條目→轉接器接縫〔不用替身〕、R12 README、R13 程式註解);`test/unit-agyFailShapes.test.mjs`(Hydrogen 條目鍵集合含 `readOnly`);`test/unit-providers.test.mjs`(全條目防寫通則不變)。
+- 修前紅:HEAD 快照(`git archive HEAD src test package.json`)搭本輪測試檔,見 tdai3 報告;變異見同報告。
+- 真 agy(耗額度,不入 `npm test`):上表。
 
 ### 文件同步點(改上列規則時一併改)
 

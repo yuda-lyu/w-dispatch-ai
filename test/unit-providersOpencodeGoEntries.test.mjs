@@ -151,9 +151,9 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             assert.strict.deepEqual([goEntries.length, r], [8, []])
         })
 
-        it('內建目錄共35條(原29＋Go 8＋agy Hydrogen 1〔2026-11-13 Gitea #137〕－oc:opencode/glm-5.3-flash-free 1〔2026-11-18 下架〕－poolside兩條目〔2026-11-21 dl583移除〕), id不重複', function() {
+        it('內建目錄共36條(原29＋Go 8＋agy Hydrogen 1〔2026-11-13 Gitea #137〕－oc:opencode/glm-5.3-flash-free 1〔2026-11-18 下架〕－poolside兩條目〔2026-11-21 dl583移除〕＋oc:opencode/hy4-flash-free 1〔2026-11-24 tdai3新增〕), id不重複', function() {
             let ids = providers.map((p) => p.id)
-            assert.strict.deepEqual([ids.length, new Set(ids).size], [35, 35])
+            assert.strict.deepEqual([ids.length, new Set(ids).size], [36, 36])
         })
 
     })

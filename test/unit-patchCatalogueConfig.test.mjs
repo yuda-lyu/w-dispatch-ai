@@ -22,7 +22,7 @@ import { SENT, revoked, pathWithoutRealCli } from './tools/hostileValuesForTest.
 //   C1 resolveCatalogue之catalogue給了而非陣列 → 同步throw(`catalogue must be an array when given…`, 與pick同一判定assertArrOpt); 未給(undefined、null)照舊用內建目錄, 空陣列為合法(空目錄)。
 //   O1 dispatchOpencode之config給了而非字串亦非一般物件(數字、布林、陣列、Map、函數、包裝物件、Symbol、BigInt) → params(attempts 0、不起子行程、不回顯);
 //      未給(undefined、null)、''、字串(JSON或否)、一般物件照舊; 不可讀者(已撤銷之Proxy)訊息同修前('config is not JSON-serializable: …')。agent維持(退回build)。
-//   O2 遞補層(checkSafeOpts)於發try事件之前即判opencode條目之config(與轉接器同一判定checkConfigOpt); 內建35條目皆通過。
+//   O2 遞補層(checkSafeOpts)於發try事件之前即判opencode條目之config(與轉接器同一判定checkConfigOpt); 內建36條目皆通過。
 //
 // 安全: 不呼叫外部AI服務——假執行檔; before把PATH換成移除真CLI者、after還原。
 
@@ -262,9 +262,9 @@ describe('patch逐id之值、catalogue、opencode config給了而無效 → 拒�
             assert.strict.deepEqual([r.ok, r.providerId, tries], [true, 'ok:one', ['ok:one']])
         })
 
-        it('O2 內建35條目逐條 checkSafeOpts(kind, entry, { keyed: true }) 皆回空字串(合法輸入之行為不變); 內建opencode條目之config皆為一般物件', function() {
+        it('O2 內建36條目逐條 checkSafeOpts(kind, entry, { keyed: true }) 皆回空字串(合法輸入之行為不變); 內建opencode條目之config皆為一般物件', function() {
             let bad = providersAll.map((p) => [p.id, checkSafeOpts(p.kind, p, { keyed: true })]).filter(([, m]) => m !== '')
-            assert.strict.deepEqual([providersAll.length, bad], [35, []])
+            assert.strict.deepEqual([providersAll.length, bad], [36, []])
             let cfgKinds = providersAll.filter((p) => p.kind === 'opencode' && p.config !== undefined).map((p) => Object.prototype.toString.call(p.config))
             assert.strict.deepEqual([cfgKinds.length > 0, cfgKinds.every((t) => t === '[object Object]')], [true, true])
         })

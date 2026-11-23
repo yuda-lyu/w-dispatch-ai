@@ -73,6 +73,17 @@ import checkAgyStdinSupport, { MIN_STDIN_VERSION } from './checkAgyStdinSupport.
 //
 // 【權限拒絕(2026-10-16以agy 1.4.0實測)】skipPermissions為false時, 工具需要寫入權限而被擋下, agy以離開碼0回應、stdout為空,
 //   stderr帶說明(`jetski: no output produced — a tool required the "write_file" permission ... auto-denied`); 須以空輸出判別, 不能只看ok。
+//
+// 【skipPermissions:false 只擋工作區外之寫入; 真防寫用 readOnly(2026-11-24 tdai3, 排程第445項, 帳本R-AGY-5)】
+//   官方〈Agent permissions〉頁: write_file與工作區內之shell指令之預設為「Ask(工作區內自動允許)」, 故不帶--dangerously-skip-permissions(skipPermissions:false)時,
+//   工作區(addDirs)內之寫入照樣落地, 只有要求寫到工作區外之路徑才被自動拒絕(agy 1.5.7本機實測: 工作區內寫入Hydrogen、3.8、Argon皆放行落地; 1.5.12重測Hydrogen同)。
+//   真防寫之作法: opt.readOnly為true時加`--settings '{"permissions":{"deny":["write_file(*)","command(*)"]}}'`(本次工作階段限定、不存檔; deny優先於ask與allow, 任何模式皆擋)。
+//   本機以agy 1.5.12實測(Hydrogen, skipPermissions:false): 無此旗標時要求建檔落地; 帶全部deny規則時寫入被擋(模型回「Permission denied for write_file(…). Matches user-configured deny rule」)、
+//   讀取工作區內檔案照常; **只deny write_file而不deny command時模型改用shell繞過而落地**, 故兩條缺一不可。
+//   被擋時agy多以ok:true回覆(stdout為模型之說明文字, 非空), 不同於「工作區外寫入被自動拒絕」之空輸出, 呼叫端不得以「stdout為空」判斷是否被擋。
+//   readOnly預設false(不帶旗標, 行為同1.0.110), 內建agy條目皆自帶true。已以OS層唯讀工作區(ACL拒絕寫入)驗證亦擋得住(write_file得Access is denied、shell亦被擋),
+//   但需呼叫端管理副本與權限(平台相依), 轉接器不提供; `--mode plan`只於提示詞前加/plan指令(官方〈Choose an execution mode〉頁), 不是防線。
+//   extraArgs已含--settings者與readOnly:true並用以params拒絕(不依賴agy對重複--settings之合併語意, 未實測)。舊版agy不認得--settings時agy自身回旗標錯誤(失敗而非靜默放寫入)。
 
 
 //預設值
@@ -83,12 +94,33 @@ let PRINT_TIMEOUT_BUFFER_S = 30 //agy自身計時較外層晚到之秒數
 let PROMPT_VIA_LIST = ['argv', 'stdin', 'auto'] //promptVia可用值
 let DEFAULT_PROMPT_VIA = 'auto' //預設值及其理由見檔頭【提示詞兩種傳法】
 let STDIN_CONFLICT_FLAGS = ['output-format', 'input-format', 'print', 'p', 'prompt', 'i', 'prompt-interactive'] //stdin路徑下extraArgs不得出現之旗標名(不分單雙橫線、不分`=值`), 見檔頭
+let READ_ONLY_CONFLICT_FLAGS = ['settings'] //readOnly為true時extraArgs不得出現之旗標名(同上不分單雙橫線與`=值`), 見檔頭【真防寫】
+let READ_ONLY_DENY_RULES = ['write_file(*)', 'command(*)'] //readOnly之deny規則(write_file與command缺一不可, 見檔頭【真防寫】)
+let READ_ONLY_SETTINGS = JSON.stringify({ permissions: { deny: READ_ONLY_DENY_RULES } }) //以--settings內聯傳入(本次工作階段限定、不存檔)
 let FLAG_NAME_RE = /^--?([^=\s]+)(?:=|$)/ //自命令列字串取旗標名(Go flag套件單雙橫線皆可)
 let ACC_MAX = 32 * 1024 * 1024 //stdin路徑累積agy stdout全文之上限(字元), 超出部分不再累積(execCli預設maxBuffer為10MB, 此值恆不先到)
 
 
 //本轉接器自用之設定鍵, 其餘鍵一律原樣轉傳execCli
-let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'addDirs', 'extraArgs', 'input', 'promptVia']
+let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'readOnly', 'printTimeout', 'addDirs', 'extraArgs', 'input', 'promptVia']
+
+
+/**
+ * 找出extraArgs中旗標名在指定清單內之旗標(不分單雙橫線與`=值`寫法)
+ *
+ * @param {Array} extraArgs 輸入呼叫端額外命令列旗標，非陣列視為無
+ * @param {Array} names 輸入旗標名字串陣列(不含橫線)
+ * @returns {String} 回傳第一個命中之原字串，無命中為''
+ */
+function findFlagArg(extraArgs, names) {
+    for (let s of getCliArgs(extraArgs)) {
+        let m = FLAG_NAME_RE.exec(s)
+        if (m && names.includes(m[1])) {
+            return s
+        }
+    }
+    return ''
+}
 
 
 /**
@@ -98,13 +130,7 @@ let OWN_KEYS = ['exe', 'model', 'effort', 'skipPermissions', 'printTimeout', 'ad
  * @returns {String} 回傳第一個衝突之原字串，無衝突為''
  */
 function findStdinConflictArg(extraArgs) {
-    for (let s of getCliArgs(extraArgs)) {
-        let m = FLAG_NAME_RE.exec(s)
-        if (m && STDIN_CONFLICT_FLAGS.includes(m[1])) {
-            return s
-        }
-    }
-    return ''
+    return findFlagArg(extraArgs, STDIN_CONFLICT_FLAGS)
 }
 
 
@@ -188,6 +214,7 @@ function reshapeAgyResult(r, raw) {
  * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.8-flash-low'、'gemini-4-argon-high'，預設''代表不帶`--model`旗標由agy自行決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，會耗用Argon額度；預設可能隨agy版本變動)；未給(undefined、null、'')才不帶旗標，給了而非原始非空字串(數字、物件等)以params回報、不起子進程(不改用agy預設模型；影響計費之opt，帳本R-SAFEOPT-1規則11)
  * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'(部分模型更少，以`agy -p /effort --model <slug> --output-format json`之available為準)，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶；未給(undefined、null、'')才不帶旗標，給了而非原始非空字串(數字、物件等)以params回報、不起子進程(不改用agy預設檔位；帳本R-SAFEOPT-1規則11)
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，未給(undefined、null)用true，給了而非布林以params回報、不起子進程(不退回true；排程第553項)
+ * @param {Boolean} [opt.readOnly=false] 輸入是否令agy真防寫之布林值(排程第445項，帳本R-AGY-5)：true代表加`--settings`帶`permissions.deny`之`write_file(*)`與`command(*)`(本次工作階段限定、不存檔)，工作區內之寫入(檔案工具與shell指令)皆被擋、讀取照常；不帶skipPermissions:false時工作區內寫入照樣落地(該旗標只擋工作區外)，故需要防寫者請給true(內建agy條目皆自帶)；被擋時agy多以ok:true回覆說明文字，不是空輸出；未給(undefined、null)用false(不帶旗標，行為同修前)，給了而非布林以params回報、不起子進程；與extraArgs自帶之`--settings`並用時以params回報(不依賴agy對重複旗標之合併語意)；與skipPermissions正交(agy 1.5.12本機實測：併skipPermissions:true之deny規則仍擋下工作區內寫入，故只把skipPermissions改true不足以取得寫入能力，須同時readOnly:false)
  * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'630s')，預設''代表由timeoutMs推導(加30秒，恆大於timeoutMs令外層先逾時；agy自身逾時是離開碼0之部分輸出，不是錯誤，故一般無須手動設)
  * @param {Array} [opt.addDirs=自動納入cwd] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端(含有效字串者無效元素略過)；給了而非陣列、不可讀或元素全無效者以params回報、不起子進程(不退回[cwd]；排程第553項)
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列(如--output-format、--json-schema、--mode)，將接於固定旗標之後、`--print`(argv路徑)或`--input-format stream-json --output-format stream-json`(stdin路徑，此路徑下extraArgs不得含衝突旗標，見promptVia)之前，預設[]
@@ -290,6 +317,13 @@ async function dispatchAntigravity(prompt, opt = {}) {
     }
     let skipPermissions = rskip.value === null ? true : rskip.value
 
+    //readOnly(真防寫, 見檔頭): 未給(undefined、null)用false(不帶旗標, 行為同修前); 給了而非布林以params回報、不起子行程(不退回false放寬; 帳本R-SAFEOPT-1與R-AGY-5)
+    let rro = readBoolOpt(get(opt, 'readOnly', null), 'readOnly')
+    if (rro.err !== '') {
+        return getErrorResult(rro.err)
+    }
+    let readOnly = rro.value === true
+
     //timeoutMs, 先行取值以供printTimeout推導; 1～2147483647之整數才採用, 無效(含超過計時器上限)回退全套件統一預設300000(castTimerMs, 與wsemi execCli之判定相同, 不夾上限)
     let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), DEFAULT_TIMEOUT_MS)
 
@@ -322,6 +356,14 @@ async function dispatchAntigravity(prompt, opt = {}) {
     //extraArgs
     let extraArgs = get(opt, 'extraArgs', null)
 
+    //readOnly為true時extraArgs不得自帶--settings(含=值與單橫線寫法): 不依賴agy對重複--settings之合併語意(未實測), 於spawn前以params拒絕(attempts 0)
+    if (readOnly) {
+        let conflict = findFlagArg(extraArgs, READ_ONLY_CONFLICT_FLAGS)
+        if (conflict !== '') {
+            return getErrorResult(`extraArgs contains [${conflict}], which conflicts with readOnly (readOnly passes its own --settings with the deny rules); merge your settings into extraArgs yourself and leave readOnly off, or remove it`)
+        }
+    }
+
     //stdin路徑前置檢查(皆在spawn前、attempts 0): ①extraArgs不得含衝突旗標 ②agy版本須支援--input-format(見檔頭【舊版agy】)
     if (viaStdin) {
         let conflict = findStdinConflictArg(extraArgs)
@@ -337,6 +379,7 @@ async function dispatchAntigravity(prompt, opt = {}) {
     //args, argv路徑: prompt作為--print之值放最後; stdin路徑: 不帶--print, 固定旗標放最後(prompt由stdin送入)
     let args = getCliArgs(
         skipPermissions ? '--dangerously-skip-permissions' : [],
+        readOnly ? ['--settings', READ_ONLY_SETTINGS] : [],
         ['--print-timeout', printTimeout],
         isestr(model) ? ['--model', model] : [],
         isestr(effort) ? ['--effort', effort] : [],

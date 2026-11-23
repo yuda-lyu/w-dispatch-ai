@@ -141,7 +141,7 @@ describe('agy條目之非成功結局形狀(agy 1.4.0實測)與內建條目規�
             iHy >= 0 ? [providers[iHy].model, providers[iHy].kind, providers[iHy].skipPermissions, providers[iHy].addDirs] : null,
             iHy >= 0 ? Object.keys(providers[iHy]).sort() : null,
         ]
-        assert.strict.deepEqual(rr, [true, 1, true, true, ['gemini-4-hydrogen-high', 'antigravity', false, ['.']], ['addDirs', 'id', 'kind', 'model', 'skipPermissions']])
+        assert.strict.deepEqual(rr, [true, 1, true, true, ['gemini-4-hydrogen-high', 'antigravity', false, ['.']], ['addDirs', 'id', 'kind', 'model', 'readOnly', 'skipPermissions']]) //readOnly: 2026-11-24 起內建agy條目自帶真防寫(帳本R-AGY-5, unit-dispatchAntigravityReadOnly)
     })
 
 })

@@ -62,7 +62,7 @@ import { assertObjOpt, assertArrOpt, readExesOpt, readPatchOpt } from './readSaf
  * //全取: envVar展開為keys, 缺環境變數者列入skipped
  * let { providers, table, skipped } = resolveProviders(providersAll, { env })
  * console.log(providers.length, skipped)
- * // => 35 [] (設.env已備齊各條目之envVar; 內建條目共35條〔含8條OpenCode Go之ocgo:, 其金鑰變數為OPENCODE_GO_KEYS〕, 缺變數者改列於skipped且不計入providers)
+ * // => 36 [] (設.env已備齊各條目之envVar; 內建條目共36條〔含8條OpenCode Go之ocgo:, 其金鑰變數為OPENCODE_GO_KEYS〕, 缺變數者改列於skipped且不計入providers)
  *
  * //pick打錯字時, missing附拼寫提示hints(最接近之可用id)
  * let rm = resolveProviders(providersAll, { env, pick: ['agnes/agnes-3.0-flash'] })

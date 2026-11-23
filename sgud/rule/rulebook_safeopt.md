@@ -21,7 +21,7 @@
    |---|---|---|
    | `dispatchCodex.mjs` | `exe`、`sandbox`、`cwd` | `readStrOpt`×3 |
    | `dispatchClaude.mjs` | `exe`、`skipPermissions`、`cwd` | `readStrOpt`×2、`readBoolOpt` |
-   | `dispatchAntigravity.mjs` | `exe`、`cwd`、`skipPermissions`、`addDirs` | `readStrOpt`×2、`readBoolOpt`、`readDirsOpt`(`addDirs` 未給時 `[cwd]`;`checkAgyStdinSupport` 取同一 `cwd`) |
+   | `dispatchAntigravity.mjs` | `exe`、`cwd`、`skipPermissions`、`readOnly`(2026-11-24 tdai3 加入,R-AGY-5)、`addDirs` | `readStrOpt`×2、`readBoolOpt`×2、`readDirsOpt`(`addDirs` 未給時 `[cwd]`;`checkAgyStdinSupport` 取同一 `cwd`;`readOnly` 給了而非布林即拒絕、不退回 `false`,遞補層 `SAFE_SPEC.antigravity` 同判) |
    | `dispatchOpencode.mjs` | `exe`、`cwd` | `readStrOpt`×2(`PWD` 同步取同一 `cwd`) |
    | `dispatchApiAnthropic.mjs`、`dispatchApiTypesafeSystemone.mjs` | `baseURL` | `readStrOpt`(未給用官方端點) |
    | `probeAnthropicKeys.mjs` | `baseURL`(`probeOnce` 與 `probeAnthropicKeys` 兩處) | `readStrOpt`(單把:該把回 `kind: 'other'`＋`detail` 不送請求;多把:整體回 params 結果) |
