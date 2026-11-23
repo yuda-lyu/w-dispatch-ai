@@ -1,5 +1,5 @@
 /*!
- * w-dispatch-ai v1.0.110
+ * w-dispatch-ai v1.0.111
  * (c) 2018-2021 yuda-lyu(semisphere)
  * Released under the MIT License.
  */
