@@ -8,9 +8,9 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli, { optTruncate } from './runExecCli.mjs'
-import { probeReadable, errMsg, asText } from './callUserFn.mjs'
+import { errMsg, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
-import { readStrOpt, readBoolOpt, readEnvOpt, readProviderOpt } from './readSafeOpt.mjs'
+import { readStrOpt, readBoolOpt, readEnvOpt, readProviderOpt, readNameOpt, readTokenMaxOpt, checkConfigOpt } from './readSafeOpt.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import parseOpencodeEvents from './parseOpencodeEvents.mjs'
@@ -228,15 +228,15 @@ function getFormatArg(args) {
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='opencode'] 輸入opencode執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，未給(undefined、null)用'opencode'，給了而非非空字串(含'')以params回報、不起子進程(不退回預設；排程第553項)
- * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/beam-free'，預設''代表不帶`-m`旗標
+ * @param {String} [opt.model=''] 輸入模型ID字串，例如'opencode/beam-free'，預設''代表不帶`-m`旗標；未給(undefined、null、'')才不帶旗標，給了而非原始非空字串(數字、物件等)以params回報、不起子進程(不改用CLI預設模型；影響計費之opt，帳本R-SAFEOPT-1規則11)
  * @param {String} [opt.key=''] 輸入該provider之API key字串，須與provider同時給予才會注入，未給(undefined、null、'')代表沿用CLI既有登入狀態；給了非字串之值回params且不起子進程(帳本R-KEYOPT-1)
  * @param {String} [opt.provider=''] 輸入key所屬provider名稱字串，須與key同時給予才會注入，且須與model為同一組，預設''；未給(undefined、null、'')維持沿用auth.json；key有效而provider給了非字串(數字、布林、物件、陣列等)者以params回報、不起子進程(不悄悄不注入key而改用auth.json既有登入)，未給key者不判
  * @param {Boolean} [opt.useStoredAuth=true] 輸入未注入金鑰時是否沿用本機auth.json之登入布林值，false代表注入空憑證令本次以匿名存取(適用opencode之免費模型，避免結果隨本機登入帳號而異)；已同時給key與provider時不作用，預設true；給了而非布林(如'false'、0)者以params回報、不起子進程(不視為true沿用登入)
- * @param {Object|String} [opt.config=null] 輸入opencode設定內容物件或其JSON字串，將以OPENCODE_CONFIG_CONTENT逐次注入，供補上第三方provider之定義，預設null代表沿用使用者既有設定檔
+ * @param {Object|String} [opt.config=null] 輸入opencode設定內容物件或其JSON字串，將以OPENCODE_CONFIG_CONTENT逐次注入，供補上第三方provider之定義，預設null代表沿用使用者既有設定檔；未給(undefined、null)與''沿用既有設定，給了而非字串亦非一般物件(數字、布林、陣列、Map、函數、包裝物件等)以params回報、不起子進程(不悄悄沿用既有設定；既有設定內可載model與provider之預設，帳本R-SAFEOPT-1規則11)；不可讀(已撤銷之Proxy等)或不可序列化(BigInt、循環參照)者亦以params回報
  * @param {String} [opt.agent='build'] 輸入opencode代理名稱字串，預設'build'
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，將接於固定旗標之後，預設[]
- * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined；給了而非物件(字串、數字、陣列等)或不可讀者以params回報、不起子進程(不視為未給)
- * @param {Number|String} [opt.outputTokenMax=128000] 輸入單次回應輸出上限(token)正整數(數字或數字字串)，注入子進程環境OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX(reasoning與output合計，實際上限取此值與模型型錄limit.output之較小者；opencode自身預設32000)；給了有效值即蓋過呼叫端環境；未給或無效(0、負數、小數、非數字、Infinity、布林)時，呼叫端環境(opt.env或process.env)已設有效值者原樣保留，否則用套件預設128000；調高會使可用輸入約減少同量，見outputTokenMax.mjs檔頭，預設128000
+ * @param {Object} [opt.env=undefined] 輸入本次調用額外注入之環境變數物件，同時給予key與provider時會再併入OPENCODE_AUTH_CONTENT，預設undefined；給了而非物件(字串、數字、陣列等)或不可讀者以params回報、不起子進程(不視為未給)；各變數之值須為字串(undefined代表移除該變數，合法；null、數字、布林、物件等以params回報，不轉成字面字串'null'、'123'等交子進程；帳本R-SAFEOPT-1規則11)
+ * @param {Number|String} [opt.outputTokenMax=128000] 輸入單次回應輸出上限(token)正整數(數字或數字字串)，注入子進程環境OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX(reasoning與output合計，實際上限取此值與模型型錄limit.output之較小者；opencode自身預設32000)；給了有效值即蓋過呼叫端環境；未給(undefined、null)時，呼叫端環境(opt.env或process.env)已設有效值者原樣保留，否則用套件預設128000；給了而無效(0、負數、小數、非數字、''、Infinity、布林等)以params回報、不起子進程(不悄悄改用預設而使輸出上限與計費改變；帳本R-SAFEOPT-1規則11)；調高會使可用輸入約減少同量，見outputTokenMax.mjs檔頭，預設128000
  * @param {Boolean} [opt.continueLoopOnDeny=false] 輸入是否把`experimental.continue_loop_on_deny: true`併入注入之config布林值(排程第454項)，true代表`ask`權限被自動拒絕時只把錯誤交回模型、工作階段續跑(權限規則不變)，非true視為未給；預設false(不開)：被拒即結束者由本轉接器回errorType 'denied'(見檔頭【ask被自動拒絕】)。唯讀條目(edit deny、bash ask)不建議加：被鎖擋下之回覆會變成「看似成功」而遞補鏈不換家。config為JSON字串時須可解析為物件(否則以params回報)，其`experimental`下之其他鍵保留
  * @param {Boolean} [opt.detectTruncation=false] 輸入是否偵測輸出被上限截斷布林值，true代表改用`--format json`事件流並還原輸出，最後一步終止原因為length時回報失敗(errorType 'incomplete'、truncated:true、finishReason、tokens)且不重試，見檔頭【截斷偵測】，預設false代表不偵測(行為同修前)
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(finish為length)但有可見輸出之結果布林值，true代表放行(照常交validate)並標truncated:true，僅detectTruncation為true時有作用，預設false
@@ -317,8 +317,20 @@ async function dispatchOpencode(prompt, opt = {}) {
         return getErrorResult(rcwd.err)
     }
 
-    //model, 無效時整段`-m`旗標不出現, 由CLI自行決定使用模型
-    let model = get(opt, 'model', null)
+    //model為影響計費之opt: 未給(undefined、null、'')不帶`-m`旗標由CLI自行決定使用模型; 給了而無效(非原始非空字串)以params回報、不起子行程——
+    //修前無效時整段`-m`旗標悄悄不出現而改用CLI預設模型(帳本R-SAFEOPT-1規則11; dspec §11〈影響下單數量或金額之opt視同安全相關opt〉)
+    let rmodel = readNameOpt(get(opt, 'model', null), 'model')
+    if (rmodel.err !== '') {
+        return getErrorResult(rmodel.err)
+    }
+    let model = rmodel.value
+
+    //outputTokenMax為影響計費之opt(單次回應輸出上限): 未給(undefined、null)用呼叫端環境之有效值或套件預設; 給了而無效(非正整數、0、負數、小數、''、Infinity、布林、包裝物件等)以params回報、不起子行程——
+    //修前無效時悄悄改用預設128000或呼叫端環境(輸出上限與計費隨之改變; 規則11); 回傳值為有效之正整數(檢查之值即使用之值, K4)
+    let rtok = readTokenMaxOpt(get(opt, 'outputTokenMax', null), 'outputTokenMax')
+    if (rtok.err !== '') {
+        return getErrorResult(rtok.err)
+    }
 
     //agent, 無效回退預設'build'
     let agent = get(opt, 'agent', null)
@@ -365,9 +377,13 @@ async function dispatchOpencode(prompt, opt = {}) {
     //config有效才注入, 否則沿用使用者既有設定檔, 物件則序列化為JSON字串;
     //不可序列化(BigInt、循環參照、toJSON或getter拋錯)或不可判型(已撤銷之Proxy)以錯誤結果物件回報, 不reject(呼叫無法開始, 與金鑰無關故為params)
     let config = get(opt, 'config', null)
-    let pc = probeReadable(config, 'config') //可讀性先經探針(帳本R-USERFN-4): isobj對已撤銷之Proxy不再拋錯而回false, 會使不可讀之config被靜默當成未給而沿用使用者既有設定檔
-    if (!pc.ok) {
-        return getErrorResult(`config is not JSON-serializable: ${pc.reason}`) //訊息同修前(不可判型之config落同一訊息)
+
+    //config給了而無效以params回報、不起子行程(帳本R-SAFEOPT-1規則11, tdai2b): 未給(undefined、null)、原始字串(含'')、可讀之一般物件才有效;
+    //數字、布林、陣列、Map、函數、包裝物件等修前被略過而沿用使用者既有設定檔(其內可載model、provider之預設, 計費路徑隨之改變)。
+    //可讀性先經探針(帳本R-USERFN-4): isobj對已撤銷之Proxy不再拋錯而回false, 會使不可讀之config被靜默當成未給;不可讀者之訊息同修前('config is not JSON-serializable: …')
+    let cerr = checkConfigOpt(config, 'config')
+    if (cerr !== '') {
+        return getErrorResult(cerr)
     }
     //continueLoopOnDeny(排程第454項): 恰為true才把experimental.continue_loop_on_deny:true併入config(物件或JSON字串; 未給config則單獨注入); 其餘視為未給
     let contDeny = get(opt, 'continueLoopOnDeny', null) === true
@@ -453,7 +469,7 @@ async function dispatchOpencode(prompt, opt = {}) {
 
     //單次回應輸出上限: opencode預設以min(型錄limit.output, 32000)為max_tokens, 長提示詞配高檔位時reasoning把32000吃光、正文為空(見outputTokenMax.mjs檔頭);
     //優先序 opt.outputTokenMax > 呼叫端環境已設之有效值(opt.env或process.env, 保留不動) > 套件預設
-    env = applyOutputTokenMax(env, get(opt, 'outputTokenMax', null)).env
+    env = applyOutputTokenMax(env, rtok.value).env
 
     //timeoutMs, 無效回退全套件統一預設(dfTimeoutMs=300000), 各轉接器一致令呼叫方無須記多套數字
     let timeoutMs = castTimerMs(get(opt, 'timeoutMs', null), dfTimeoutMs)

@@ -13,7 +13,8 @@ import { OUTPUT_TOKEN_MAX_ENV, DEFAULT_OUTPUT_TOKEN_MAX } from '../src/outputTok
 // 【為何需要】issue #78稱「OpenCode Go單次輸出上限32,000 token(reasoning+output)」, 未查證是閘道還是CLI端。本檔以自建127.0.0.1服務攔截opencode run實際送出之請求,
 //   不花額度、不打外網, 釘住下列事實(證據: sgud/rule/rulebook_opencodego.md R-OCGO-4; 2026-11-04, opencode 1.19.5):
 //   A1 請求之輸出上限欄位為`max_tokens`, 值 = min(模型型錄limit.output, 環境變數OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX或CLI預設32000)
-//   A2 本套件預設注入DEFAULT_OUTPUT_TOKEN_MAX; opt.outputTokenMax可覆寫; 呼叫端環境內之有效值保留; 無效值視為未給
+//   A2 本套件預設注入DEFAULT_OUTPUT_TOKEN_MAX; opt.outputTokenMax可覆寫; 呼叫端環境內之有效值保留; 呼叫端環境內之無效值視為未給(套件預設);
+//      opt.outputTokenMax給了而無效以params拒絕、不起子行程(2026-11-23 tdai2起, 帳本R-SAFEOPT-1規則11; 修前視為未給)
 //   A3 終止原因為length時, `--format json`之step_finish帶reason 'length', detectTruncation據此回報incomplete(預設格式下完全看不出)
 //   A4 未截斷時detectTruncation之stdout與預設路徑逐位元相同
 //
@@ -172,12 +173,18 @@ describe('opencode輸出上限與截斷偵測(真實CLI + 本機假服務)', fun
         }
     })
 
-    it('A2: 無效值(opt與環境內)視為未給 → 套件預設; 未傳給CLI原值(CLI對無效值會靜默回32000)', async function() {
-        let a = await capOf('ok-384k', { outputTokenMax: 'abc' })
-        let b = await capOf('ok-384k', { outputTokenMax: 0 })
+    //(2026-11-23 tdai2c 改寫: 修前(1.0.109)斷言「opt.outputTokenMax無效(`'abc'`、`0`)視為未給 → 套件預設128000」; opt給了而無效者改為以params拒絕、不起子行程(帳本R-SAFEOPT-1規則11, 2026-11-23 tdai2),
+    // 故本機假服務不會收到任何請求(caps為空、n為0); 呼叫端環境內之無效值(OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX為`'abc'`、`'64000.5'`)仍視為未給 → 套件預設(CLI對無效值會靜默回32000, 故不原樣傳給CLI))
+    it('A2: opt.outputTokenMax給了而無效 → params拒絕、不起子行程(假服務未收到請求); 環境內之無效值仍視為未給 → 套件預設', async function() {
+        let bad = []
+        for (let v of ['abc', 0, '', -1, 1.5, true, {}]) {
+            let r = await capOf('ok-384k', { outputTokenMax: v })
+            bad.push([r.t.ok, r.t.errorType, r.t.attempts, r.caps, r.n])
+        }
+        assert.strict.deepEqual(bad, bad.map(() => [false, 'params', 0, [], 0]))
         let c = await capOf('ok-384k', { env: { [OUTPUT_TOKEN_MAX_ENV]: 'abc' } })
         let d = await capOf('ok-384k', { env: { [OUTPUT_TOKEN_MAX_ENV]: '64000.5' } })
-        assert.strict.deepEqual([a.caps, b.caps, c.caps, d.caps], [[DEFAULT_OUTPUT_TOKEN_MAX], [DEFAULT_OUTPUT_TOKEN_MAX], [DEFAULT_OUTPUT_TOKEN_MAX], [DEFAULT_OUTPUT_TOKEN_MAX]])
+        assert.strict.deepEqual([c.caps, d.caps], [[DEFAULT_OUTPUT_TOKEN_MAX], [DEFAULT_OUTPUT_TOKEN_MAX]])
     })
 
     it('A3: 預設路徑下length截斷無從分辨 —— ok:true、stdout空、離開碼0(本案症狀: 靜默成功)', async function() {

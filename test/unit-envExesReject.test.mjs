@@ -28,7 +28,7 @@ import { SENT, revoked, pathWithoutRealCli } from './tools/hostileValuesForTest.
 //   E5 遞補層於發try事件之前即判(checkSafeOpts, 與轉接器共用同一判定): 四家CLI條目之env無效者走條目層params、不發try。
 //   E6 filterOpencodeFree(opencode models子行程)之env同口徑(同形站點)。
 //   E7 起子行程之前即拒絕(以「每次被啟動即留記號」之假執行檔驗零次啟動, 含agy之stdin路徑--version探測); 可讀之env只讀一次(getter計數, 檢查之值即使用之值, K4)。
-//   刻意不改(保持案釘住): exes之各kind值為非字串、env之各變數值為非字串——仍照舊略過／原樣交子行程(列需裁示)。
+//   (2026-11-23 tdai2: exes之各kind值為非字串、env之各變數值為非字串原為「刻意不改」之保持案(列需裁示), 經主控裁定改為拒絕, 見unit-envExesValues.test.mjs(規則11)。)
 //
 // 安全: 不呼叫外部AI服務——假執行檔; before把PATH換成移除真CLI者、after還原。
 
@@ -178,8 +178,13 @@ describe('env、exes給了而非物件 → 拒絕(排程第553項裁示②)', fu
         })
         checkSafeOpts('claude', { env: mkEnv() })
         checkSafeOpts('codex', { env: mkEnv() })
-        resolveProviders([{ id: 'a', kind: 'claude' }], { env: mkEnv(), exes: mkEnv() })
+        resolveProviders([{ id: 'a', kind: 'claude' }], { env: mkEnv() })
         assert.strict.deepEqual(n, 0)
+
+        //exes(2026-11-23 tdai2, 規則11): 各kind之值須為非空字串, 故物化一次(getter只讀一次, 檢查之值即使用之值, K4); env仍不執行getter
+        resolveProviders([{ id: 'a', kind: 'claude' }], { env: mkEnv(), exes: mkEnv() })
+        assert.strict.deepEqual(n, 1)
+        n = 0
         let r = await dispatchAiFallback('abc', { providers: [{ id: 'g:codex', kind: 'codex', exe: fake.exe, env: mkEnv() }] })
         assert.strict.deepEqual([r.ok, n], [true, 1])
     })
@@ -327,7 +332,7 @@ describe('resolveProviders／resolveCatalogue／createAiCaller: env、exes給了
         assert.strict.deepEqual(rows, badObjs().map(() => [true, true]))
     })
 
-    it('E3 resolveProviders: env、exes未給(undefined、null)與一般物件照舊(含空物件不改用process.env); exes之各kind值非字串仍略過(保持案); 已撤銷之Proxy本就throw「is not readable」', function() {
+    it('E3 resolveProviders: env、exes未給(undefined、null)與一般物件照舊(含空物件不改用process.env); 已撤銷之Proxy本就throw「is not readable」(exes之各kind值非字串已於tdai2改為拒絕, 見unit-envExesValues)', function() {
         //未給: env用process.env(此環境變數未設, 條目b缺金鑰而skipped)、exes不注入
         for (let v of [undefined, null]) {
             let r = resolveProviders(providers(), { env: v, exes: v })
@@ -342,9 +347,7 @@ describe('resolveProviders／resolveCatalogue／createAiCaller: env、exes給了
         let r2 = resolveProviders(providers(), { env: {}, exes: {} })
         assert.strict.deepEqual([r2.providers.map((p) => p.id), r2.skipped.map((s) => s.id)], [['a'], ['b']])
 
-        //exes之各kind值為非字串: 本輪不改(列需裁示), 照舊略過
-        let r3 = resolveProviders(providers(), { exes: { claude: NUM } })
-        assert.strict.deepEqual(r3.providers.map((p) => p.exe), [undefined])
+        //exes之各kind值為非字串: 2026-11-23 tdai2起拒絕(規則11; 見unit-envExesValues.test.mjs), 修前(tdai1b之保持案)照舊略過
 
         //不可讀: 本就throw
         assert.strict.deepEqual([thrown(() => resolveProviders(providers(), { env: revoked() })).startsWith('env is not readable: '), thrown(() => resolveProviders(providers(), { exes: revoked() })).startsWith('exes is not readable: ')], [true, true])

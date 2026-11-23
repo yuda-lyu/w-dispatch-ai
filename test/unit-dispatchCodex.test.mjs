@@ -56,15 +56,21 @@ describe('dispatchCodex', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('model非有效字串時整段-m旗標不出現', async function() {
+    //(2026-11-23 tdai2 改寫: 修前斷言「非有效字串時整段-m旗標不出現」而改用CLI預設模型; model為影響計費之opt, 給了而無效改以params拒絕、不起子行程——帳本R-SAFEOPT-1規則11; 未給(undefined、null)與''照舊不帶旗標)
+    it('model未給(null、undefined、\'\')時整段-m旗標不出現; 給了而無效(123、{})以params拒絕、不起子行程', async function() {
         let r = []
-        for (let model of [null, undefined, '', 123, {}]) {
+        for (let model of [null, undefined, '']) {
             let t = await dispatchCodex('abc', { exe: fake.exe, model })
             let o = JSON.parse(t.stdout)
             r.push(o.args.includes('-m'))
         }
-        let rr = [false, false, false, false, false]
-        assert.strict.deepEqual(r, rr)
+        assert.strict.deepEqual(r, [false, false, false])
+        let bad = []
+        for (let model of [123, {}]) {
+            let t = await dispatchCodex('abc', { exe: fake.exe, model })
+            bad.push([t.ok, t.errorType, t.attempts, t.stdout === undefined || t.stdout === ''])
+        }
+        assert.strict.deepEqual(bad, [[false, 'params', 0, true], [false, 'params', 0, true]])
     })
 
     it('sandbox可自訂, 未給(undefined、null)用workspace-write; 給了而無效(非字串)以params拒絕、不起子行程、不退回workspace-write(排程第553項: 安全相關opt給了而無效即拒絕, 帳本R-SAFEOPT-1; 修前此案斷言「非有效字串回退workspace-write」)', async function() {

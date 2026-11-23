@@ -95,16 +95,21 @@ describe('dispatchOpencode之輸出上限注入與截斷偵測', function() {
             }
         })
 
-        it('非預期輸入視為未給: opt.outputTokenMax無效、環境內無效值 → 預設; 不報錯', async function() {
-            let r = []
-            for (let bad of [0, -1, 1.5, 'abc', '', null, true, Infinity, {}, []]) {
-                r.push(await max({ outputTokenMax: bad }))
-            }
+        //(2026-11-23 tdai2 改寫: 修前斷言「opt.outputTokenMax無效 → 視為未給而用預設」; outputTokenMax為影響計費之opt(單次輸出上限), 給了而無效改以params拒絕、不起子行程——帳本R-SAFEOPT-1規則11;
+        // 未給(undefined、null)用預設; 呼叫端環境內之無效值仍照舊以預設覆蓋(等同CLI本就忽略之值, 非本opt))
+        it('opt.outputTokenMax未給(undefined、null)與環境內無效值 → 預設; opt.outputTokenMax給了而無效以params拒絕、不起子行程', async function() {
+            let r = [await max({ outputTokenMax: null }), await max({ outputTokenMax: undefined })]
             for (let bad of ['abc', '0', '-5', '', '64000.5']) {
                 r.push(await max({ env: { [OUTPUT_TOKEN_MAX_ENV]: bad } }))
             }
             let v = String(DEFAULT_OUTPUT_TOKEN_MAX)
             assert.strict.deepEqual(r, r.map(() => v))
+            let bad = []
+            for (let b of [0, -1, 1.5, 'abc', '', true, Infinity, {}, [], 10n]) {
+                let t = await run('echo-env', { outputTokenMax: b })
+                bad.push([t.ok, t.errorType, t.attempts, /^outputTokenMax must be a positive integer/.test(String(t.error))])
+            }
+            assert.strict.deepEqual(bad, bad.map(() => [false, 'params', 0, true]))
         })
 
         it('不改寫呼叫端之env物件與process.env', async function() {

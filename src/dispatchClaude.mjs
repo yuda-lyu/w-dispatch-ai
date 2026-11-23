@@ -7,7 +7,7 @@ import getErrorResult from './getErrorResult.mjs'
 import runExecCli from './runExecCli.mjs'
 import { asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
-import { readStrOpt, readBoolOpt, readEnvOpt } from './readSafeOpt.mjs'
+import { readStrOpt, readBoolOpt, readEnvOpt, readNameOpt, readFunOpt } from './readSafeOpt.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import redactText, { redactApiKeyText, createStreamRedactor } from './redactText.mjs'
@@ -327,10 +327,10 @@ async function addFailureKind(out, raw, ckKey, tap, cc) {
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程(Claude Code之stdin上限10MB，超過即非零離開)
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='claude'] 輸入claude執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，未給(undefined、null)用'claude'，給了而非非空字串(含'')以params回報、不起子進程(不退回預設；排程第553項)
- * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'claude-opus-5-5'(全名, 固定版本)、'opus'或'sonnet'(別名, 隨CLI指向最新版)，預設''代表不帶`--model`旗標，由CLI依方案決定(2.1.280起Pro/Team Standard亦預設Opus)
+ * @param {String} [opt.model=''] 輸入模型別名或模型ID字串，例如'claude-opus-5-5'(全名, 固定版本)、'opus'或'sonnet'(別名, 隨CLI指向最新版)，預設''代表不帶`--model`旗標，由CLI依方案決定(2.1.280起Pro/Team Standard亦預設Opus)；未給(undefined、null、'')才不帶旗標，給了而非原始非空字串(數字、物件等)以params回報、不起子進程(不改用CLI預設模型；影響計費之opt，帳本R-SAFEOPT-1規則11)
  * @param {String} [opt.key=''] 輸入Anthropic Console之API金鑰字串(sk-ant-…)，給予有效字串即以API金鑰計費：只於該次子進程環境設ANTHROPIC_API_KEY並移除ANTHROPIC_AUTH_TOKEN、CLAUDE_CODE_USE_*、CLAUDE_CODE_OAUTH_TOKEN等其他憑證變數(含opt.env中同名者)，另自子進程環境移除繼承自process.env之父session連結變數(前綴CLAUDE_CODE_、CLAUDE_AGENT_SDK_與CLAUDECODE、CLAUDE_PID、CLAUDE_EFFORT、CLAUDE_JOB_DIR，保留CLAUDE_CODE_GIT_BASH_PATH；opt.env明確傳入者保留，要保留某使用者設定如CLAUDE_CODE_EFFORT_LEVEL請由opt.env傳入)，結果之stdout/stderr/error與onStdout／onStderr回調收到之文字遮蔽key(長度不足6字元者不遮蔽；含NUL字元者回INVALID_KEY失敗)；未給(undefined、null、'')代表沿用登入狀態(行為與無此參數時完全相同，不移除任何變數)，預設''；給了而無效(非字串：數字、物件、陣列、String包裝物件、已撤銷之Proxy等)回params失敗且不起子進程，不靜默改走登入態或繼承之環境金鑰(帳本R-KEYOPT-1)。經dispatchAiFallback時由條目之keys逐把注入(providers.mjs之claude-api:條目以envVar ANTHROPIC_KEYS取得)。勿把Console金鑰設為全域環境變數ANTHROPIC_API_KEY，否則本機全部Claude Code皆改走API計費
- * @param {Boolean} [opt.crossCheck=true] 輸入是否啟用「沒額度」交叉確認布林值(僅API金鑰在場時有意義：opt.key有效，或opt.env.ANTHROPIC_API_KEY有效字串)：CLI失敗且字樣判為沒額度時，以同一把金鑰對REST送極小請求(max_tokens: 1，費用極小)確認——REST亦沒額度才判'no-credit'，REST成功判'env-error'(呼叫方式或環境錯誤)，其餘結果判'other'；false代表只憑CLI字樣判定(「Credit balance is too low」曾在金鑰正常時出現，風險自負)，預設true
- * @param {Function} [opt.fetch=globalThis.fetch] 輸入交叉確認用之fetch函數，可注入以利測試(不發真實請求)，預設全域fetch
+ * @param {Boolean} [opt.crossCheck=true] 輸入是否啟用「沒額度」交叉確認布林值(僅API金鑰在場時有意義：opt.key有效，或opt.env.ANTHROPIC_API_KEY有效字串)：CLI失敗且字樣判為沒額度時，以同一把金鑰對REST送極小請求(max_tokens: 1，費用極小)確認——REST亦沒額度才判'no-credit'，REST成功判'env-error'(呼叫方式或環境錯誤)，其餘結果判'other'；false代表只憑CLI字樣判定(「Credit balance is too low」曾在金鑰正常時出現，風險自負)，預設true；未給(undefined、null)為true，給了而非布林(0、''、'false'等)以params回報、不起子進程(不視為true而多發請求；帳本R-SAFEOPT-1規則11)
+ * @param {Function} [opt.fetch=globalThis.fetch] 輸入交叉確認用之fetch函數，可注入以利測試(不發真實請求)，預設全域fetch；未給(undefined、null)用全域fetch，給了而非函數以params回報、不起子進程(不改走全域fetch而發出真實請求；帳本R-SAFEOPT-1規則11)
  * @param {String} [opt.crossCheckBaseURL='https://api.anthropic.com'] 輸入交叉確認之API基底網址字串，預設官方端點；CLI經ANTHROPIC_BASE_URL導向他處者請同步給予
  * @param {String} [opt.crossCheckModel='claude-haiku-5-5'] 輸入交叉確認用模型ID字串，預設claude-haiku-5-5(最便宜)
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，未給(undefined、null)用true，給了而非布林以params回報、不起子進程(不退回true；排程第553項)
@@ -385,8 +385,23 @@ async function dispatchClaude(prompt, opt = {}) {
     }
     let exe = rexe.value === null ? DEFAULT_EXE : rexe.value
 
-    //model, 無效時整段`--model`旗標不出現, 由CLI自行決定使用模型
-    let model = get(opt, 'model', null)
+    //model為影響計費之opt: 未給(undefined、null、'')不帶`--model`旗標由CLI自行決定使用模型; 給了而無效(非原始非空字串)以params回報、不起子行程——
+    //修前無效時整段`--model`旗標悄悄不出現而改用CLI預設模型(帳本R-SAFEOPT-1規則11; dspec §11〈影響下單數量或金額之opt視同安全相關opt〉)
+    let rmodel = readNameOpt(get(opt, 'model', null), 'model')
+    if (rmodel.err !== '') {
+        return getErrorResult(rmodel.err)
+    }
+    let model = rmodel.value
+
+    //crossCheck與fetch亦為影響計費之opt(僅API金鑰在場且失敗時才發交叉確認之REST請求): crossCheck給了而非布林(修前視為true而多發請求)、fetch給了而非函數(修前改走全域fetch而發出真實請求)以params回報、不起子行程(規則11)
+    let rcc = readBoolOpt(get(opt, 'crossCheck', null), 'crossCheck')
+    if (rcc.err !== '') {
+        return getErrorResult(rcc.err)
+    }
+    let rfetch = readFunOpt(get(opt, 'fetch', null), 'fetch')
+    if (rfetch.err !== '') {
+        return getErrorResult(rfetch.err)
+    }
 
     //skipPermissions(非互動-p模式不卡權限確認之預設true): 修前非布林退回true(原要求保留權限閘門之意圖被關掉)
     let rskip = readBoolOpt(get(opt, 'skipPermissions', null), 'skipPermissions')
@@ -520,10 +535,9 @@ async function dispatchClaude(prompt, opt = {}) {
 
     //API金鑰在場之失敗: 加failureKind細分類, 「沒額度」以REST交叉確認(成功結果與訂閱路徑不經此處)
     if (ckKey !== null && out.ok !== true) {
-        let cfetch = get(opt, 'fetch', null)
         out = await addFailureKind(out, r, ckKey, tap, {
-            enabled: get(opt, 'crossCheck', null) !== false,
-            fetch: isfun(cfetch) ? cfetch : null,
+            enabled: rcc.value !== false, //已於前段驗為未給或布林(規則11); 未給為true
+            fetch: rfetch.value, //已於前段驗為未給或函數(規則11)
             baseURL: get(opt, 'crossCheckBaseURL', null),
             model: get(opt, 'crossCheckModel', null),
             timeoutMs, //整次嘗試之上限: 交叉確認只用扣除CLI已耗時後之剩餘時間(見addFailureKind)

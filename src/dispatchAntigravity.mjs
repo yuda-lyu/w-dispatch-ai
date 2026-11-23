@@ -3,7 +3,7 @@ import omit from 'lodash-es/omit.js'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
 import strTruncate from 'wsemi/src/strTruncate.mjs'
-import { readStrOpt, readBoolOpt, readDirsOpt, readEnvOpt } from './readSafeOpt.mjs'
+import { readStrOpt, readBoolOpt, readDirsOpt, readEnvOpt, readNameOpt } from './readSafeOpt.mjs'
 import getCliArgs from './getCliArgs.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import runExecCli, { optTruncate } from './runExecCli.mjs'
@@ -185,8 +185,8 @@ function reshapeAgyResult(r, raw) {
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.promptVia='auto'] 輸入提示詞傳法字串，'argv'走`--print`旗標(超過30000字元回params失敗，行為同修前)，'stdin'走`--input-format stream-json`自stdin送一行NDJSON(不受命令列上限約束，需agy>=1.1.15；舊版回params錯誤並指引升級；extraArgs含`--output-format`、`--input-format`、`--print`/`-p`/`--prompt`、`-i`/`--prompt-interactive`者回params錯誤)，'auto'為不超過30000字元走argv、超過走stdin；其他值回退預設，預設'auto'
  * @param {String} [opt.exe='agy'] 輸入agy執行檔名稱或絕對路徑字串，命令名為agy非antigravity，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，未給(undefined、null)用'agy'，給了而非非空字串(含'')以params回報、不起子進程(不退回預設；排程第553項)
- * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.8-flash-low'、'gemini-4-argon-high'，預設''代表不帶`--model`旗標由agy自行決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，會耗用Argon額度；預設可能隨agy版本變動)
- * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'(部分模型更少，以`agy -p /effort --model <slug> --output-format json`之available為準)，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶
+ * @param {String} [opt.model=''] 輸入模型slug字串，須為`agy models`第一欄之slug，例如'gemini-3.8-flash-low'、'gemini-4-argon-high'，預設''代表不帶`--model`旗標由agy自行決定(agy 1.4.0實測預設為Gemini 4 Argon (Medium)，會耗用Argon額度；預設可能隨agy版本變動)；未給(undefined、null、'')才不帶旗標，給了而非原始非空字串(數字、物件等)以params回報、不起子進程(不改用agy預設模型；影響計費之opt，帳本R-SAFEOPT-1規則11)
+ * @param {String} [opt.effort=''] 輸入推理深度字串，可選'low'、'medium'、'high'(部分模型更少，以`agy -p /effort --model <slug> --output-format json`之available為準)，需agy>=1.1.11，建議搭配不帶檔位之基礎slug；與帶檔位slug併用且檔位不一致時agy回conflicts錯誤，預設''代表不帶；未給(undefined、null、'')才不帶旗標，給了而非原始非空字串(數字、物件等)以params回報、不起子進程(不改用agy預設檔位；帳本R-SAFEOPT-1規則11)
  * @param {Boolean} [opt.skipPermissions=true] 輸入是否帶`--dangerously-skip-permissions`旗標布林值，false代表保留CLI權限閘門，未給(undefined、null)用true，給了而非布林以params回報、不起子進程(不退回true；排程第553項)
  * @param {String} [opt.printTimeout=''] 輸入agy自身等待上限字串(如'10m'、'630s')，預設''代表由timeoutMs推導(加30秒，恆大於timeoutMs令外層先逾時；agy自身逾時是離開碼0之部分輸出，不是錯誤，故一般無須手動設)
  * @param {Array} [opt.addDirs=自動納入cwd] 輸入加入workspace之目錄字串陣列，逐項展開為`--add-dir`。agy以自身scratch目錄為工作區而不採子進程cwd，故未給本參數時自動納入有效cwd令檔案可視範圍與其他CLI轉接器一致；明示給陣列(含空陣列[]代表不揭露任何目錄)則完全尊重呼叫端(含有效字串者無效元素略過)；給了而非陣列、不可讀或元素全無效者以params回報、不起子進程(不退回[cwd]；排程第553項)
@@ -269,11 +269,19 @@ async function dispatchAntigravity(prompt, opt = {}) {
         return getErrorResult(renv.err)
     }
 
-    //model, 無效時整段`--model`旗標不出現, 由agy自行決定使用模型(agy 1.4.0實測預設為Gemini 4 Argon (Medium), 見檔頭)
-    let model = get(opt, 'model', null)
-
-    //effort, 無效時整段`--effort`旗標不出現; 與帶檔位slug之衝突由agy判定(檔位不一致時conflicts錯誤, exit 1)
-    let effort = get(opt, 'effort', null)
+    //model、effort為影響計費之opt: 未給(undefined、null、'')不帶旗標, 由agy自行決定使用模型與檔位(agy 1.4.0實測預設為Gemini 4 Argon (Medium), 見檔頭);
+    //給了而無效(非原始非空字串)以params回報、不起子行程(含agy --version探測)——修前無效時整段旗標悄悄不出現而改用agy預設(帳本R-SAFEOPT-1規則11; dspec §11〈影響下單數量或金額之opt視同安全相關opt〉);
+    //effort與帶檔位slug之衝突由agy判定(檔位不一致時conflicts錯誤, exit 1)
+    let rmodel = readNameOpt(get(opt, 'model', null), 'model')
+    if (rmodel.err !== '') {
+        return getErrorResult(rmodel.err)
+    }
+    let model = rmodel.value
+    let reffort = readNameOpt(get(opt, 'effort', null), 'effort')
+    if (reffort.err !== '') {
+        return getErrorResult(reffort.err)
+    }
+    let effort = reffort.value
 
     //skipPermissions(非互動print模式不卡權限確認之預設true): 修前非布林退回true(原要求保留權限閘門之意圖被關掉)
     let rskip = readBoolOpt(get(opt, 'skipPermissions', null), 'skipPermissions')

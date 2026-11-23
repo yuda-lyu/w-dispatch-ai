@@ -2,7 +2,7 @@ import get from 'lodash-es/get.js'
 import omit from 'lodash-es/omit.js'
 import isestr from 'wsemi/src/isestr.mjs'
 import isfun from 'wsemi/src/isfun.mjs'
-import { readStrOpt, readBoolOpt, readEnvOpt } from './readSafeOpt.mjs'
+import { readStrOpt, readBoolOpt, readEnvOpt, readNameOpt } from './readSafeOpt.mjs'
 import parseCodexEvents from './parseCodexEvents.mjs'
 import { listCodexRefs, removeNewCodexRefs } from './cleanCodexRefs.mjs'
 import getCliArgs from './getCliArgs.mjs'
@@ -61,7 +61,7 @@ let ACC_MAX = 32 * 1024 * 1024
  * @param {String} prompt 輸入提示詞字串，一律以stdin傳入子進程
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {String} [opt.exe='codex'] 輸入codex執行檔名稱或絕對路徑字串，給予名稱時由execCli自系統PATH解析(.cmd/.bat只給檔名時依cmd.exe語意先搜cwd再搜PATH，cwd不可信時請給絕對路徑)，未給(undefined、null)用'codex'，給了而非非空字串(含'')以params回報、不起子進程(不退回預設；排程第553項)
- * @param {String} [opt.model=''] 輸入模型ID字串，例如'gpt-5.6-luna'、'gpt-6.1-terra'、'gpt-6.1-sol'，預設''代表不帶`-m`旗標(此時由CLI依config.toml之model或官方推薦預設決定)
+ * @param {String} [opt.model=''] 輸入模型ID字串，例如'gpt-5.6-luna'、'gpt-6.1-terra'、'gpt-6.1-sol'，預設''代表不帶`-m`旗標(此時由CLI依config.toml之model或官方推薦預設決定)；未給(undefined、null、'')才不帶旗標，給了而非原始非空字串(數字、物件等)以params回報、不起子進程(不改用CLI預設模型；影響計費之opt，帳本R-SAFEOPT-1規則11)
  * @param {String} [opt.sandbox='workspace-write'] 輸入沙箱模式字串，例如'read-only'、'workspace-write'、'danger-full-access'，未給(undefined、null)用'workspace-write'，給了而非非空字串(含'')以params回報、不起子進程(不退回'workspace-write'放寬沙箱；排程第553項)
  * @param {Array} [opt.extraArgs=[]] 輸入額外命令列旗標字串陣列，例如['--config', 'model_reasoning_effort="max"']，將接於固定旗標之後，預設[]。帶`--json`時stdout為JSONL事件流(不改)，結果另帶raw(該次嘗試之完整事件流文字)與commands(各命令之完成事件陣列，各項含id、command、exitCode、status、output、outputTruncated；output即Codex實際收到之命令輸出，供審查引用與原文不符時分辨「讀檔失真」或「模型引用錯」；成功與失敗皆帶，事件流無任何已知事件者不帶)
  * @param {Boolean} [opt.cleanCodexRefs=true] 輸入是否於派工結束後清除Codex於cwd所在git repo新留下之`refs/codex/*`布林值(只刪派工前不存在、前綴為`refs/codex/`者，不碰其他ref；最佳努力，git不存在或cwd非repo者略過)，false代表不清；有清除者結果另帶codexRefsRemoved(個數)，預設true
@@ -109,8 +109,13 @@ async function dispatchCodex(prompt, opt = {}) {
     }
     let exe = rexe.value === null ? DEFAULT_EXE : rexe.value
 
-    //model, 無效時整段`-m`旗標不出現, 由CLI自行決定使用模型
-    let model = get(opt, 'model', null)
+    //model為影響計費之opt: 未給(undefined、null、'')不帶`-m`旗標由CLI自行決定使用模型; 給了而無效(非原始非空字串)以params回報、不起子行程——
+    //修前無效時整段`-m`旗標悄悄不出現而改用CLI預設模型(帳本R-SAFEOPT-1規則11; dspec §11〈影響下單數量或金額之opt視同安全相關opt〉)
+    let rmodel = readNameOpt(get(opt, 'model', null), 'model')
+    if (rmodel.err !== '') {
+        return getErrorResult(rmodel.err)
+    }
+    let model = rmodel.value
 
     //sandbox: 修前非字串退回workspace-write(原要求read-only之意圖被放寬)
     let rsandbox = readStrOpt(get(opt, 'sandbox', null), 'sandbox')

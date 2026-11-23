@@ -24,7 +24,7 @@ README 行為變更新增第 85、86 條;公開 API 無改名、無新增匯出;
 
 ## 三、已知待辦
 
-- **需主控裁示**(同形項,本輪範圍外):①`exes` 之各 kind 值為非字串(`{ claude: 123 }` 照舊略過)、`env` 之各變數值為非字串;②`resolveProviders` 之 `pick`／`patch` 給了非預期型別(視同未給,`pick` 為字串即全取含付費條目);③`model`／`effort`／`outputTokenMax` 等有計費影響之一般 K3 項;④`dispatchOpencode` 之 `provider` 為 `''` 而 `key` 有效時 `key` 不被注入(維持現狀,文件載明之預設值).
+- **(2026-11-23 tdai2 已處理:①②③ 依主控裁定採②、④維持現狀,見 `state_tdai2.md`;以下為 tdai1b 當時之待裁示原文)** **需主控裁示**(同形項,本輪範圍外):①`exes` 之各 kind 值為非字串(`{ claude: 123 }` 照舊略過)、`env` 之各變數值為非字串;②`resolveProviders` 之 `pick`／`patch` 給了非預期型別(視同未給,`pick` 為字串即全取含付費條目);③`model`／`effort`／`outputTokenMax` 等有計費影響之一般 K3 項;④`dispatchOpencode` 之 `provider` 為 `''` 而 `key` 有效時 `key` 不被注入(維持現狀,文件載明之預設值).
 - **下游全域技能須同步**(主控改 AI 設定庫):四家 dispatch 技能之 `env`／`exes`／`useStoredAuth`／`provider` 說明(兩輪合併之升版須知見本輪修正報告).
 - 同 tdai1:`dist/` 為發布時自動產製;轉接器自身才得知之 `params`(`dispatchAi` 內)仍發生於 `try` 事件之後.
 

@@ -8,7 +8,7 @@ import strFindSimilar from 'wsemi/src/strFindSimilar.mjs'
 import splitKeys from './splitKeys.mjs'
 import { readKeys } from './readKeyOpt.mjs'
 import { assertReadable } from './callUserFn.mjs'
-import { assertObjOpt } from './readSafeOpt.mjs'
+import { assertObjOpt, assertArrOpt, readExesOpt, readPatchOpt } from './readSafeOpt.mjs'
 
 
 // resolveProviders.mjs — 把providers定義檔展開為可直接使用的條目
@@ -44,11 +44,11 @@ import { assertObjOpt } from './readSafeOpt.mjs'
  *
  * @param {Array} providers 輸入providers條目物件陣列(如providers.mjs之預設匯出)
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，未給(undefined、null)用process.env；給了而非物件(字串、數字、陣列、Map等)或不可讀者同步throw(不改用process.env)。建議以readEnvFile('./.env')讀成物件傳入，不污染process.env
+ * @param {Object} [opt.env=process.env] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，未給(undefined、null)用process.env；給了而非物件(字串、數字、陣列、Map等)或不可讀者同步throw(不改用process.env)；各變數之值須為字串(undefined視為該變數缺值)，值為null、數字、布林、物件等同步throw(不轉成字串當金鑰、不當缺值而停用條目)。建議以readEnvFile('./.env')讀成物件傳入，不污染process.env
  * @param {Boolean} [opt.splitSemicolon=true] 輸入名稱以_KEYS結尾之環境變數遇分號時是否視同逗號拆開布林值，預設true(拆開並於warnings回報)；false代表分號保留於金鑰內(仍回報warning)。使用者曾以分號分隔多把金鑰致整串被當成一把(送出後為401金鑰無效而非明顯的設定錯誤)；已知內建供應商之金鑰字元皆為英數、底線與連字號，不含分號。其他變數名(如單數形FOO_KEY)只認逗號
- * @param {Array} [opt.pick=null] 輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)
- * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件(如{claude:'C:/.../claude.exe'})，命中kind之條目補上exe欄位(條目已自帶exe者不覆寫——條目層設定優先)，未給(undefined、null)代表不注入；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)
- * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件(如{'claude:sonnet':{timeoutMs:360000}})，命中id之條目淺合併覆寫，於exes之後施作故可覆寫exe，預設null代表不覆寫
+ * @param {Array} [opt.pick=null] 輸入自選id字串陣列，依此順序回傳對應條目，查無之id列入missing，預設null代表全取(依原順序)；空陣列亦全取；給了而非陣列(字串、數字、物件等)或不可讀者同步throw(不視為未給而全取，含付費條目)
+ * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件(如{claude:'C:/.../claude.exe'})，命中kind之條目補上exe欄位(條目已自帶exe者不覆寫——條目層設定優先)，未給(undefined、null)代表不注入；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)；各kind之值須為非空字串(undefined、null視為未給該kind)，值為空字串、數字、物件等同步throw(不略過而改用PATH上之預設執行檔)
+ * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件(如{'claude:sonnet':{timeoutMs:360000}})，命中id之條目淺合併覆寫，於exes之後施作故可覆寫exe，預設null代表不覆寫；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)；各id之值須為一般物件(undefined、null視為未給該id)，值為字串、數字、陣列、Map等同步throw(不略過而丟掉覆寫之欄位如model)
  * @returns {Object} 回傳物件，內含providers(可直接餵dispatchAiFallback之條目陣列)、table(id對條目之物件，可直接餵dispatchAiWkf)、skipped(缺環境變數而停用之{id,envVar}陣列)、missing(pick查無之id字串陣列)、hints(missing id對最接近可用id之拼寫提示物件，pick查無多半是打錯字，附最接近id供直接定位；僅為相似度最高者非保證正解，無missing時為空物件)，warnings(設定疑慮之陣列，目前只有'KEYS_SEMICOLON'：各項含envVar、code、message與ids(受影響之條目id)，不含金鑰值；無疑慮時為空陣列)
  * @example
  *
@@ -104,9 +104,22 @@ function resolveProviders(providers, opt = {}) {
     }
 
     //env、exes給了而非物件(字串、數字、陣列、Map等; 含空字串)一律同步throw, 不視為未給(帳本R-SAFEOPT-1規則10; 與四家CLI、額度讀者之env同一判定readEnvOpt):
-    //env非物件而改用process.env即悄悄換掉金鑰來源, exes非物件而略過即悄悄改用PATH上之預設執行檔; 未給(undefined、null)照舊。判定只驗不取值(env、exes仍以呼叫端原物件使用)
-    assertObjOpt(get(opt, 'env', null), 'env')
-    assertObjOpt(get(opt, 'exes', null), 'exes')
+    //env非物件而改用process.env即悄悄換掉金鑰來源, exes非物件而略過即悄悄改用PATH上之預設執行檔; 未給(undefined、null)照舊。
+    //env只驗形狀與資料屬性之值(須為字串, undefined為合法; 不執行getter, 由下方取值處再判所取之值; 規則11), 仍以呼叫端原物件使用;
+    //exes須為物件且各kind之值為非空字串(undefined、null為未給該kind; 規則11)——物化一次(getter只讀一次, 檢查之值即使用之值, K4), 其後用副本
+    assertObjOpt(get(opt, 'env', null), 'env', 'env')
+    let rexes = readExesOpt(get(opt, 'exes', null), 'exes')
+    if (rexes.err !== '') {
+        throw new Error(rexes.err)
+    }
+
+    //pick給了而非陣列(字串、數字、物件等)同步throw: 修前視同未給而全取(含付費條目); patch給了而非物件同步throw: 修前略過(逐id覆寫之意圖被丟棄; 規則11)。空陣列pick照舊(全取)
+    //patch內逐id之值(給了而非一般物件亦同步throw, undefined、null為未給該id; tdai2b/規則11)與exes同源物化一次(getter只讀一次, 檢查之值即套用之值, K4), 其後用副本
+    assertArrOpt(get(opt, 'pick', null), 'pick')
+    let rpatch = readPatchOpt(get(opt, 'patch', null), 'patch')
+    if (rpatch.err !== '') {
+        throw new Error(rpatch.err)
+    }
 
     //env, 未給回退process.env(瀏覽器環境無process則空物件)
     let env = get(opt, 'env', null)
@@ -163,7 +176,13 @@ function resolveProviders(providers, opt = {}) {
 
         //envVar → keys, 變數值以逗號分隔多把; 名稱以_KEYS結尾者(複數形＝清單)遇分號時視同逗號並發warning(見splitKeys.mjs檔頭), 其餘變數名只認逗號
         let isList = /_KEYS$/i.test(envVar)
-        let sk = splitKeys(String(get(env, envVar, '') || ''), { splitSemicolon: isList && splitSemicolon })
+        let raw = get(env, envVar, '')
+        if (raw !== undefined && typeof raw !== 'string') {
+
+            //所取之變數值須為字串(undefined為缺值): 數字等修前被String()轉成金鑰、null被當缺值而停用條目(規則11); 存取器(getter)於此才讀(讀一次), 訊息不含值與變數名
+            throw new Error(`env values must be strings when given (1 invalid, first got ${typeof raw}); an invalid env is rejected instead of silently coerced or skipped`)
+        }
+        let sk = splitKeys(String(raw || ''), { splitSemicolon: isList && splitSemicolon })
         let keys = sk.keys
         if (isList && sk.hasSemicolon) {
 
@@ -191,8 +210,8 @@ function resolveProviders(providers, opt = {}) {
 
     //後處理: exes(逐kind)與patch(逐id), 於table組建「之前」施作——
     //providers與table由同一份out產出, 兩種輸出必然一致(檔頭之單邊套用殷鑑)
-    let exes = get(opt, 'exes', null)
-    let patch = get(opt, 'patch', null)
+    let exes = rexes.exes //物化之副本(已驗各值為非空字串或未給)
+    let patch = rpatch.patch //物化之副本(已驗各id之值為一般物件或未給)
     if (isobj(exes) || isobj(patch)) {
         out = out.map((entry) => {
             let e = entry

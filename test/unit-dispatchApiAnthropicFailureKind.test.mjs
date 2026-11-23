@@ -191,9 +191,13 @@ describe('dispatchApiAnthropic failureKind', function() {
         assert.strict.deepEqual(r, [['no-credit', 1], ['no-credit', 1], ['no-credit', 1], ['context-too-long', 1], ['rate-limit', 3], ['overloaded', 3]])
     })
 
-    it('opt.fetch非函數視為未給(退回全域fetch)', async function() {
+    //(2026-11-23 tdai2 改寫: 修前斷言「非函數視為未給(退回全域fetch)」而發出真實請求; fetch為影響計費之注入縫, 給了而非函數改以params拒絕、不送請求——帳本R-SAFEOPT-1規則11)
+    it('opt.fetch給了而非函數以params拒絕、不送請求(不退回全域fetch); 未給(undefined、null)用全域fetch', async function() {
         let t = await call('ok', { fetch: 'not-a-function' })
-        assert.strict.equal(t.ok, true)
+        assert.strict.deepEqual([t.ok, t.errorType, t.attempts, /^fetch must be a function/.test(String(t.error))], [false, 'params', 0, true])
+        let u = await call('ok', { fetch: null })
+        let v = await call('ok', { fetch: undefined })
+        assert.strict.deepEqual([u.ok, v.ok], [true, true])
     })
 
 })

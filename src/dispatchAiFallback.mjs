@@ -928,7 +928,7 @@ async function dispatchAiFallback(prompt, opt = {}) {
             entryErr = readKey(get(entryAttemptOpt, 'key', null)).err
         }
 
-        //轉接器之安全相關純量opt(exe、cwd、sandbox、skipPermissions、addDirs、baseURL、cleanCodexRefs、四家CLI之env、opencode之useStoredAuth與provider)給了而無效: 轉接器本就會以params拒絕, 於此先判(單一來源readSafeOpt.mjs之checkSafeOpts),
+        //轉接器之安全相關純量opt(exe、cwd、sandbox、skipPermissions、addDirs、baseURL、cleanCodexRefs、四家CLI之env〔含各變數之值〕、opencode之useStoredAuth與provider)與影響計費之opt(四家CLI與typesafe之model、agy之effort、opencode之outputTokenMax、claude之crossCheck與fetch、anthropic之effort與fetch、REST之body、opencode之config; 規則11)給了而無效: 轉接器本就會以params拒絕, 於此先判(單一來源readSafeOpt.mjs之checkSafeOpts),
         //令此類未送出之失敗同條目層params失敗不發try事件(不入onUsage／createUsageCounter之帳; 帳本R-SAFEOPT-1之C1); keyed: 該條目有有效之keys(provider無效且有金鑰才拒絕, 見readProviderOpt)
         if (entryErr === '' && isestr(kind)) {
             entryErr = checkSafeOpts(kind, entryAttemptOpt, { keyed: nk > 0 })

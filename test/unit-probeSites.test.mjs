@@ -340,9 +340,19 @@ describe('resolveProviders／resolveCatalogue／createAiCaller: 呼叫端物件�
         }
         assert.strict.deepEqual(rows, rr)
 
-        //對照: pick、patch可讀而型別不符者照舊視同未給(K3; 此二項非本輪之env／exes裁示範圍): pick為字串視同未給(全取)、patch為字串不套用
-        let r = resolveProviders(providers(), { pick: 'x', patch: 'y' })
-        assert.strict.deepEqual([r.providers.map((p) => p.id), r.skipped.map((s) => s.id)], [['a'], ['b']])
+        //pick、patch可讀而型別不符: 2026-11-23 tdai2起同步throw(規則11; 修前視同未給——pick為字串即全取含付費條目、patch為字串不套用; 細案見unit-envExesValues)
+        assert.strict.deepEqual(
+            [{ pick: 'x' }, { patch: 'y' }].map((o) => {
+                try {
+                    resolveProviders(providers(), o)
+                    return ''
+                }
+                catch (err) {
+                    return String(err && err.message).split(' ')[0]
+                }
+            }),
+            ['pick', 'patch'],
+        )
 
         //env、exes可讀而非物件: 排程第553項裁示②起同步throw(不再視同未給而改用process.env、略過exes; 帳本R-SAFEOPT-1規則10, 細案見unit-envExesReject)
         assert.strict.deepEqual(
@@ -359,7 +369,7 @@ describe('resolveProviders／resolveCatalogue／createAiCaller: 呼叫端物件�
         )
     })
 
-    it('resolveCatalogue與createAiCaller: catalogue／extraProviders／env／pick／exes／patch／providerTimeouts不可讀 → throw; 可讀而型別不符之catalogue照舊改用內建目錄', function() {
+    it('resolveCatalogue與createAiCaller: catalogue／extraProviders／env／pick／exes／patch／providerTimeouts不可讀 → throw; 可讀而非陣列之catalogue同步throw(2026-11-23 tdai2b起; 修前改用內建目錄)', function() {
         //規格: 同上; 修前(1.9.69下)catalogue不可讀被當成未給而靜默改用內建目錄(含付費條目)
         let rows = []
         for (let k of ['catalogue', 'extraProviders', 'env', 'pick', 'exes', 'patch', 'providerTimeouts']) {
@@ -375,7 +385,9 @@ describe('resolveProviders／resolveCatalogue／createAiCaller: 呼叫端物件�
             }
         }
         assert.strict.deepEqual(rows, rows.map(([k]) => [k, true]))
-        assert.strict.deepEqual(resolveCatalogue({ catalogue: 123, env: {} }).merged.length, providersAll.length)
+        //可讀而非陣列之catalogue: tdai2b起同步throw(不再改用含付費條目之內建目錄; 細案見unit-patchCatalogueConfig C1); 未給(undefined、null)才用內建目錄
+        assert.strict.throws(() => resolveCatalogue({ catalogue: 123, env: {} }), /^Error: catalogue must be an array when given/)
+        assert.strict.deepEqual(resolveCatalogue({ env: {} }).merged.length, providersAll.length)
 
         //createAiCaller建構時解析一次, 同樣throw
         let msg = ''

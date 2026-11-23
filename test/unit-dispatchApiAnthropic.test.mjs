@@ -105,21 +105,30 @@ describe('dispatchApiAnthropic', function() {
         assert.strict.deepEqual(o, oo)
     })
 
-    it('effort為low/medium/high/xhigh/max時以output_config.effort送出; 其他值視為未給(不送)', async function() {
+    //(2026-11-23 tdai2 改寫: 修前斷言「其他值視為未給(不送)」; effort為影響計費之opt, 給了而不在五個有效值內改以params拒絕、不送請求——帳本R-SAFEOPT-1規則11; 未給(undefined、null)與''照舊不送)
+    it('effort為low/medium/high/xhigh/max時以output_config.effort送出; 未給(null、undefined、\'\')不送; 給了而無效(\'ultra\'、5、{})以params拒絕、不送請求', async function() {
         let r = []
         for (let effort of ['low', 'medium', 'high', 'xhigh', 'max']) {
             await call('ok', { effort })
             r.push(last().body.output_config)
         }
-        for (let effort of ['ultra', '', null, undefined, 5, {}]) {
+        for (let effort of ['', null, undefined]) {
             await call('ok', { effort })
             r.push(last().body.output_config)
         }
         let rr = [
             { effort: 'low' }, { effort: 'medium' }, { effort: 'high' }, { effort: 'xhigh' }, { effort: 'max' },
-            undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined,
         ]
         assert.strict.deepEqual(r, rr)
+        let n = srv.requests.length
+        let bad = []
+        for (let effort of ['ultra', 5, {}, 'LOW', ' low']) {
+            let t = await call('ok', { effort })
+            bad.push([t.ok, t.errorType, t.attempts, /^effort must be one of low, medium, high, xhigh, max/.test(String(t.error))])
+        }
+        assert.strict.deepEqual(bad, [1, 2, 3, 4, 5].map(() => [false, 'params', 0, true]))
+        assert.strict.equal(srv.requests.length, n) //不送請求
     })
 
     it('body併入請求本體且同名鍵以body為準(max_tokens、thinking、output_config、fallbacks皆可覆寫或加入)', async function() {

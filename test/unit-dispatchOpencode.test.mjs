@@ -173,15 +173,22 @@ describe('dispatchOpencode', function() {
         assert.strict.deepEqual(r, rr)
     })
 
-    it('config非有效物件或字串時不注入OPENCODE_CONFIG_CONTENT', async function() {
+    //(2026-11-23 tdai2b 改寫: 修前斷言「config為數字、陣列時不注入(視為未給而沿用既有設定)」; config無效則沿用使用者既有設定(其內可載model、provider之預設), 主控裁定給了而非字串亦非一般物件改以params拒絕、不起子行程——帳本R-SAFEOPT-1規則11, 細案見unit-patchCatalogueConfig; 未給(undefined、null)與''照舊不注入)
+    it('config未給(undefined、null)或\'\'時不注入OPENCODE_CONFIG_CONTENT; 給了而非字串亦非一般物件(123、[])以params拒絕、不起子行程', async function() {
         let r = []
-        for (let config of [null, undefined, '', 123, []]) {
+        for (let config of [null, undefined, '']) {
             let t = await dispatchOpencode('abc', { exe: fake.exe, config })
             let o = JSON.parse(t.stdout)
             r.push(o.env.OPENCODE_CONFIG_CONTENT)
         }
-        let rr = ['', '', '', '', '']
+        let rr = ['', '', '']
         assert.strict.deepEqual(r, rr)
+        let bad = []
+        for (let config of [123, []]) {
+            let t = await dispatchOpencode('abc', { exe: fake.exe, config })
+            bad.push([t.ok, t.errorType, t.attempts, t.stdout === undefined || t.stdout === ''])
+        }
+        assert.strict.deepEqual(bad, [[false, 'params', 0, true], [false, 'params', 0, true]])
     })
 
     it('自帶env可與金鑰注入併存', async function() {

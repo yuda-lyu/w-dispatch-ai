@@ -215,11 +215,15 @@ describe('resolveCatalogue', function() {
         assert.strict.equal(t['claude:opus-5.5'].model, 'opus-x')
     })
 
-    it('呼叫端patch中非物件之值略過；patch非物件整份略過', function() {
-        let a = resolveCatalogue({ pick: ['claude:sonnet'], timeoutMs: 5, patch: { 'claude:sonnet': 'bad' } })
-        let b = resolveCatalogue({ pick: ['claude:sonnet'], timeoutMs: 5, patch: 'bad' })
+    //(2026-11-23 tdai2 改寫: 修前斷言「patch非物件整份略過」; patch可覆寫任意欄位(含model), 給了而非物件改為同步throw、不略過——帳本R-SAFEOPT-1規則11;
+    // 2026-11-23 tdai2b 再改寫: patch內逐id之非物件值(原仍略過)亦同步throw, undefined、null為未給該id; 細案見unit-patchCatalogueConfig P1)
+    it('patch內各id之值為undefined、null(未給該id)照舊; 給了而非一般物件同步throw; patch本身給了而非物件同步throw(未給照舊)', function() {
+        let a = resolveCatalogue({ pick: ['claude:sonnet'], timeoutMs: 5, patch: { 'claude:sonnet': undefined, 'claude:opus-5.5': null } })
         assert.strict.equal(a.resolved.table['claude:sonnet'].timeoutMs, 5)
-        assert.strict.equal(b.resolved.table['claude:sonnet'].timeoutMs, 5)
+        assert.strict.throws(() => resolveCatalogue({ pick: ['claude:sonnet'], timeoutMs: 5, patch: { 'claude:sonnet': 'bad' } }), /^Error: patch values must be objects when given \(1 invalid, first got string\)/)
+        assert.strict.throws(() => resolveCatalogue({ pick: ['claude:sonnet'], timeoutMs: 5, patch: 'bad' }), /^Error: patch must be an object when given/)
+        let c = resolveCatalogue({ pick: ['claude:sonnet'], timeoutMs: 5, patch: null })
+        assert.strict.equal(c.resolved.table['claude:sonnet'].timeoutMs, 5)
     })
 
     // 規格句: exes逐kind注入、條目自帶exe不覆寫、陣列版與table版同源

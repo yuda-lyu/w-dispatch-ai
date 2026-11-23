@@ -91,9 +91,10 @@ describe('dispatchOpencode: provider無效而key有效、useStoredAuth非布林 
         assert.strict.deepEqual([t.ok, JSON.parse(JSON.parse(t.stdout).env.OPENCODE_AUTH_CONTENT)], [true, { opencode: { type: 'api', key: KEY } }])
     })
 
-    it('P2 config／agent維持現狀: agent給了無效回退build、config為空字串或非物件非字串之定義值沿用既有設定(不拒絕)', async function() {
+    //(2026-11-23 tdai2b 改寫: 修前斷言「config為數字、布林之定義值沿用既有設定(不拒絕)」; config無效則沿用使用者既有設定(其內可載model、provider之預設), 主控裁定給了而非字串亦非一般物件改以params拒絕——帳本R-SAFEOPT-1規則11, 細案見unit-patchCatalogueConfig; agent仍維持退回build, config為''仍為未給)
+    it('P2 config／agent: agent給了無效回退build(維持)、config為空字串沿用既有設定(維持); config為數字、布林之定義值以params拒絕(tdai2b)', async function() {
         let rows = []
-        for (let opt of [{ agent: 123 }, { agent: '' }, { config: '' }, { config: 123 }, { config: true }]) {
+        for (let opt of [{ agent: 123 }, { agent: '' }, { config: '' }]) {
             let t = await dispatchOpencode('abc', { exe: fake.exe, ...opt })
             let o = JSON.parse(t.stdout)
             rows.push([t.ok, o.args[2], o.env.OPENCODE_CONFIG_CONTENT])
@@ -102,9 +103,13 @@ describe('dispatchOpencode: provider無效而key有效、useStoredAuth非布林 
             [true, 'build', ''],
             [true, 'build', ''],
             [true, 'build', ''],
-            [true, 'build', ''],
-            [true, 'build', ''],
         ])
+        let bad = []
+        for (let opt of [{ config: 123 }, { config: true }]) {
+            let t = await dispatchOpencode('abc', { exe: fake.exe, ...opt })
+            bad.push([isParams(t), /^config must be a string or an object when given/.test(String(t.error))])
+        }
+        assert.strict.deepEqual(bad, [[true, true], [true, true]])
     })
 
     it('P3 useStoredAuth給了而非原始布林: params拒絕、不起子行程(不視為true沿用auth.json); 與key／provider併用亦拒絕; 訊息不回顯', async function() {

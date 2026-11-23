@@ -180,14 +180,22 @@ describe('dispatchClaude failureKind与「沒額度」交叉確認', function() 
             assert.strict.deepEqual([r.failureKind, r.crossCheck, f.calls.length], ['no-credit', { done: false }, 0])
         })
 
-        it('crossCheck預設開: 只有明給false才關閉(undefined、null、0、空字串皆維持開)', async function() {
+        //(2026-11-23 tdai2 改寫: 修前斷言「0、空字串皆維持開」而多發一則REST請求; crossCheck為影響計費之opt(是否多發交叉確認請求), 給了而非布林改以params拒絕、不起子行程——帳本R-SAFEOPT-1規則11)
+        it('crossCheck預設開: 未給(undefined、null)與true維持開, 只有明給false才關閉; 給了而非布林(0、空字串、\'false\')以params拒絕、不起子行程、不送請求', async function() {
             let r = []
-            for (let v of [undefined, null, 0, '', true]) {
+            for (let v of [undefined, null, true]) {
                 let f = mkFetch(REST_NOCREDIT)
                 await run({ key: KEY, fetch: f, crossCheck: v }, [`--fake-out=${CREDIT}`, '--fake-exit=1'])
                 r.push(f.calls.length)
             }
-            assert.strict.deepEqual(r, [1, 1, 1, 1, 1])
+            assert.strict.deepEqual(r, [1, 1, 1])
+            let bad = []
+            for (let v of [0, '', 'false']) {
+                let f = mkFetch(REST_NOCREDIT)
+                let { r: t } = await run({ key: KEY, fetch: f, crossCheck: v }, [`--fake-out=${CREDIT}`, '--fake-exit=1'])
+                bad.push([t.ok, t.errorType, t.attempts, f.calls.length, /^crossCheck must be a boolean/.test(String(t.error))])
+            }
+            assert.strict.deepEqual(bad, [0, 1, 2].map(() => [false, 'params', 0, 0, true]))
         })
 
         it('沒額度字樣在stderr亦判之並交叉確認', async function() {

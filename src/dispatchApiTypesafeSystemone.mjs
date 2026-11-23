@@ -12,7 +12,7 @@ import buildValidator from './buildValidator.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
-import { readStrOpt } from './readSafeOpt.mjs'
+import { readStrOpt, readNameOpt, checkReadObj } from './readSafeOpt.mjs'
 import redactText, { secretHeaderValues } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { safeValidateAsync } from './checkTruncation.mjs'
@@ -253,9 +253,9 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Object} opt.questions 輸入題目物件(必填且非空)，鍵為自訂題目id，值為{type:'noul'|'choice'|'score', instructions, criteria}，格式見檔頭與https://docs.typesafe.ai/api
  * @param {String} [opt.baseURL='https://api.typesafe.ai/v1'] 輸入API基底網址字串，將於尾端接上/systemone，未給(undefined、null)用官方端點，給了而非非空字串(含'')以params回報、不送請求(不退回官方端點使金鑰改送官方；排程第553項)
- * @param {String} [opt.model='jev-latest'] 輸入模型名稱字串，預設'jev-latest'(另有'jev-preview')
+ * @param {String} [opt.model='jev-latest'] 輸入模型名稱字串，預設'jev-latest'(另有'jev-preview')；未給(undefined、null、'')用預設，給了而非原始非空字串以params回報、不送請求(不悄悄改用官方預設模型；影響計費之opt，帳本R-SAFEOPT-1規則11)
  * @param {String} [opt.key=''] 輸入API key字串，以Bearer置於Authorization標頭，未給(undefined、null、'')代表不帶認證標頭；給了非字串之值回params且不送請求(帳本R-KEYOPT-1)
- * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}
+ * @param {Object} [opt.body={}] 輸入額外請求本體物件，將併入預設body(同名鍵以此為準)，預設{}；未給(undefined、null)為空物件，給了而非一般物件(字串、數字、陣列等)以params回報、不送請求(不略過；帳本R-SAFEOPT-1規則11)
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵覆寫預設標頭；預設標頭含'Accept-Encoding: identity'(防伺服器壓縮卻漏標Content-Encoding，見檔頭)，預設{}
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
@@ -323,11 +323,12 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     }
     let baseURL = rbase.value === null ? DEFAULT_BASE_URL : rbase.value
 
-    //model, 無效回退官方預設
-    let model = get(opt, 'model', null)
-    if (!isestr(model)) {
-        model = DEFAULT_MODEL
+    //model為影響計費之opt: 未給(undefined、null、'')用官方預設DEFAULT_MODEL; 給了而無效(非原始非空字串)以params回報、不送請求——修前無效時悄悄改用官方預設模型(帳本R-SAFEOPT-1規則11; 其餘三個REST轉接器之model為必填、本就拒絕)
+    let rmodel = readNameOpt(get(opt, 'model', null), 'model')
+    if (rmodel.err !== '') {
+        return getErrorResult(rmodel.err)
     }
+    let model = rmodel.value === null ? DEFAULT_MODEL : rmodel.value
 
     //key, 未給(undefined、null、'')代表不帶認證標頭; 給了而無效(非字串)以params回報、不送請求(帳本R-KEYOPT-1: 不靜默改送不帶認證之請求)
     let rkey = readKey(get(opt, 'key', null))
@@ -342,6 +343,12 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
         return getErrorResult(rbody.msg)
     }
     let bodyExtra = rbody.value
+
+    //body為影響計費之opt(額外請求本體): 未給(undefined、null)為空物件; 給了而非一般物件(字串、數字、陣列、Map等)以params回報、不送請求(修前被略過而用預設請求本體; 帳本R-SAFEOPT-1規則11)
+    let ebody = checkReadObj(bodyExtra, 'body')
+    if (ebody !== '') {
+        return getErrorResult(ebody)
+    }
     if (!isobj(bodyExtra)) {
         bodyExtra = {}
     }

@@ -3,7 +3,6 @@ import isarr from 'wsemi/src/isarr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import isnum from 'wsemi/src/isnum.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
-import isfun from 'wsemi/src/isfun.mjs'
 import delay from 'wsemi/src/delay.mjs'
 import castCountOr from './castCountOr.mjs'
 import castPintOr from './castPintOr.mjs'
@@ -13,7 +12,7 @@ import strTruncate from 'wsemi/src/strTruncate.mjs'
 import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
-import { readStrOpt } from './readSafeOpt.mjs'
+import { readStrOpt, readEnumOpt, readFunOpt, checkReadObj, ANTHROPIC_EFFORTS } from './readSafeOpt.mjs'
 import redactText, { secretHeaderValues, redactApiKeyText } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
@@ -89,8 +88,7 @@ let DEFAULT_TIMEOUT_MS = dfTimeoutMs //全套件統一預設300000
 let DEFAULT_RETRY_DELAY_MS = 5000
 let MAX_RETRY_DELAY_MS = 15000
 
-//effort有效值(Opus 5.5 / Sonnet 5.5 / Haiku 5.5皆支援五檔); 其餘值視為未給
-let EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+//effort有效值(Opus 5.5 / Sonnet 5.5 / Haiku 5.5皆支援五檔)為ANTHROPIC_EFFORTS(readSafeOpt.mjs, 轉接器與遞補層共用之單一來源); 給了而不在其內者以params回報(規則11)
 
 //非機密之標頭(其值出現在錯誤本體中不應被遮蔽): 版本與beta旗標; Content-Type與Accept-Encoding已由secretHeaderValues排除
 let PUBLIC_HEADERS = ['anthropic-version', 'anthropic-beta']
@@ -379,13 +377,13 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {String} [opt.key=''] 輸入Anthropic API金鑰字串(sk-ant-…)，置於x-api-key標頭，未給(undefined、null、'')代表不帶認證標頭(僅供不需金鑰之閘道；直連官方端點會回401)；給了非字串之值回params且不送請求(帳本R-KEYOPT-1)
  * @param {String} [opt.baseURL='https://api.anthropic.com'] 輸入API基底網址字串(不含/v1，尾端/v1會被去除)，將於尾端接上/v1/messages，未給(undefined、null)用官方端點，給了而非非空字串(含'')以params回報、不送請求(不退回官方端點使金鑰改送官方；排程第553項)
  * @param {String} [opt.system=''] 輸入system提示詞字串，置於頂層system欄位(非messages內之角色)，預設''代表不帶
- * @param {String} [opt.effort=''] 輸入思考強度字串，'low'、'medium'、'high'、'xhigh'、'max'之一，以output_config.effort送出，其他值視為未給，預設''代表不送(由API依模型決定：Opus 5.5與Haiku 5.5為medium，Sonnet 5.5為high)
- * @param {Object} [opt.body={}] 輸入額外請求本體物件(如max_tokens、thinking、output_config、fallbacks)，將併入預設body(同名鍵以此為準)，預設{}。預設body為{ model, max_tokens: 16000, messages, system?, output_config? }。注意本轉接器不支援工具，帶入tools而模型回tool_use時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
+ * @param {String} [opt.effort=''] 輸入思考強度字串，'low'、'medium'、'high'、'xhigh'、'max'之一，以output_config.effort送出，預設''代表不送(由API依模型決定：Opus 5.5與Haiku 5.5為medium，Sonnet 5.5為high)；未給(undefined、null、'')才不送，給了而不在五個值內以params回報、不送請求(不改用API預設檔位；影響計費之opt，帳本R-SAFEOPT-1規則11)
+ * @param {Object} [opt.body={}] 輸入額外請求本體物件(如max_tokens、thinking、output_config、fallbacks)，將併入預設body(同名鍵以此為準)，預設{}。預設body為{ model, max_tokens: 16000, messages, system?, output_config? }。未給(undefined、null)為空物件，給了而非一般物件(字串、數字、陣列等)以params回報、不送請求(不略過而用預設max_tokens；帳本R-SAFEOPT-1規則11)。注意本轉接器不支援工具，帶入tools而模型回tool_use時一律以TOOL_CALLS_UNSUPPORTED回報失敗，需要工具請改用CLI類kind
  * @param {Object} [opt.headers={}] 輸入額外請求標頭物件，同名鍵(不分大小寫)覆寫預設標頭而不重複送出；預設標頭含'anthropic-version: 2023-06-01'與'Accept-Encoding: identity'，預設{}
  * @param {Number} [opt.timeoutMs=300000] 輸入逾時毫秒，須為1至2147483647之整數(計時器上限，可為數字字串)，逾時將中止請求(含回應串流讀取)，非預期之輸入(含超過上限、Infinity、小數、0、負數、'0x10'、包裝物件)視為未給而用預設，不夾至上限、不報錯，全套件統一預設300000
  * @param {String|Function} [opt.validate=undefined] 輸入回覆內容驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，預設undefined代表不驗證
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(stop_reason為max_tokens)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；無可見輸出(思考耗盡max_tokens)者一律失敗，預設false代表截斷一律失敗(errorType incomplete)
- * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試(不發真實請求)，簽章同全域fetch(url, init)，預設全域fetch；非函數視為未給
+ * @param {Function} [opt.fetch=globalThis.fetch] 輸入fetch函數，可注入以利測試(不發真實請求)，簽章同全域fetch(url, init)，預設全域fetch；未給(undefined、null)用全域fetch，給了而非函數以params回報、不送請求(不改走全域fetch而發出真實請求；帳本R-SAFEOPT-1規則11)
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，4xx(429除外)、截斷與拒答不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
  * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆文字，全部text區塊串接)、stderr(失敗時之原始回應本體或refusal之stop_details)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭，本轉接器另有'refusal')、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之usage物件原樣透傳，無則null)、finishReason(已取得回應時之stop_reason小寫原值，缺值為'')、truncated(是否因max_tokens截斷布林值)、apiErrorType(僅HTTP非2xx時，取自錯誤本體error.type之字串，如'rate_limit_error'、'billing_error'，無法解析為'')、failureKind(僅失敗時，細分類字串：'no-credit'沒額度｜'context-too-long'脈絡過長｜'rate-limit'限流｜'overloaded'過載｜'key-invalid'金鑰無效｜'no-permission'無權限｜'network'網路(連不上、逾時)｜'other'其他，判準與依據見failureKind.mjs檔頭)、failureDetail(僅HTTP非2xx時，API錯誤訊息，已遮蔽金鑰，截斷至200字元)，本函數不會reject
@@ -433,11 +431,12 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
         return paramsErr('model must be a non-empty string')
     }
 
-    //fetchFn, 可注入(測試不發真實請求); 非函數退回全域fetch
-    let fetchFn = get(opt, 'fetch', null)
-    if (!isfun(fetchFn)) {
-        fetchFn = fetch
+    //fetchFn, 可注入(測試不發真實請求); 未給(undefined、null)用全域fetch; 給了而非函數以params回報、不送請求(修前改走全域fetch而發出真實請求, 計費路徑改變; 帳本R-SAFEOPT-1規則11)
+    let rfetch = readFunOpt(get(opt, 'fetch', null), 'fetch')
+    if (rfetch.err !== '') {
+        return paramsErr(rfetch.err)
     }
+    let fetchFn = rfetch.value === null ? fetch : rfetch.value
 
     //baseURL, 未給(undefined、null)用官方端點; 給了而無效以params回報、不送請求(帳本R-SAFEOPT-1: 不退回官方端點, 否則金鑰改送官方); 正規化: 去尾端斜線與尾端/v1(端點路徑由本函數接上)
     let rbase = readStrOpt(get(opt, 'baseURL', null), 'baseURL')
@@ -460,8 +459,12 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     //system
     let system = get(opt, 'system', null)
 
-    //effort, 僅五個有效值才送出
-    let effort = get(opt, 'effort', null)
+    //effort為影響計費之opt(思考強度): 未給(undefined、null、'')不送, 由API依模型決定; 給了而不在五個有效值內以params回報、不送請求(修前無效時悄悄不送而改用API預設檔位; 規則11)
+    let reffort = readEnumOpt(get(opt, 'effort', null), 'effort', ANTHROPIC_EFFORTS)
+    if (reffort.err !== '') {
+        return paramsErr(reffort.err)
+    }
+    let effort = reffort.value
 
     //bodyExtra
     let rbody = readCallerObj(get(opt, 'body', null), 'body') //呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 可讀者取物化之淺層副本
@@ -469,6 +472,12 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
         return paramsErr(redEarly(rbody.msg))
     }
     let bodyExtra = rbody.value
+
+    //body為影響計費之opt(可帶max_tokens、thinking等): 未給(undefined、null)為空物件; 給了而非一般物件(字串、數字、陣列、Map等)以params回報、不送請求(修前被略過而用預設max_tokens; 規則11)
+    let ebody = checkReadObj(bodyExtra, 'body')
+    if (ebody !== '') {
+        return paramsErr(ebody)
+    }
     if (!isobj(bodyExtra)) {
         bodyExtra = {}
     }
@@ -503,8 +512,8 @@ async function dispatchApiAnthropic(prompt, opt = {}) {
     if (isestr(system)) {
         body.system = system
     }
-    if (EFFORTS.includes(effort)) {
-        body.output_config = { effort }
+    if (effort !== null) {
+        body.output_config = { effort } //已於前段驗為ANTHROPIC_EFFORTS內之值(未給或''為null)
     }
     body = { ...body, ...bodyExtra }
 

@@ -8,7 +8,7 @@ import resolveProviders from './resolveProviders.mjs'
 import readEnvFile from './readEnvFile.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import { assertReadable } from './callUserFn.mjs'
-import { assertObjOpt } from './readSafeOpt.mjs'
+import { assertObjOpt, assertArrOpt, readExesOpt, readPatchOpt } from './readSafeOpt.mjs'
 
 
 // resolveCatalogue.mjs — 目錄展開: 內建目錄＋安裝方自帶條目合併 → 逾時三層取值寫進patch → resolveProviders
@@ -158,13 +158,13 @@ function timeoutPatch(merged, opt = {}) {
  * extraProviders不合規時throw(見mergeCatalogue)；opt非物件視為{}
  *
  * @param {Object} [opt={}] 輸入設定物件，預設{}
- * @param {Array} [opt.catalogue=內建目錄] 輸入條目物件陣列，非陣列時用內建目錄
+ * @param {Array} [opt.catalogue=內建目錄] 輸入條目物件陣列，未給(undefined、null)用內建目錄；給了而非陣列(字串、數字、物件等)或不可讀者同步throw(不改用含付費條目之內建目錄；空陣列為合法之空目錄)
  * @param {Array} [opt.extraProviders=[]] 輸入安裝方自帶條目物件陣列(各須含id；新id追加、同id逐欄覆蓋)，預設[]
- * @param {Array} [opt.pick=null] 輸入自選id字串陣列(順序即遞補優先序)，查無之id列入resolved.missing，預設null代表全取
- * @param {Object} [opt.env=null] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，與envFile二擇一，預設null；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不改讀envFile或process.env)
+ * @param {Array} [opt.pick=null] 輸入自選id字串陣列(順序即遞補優先序)，查無之id列入resolved.missing，預設null代表全取；空陣列亦全取；給了而非陣列(字串、數字、物件等)或不可讀者同步throw(不視為未給而全取，含付費條目)
+ * @param {Object} [opt.env=null] 輸入金鑰來源物件(變數名 → 逗號分隔之金鑰字串)，與envFile二擇一，預設null；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不改讀envFile或process.env)；各變數之值須為字串(undefined視為缺值)，值為null、數字、布林、物件等同步throw
  * @param {String} [opt.envFile=null] 輸入.env檔路徑字串，env未給時以readEnvFile讀入(不污染process.env)，預設null
- * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件，預設null；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)
- * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件，淺合併覆寫且優先於逾時三層，預設null
+ * @param {Object} [opt.exes=null] 輸入kind對執行檔絕對路徑之物件，預設null；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)；各kind之值須為非空字串(undefined、null視為未給該kind)，值為空字串、數字、物件等同步throw
+ * @param {Object} [opt.patch=null] 輸入id對部分欄位之物件，淺合併覆寫且優先於逾時三層，預設null；給了而非物件(字串、數字、陣列等)或不可讀者同步throw(不略過)；各id之值須為一般物件(undefined、null視為未給該id)，值為字串、數字、陣列、Map等同步throw(不略過而丟掉覆寫之欄位如model)
  * @param {Object} [opt.providerTimeouts=null] 輸入逐id逾時毫秒物件，逾時三層之最優先層，預設null
  * @param {Number} [opt.timeoutMs=null] 輸入全域逾時毫秒正整數，逾時三層之最後備援，預設null
  * @returns {Object} 回傳物件，內含merged(合併後條目陣列)、env(實際使用之金鑰來源物件，交resolveProviders預設時為null)、resolved(resolveProviders之原始回傳：providers、table、skipped、missing、hints、warnings)
@@ -204,9 +204,21 @@ function resolveCatalogue(opt = {}) {
         assertReadable(get(opt, k, null), k)
     }
 
-    //env、exes給了而非物件一律同步throw(帳本R-SAFEOPT-1規則10; 與resolveProviders、四家CLI同一判定readEnvOpt): 不視為未給而改讀envFile／process.env或略過exes; 未給(undefined、null)照舊
-    assertObjOpt(get(opt, 'env', null), 'env')
-    assertObjOpt(get(opt, 'exes', null), 'exes')
+    //env、exes給了而非物件一律同步throw(帳本R-SAFEOPT-1規則10; 與resolveProviders、四家CLI同一判定readEnvOpt): 不視為未給而改讀envFile／process.env或略過exes; 未給(undefined、null)照舊;
+    //env之資料屬性之值須為字串(undefined合法)、exes各kind之值須為非空字串(規則11; 與resolveProviders同一判定): exes物化一次(getter只讀一次), 其副本交resolveProviders;
+    //catalogue、pick給了而非陣列、patch給了而非物件(或其內逐id之值給了而非一般物件)同步throw(規則11; catalogue與patch逐id之值為tdai2b): 先於讀envFile與合併(不留副作用), 且先於timeoutPatch對pick之使用;
+    //catalogue未給(undefined、null)才用內建目錄(含付費條目), 給了而非陣列不再改用之; patch與exes同源物化一次(getter只讀一次, 檢查之值即套用之值, K4)
+    assertArrOpt(get(opt, 'catalogue', null), 'catalogue')
+    assertObjOpt(get(opt, 'env', null), 'env', 'env')
+    let rexes = readExesOpt(get(opt, 'exes', null), 'exes')
+    if (rexes.err !== '') {
+        throw new Error(rexes.err)
+    }
+    assertArrOpt(get(opt, 'pick', null), 'pick')
+    let rpatch = readPatchOpt(get(opt, 'patch', null), 'patch')
+    if (rpatch.err !== '') {
+        throw new Error(rpatch.err)
+    }
 
     //merged
     let merged = mergeCatalogue(get(opt, 'catalogue', null), get(opt, 'extraProviders', null))
@@ -226,7 +238,7 @@ function resolveCatalogue(opt = {}) {
         timeoutMs: get(opt, 'timeoutMs', null),
     })
     let patch = { ...tp }
-    let pin = get(opt, 'patch', null)
+    let pin = rpatch.patch //物化之副本(已驗各id之值為一般物件或未給)
     if (isobj(pin)) {
         for (let id of Object.keys(pin)) {
             if (isobj(pin[id])) {
@@ -236,7 +248,7 @@ function resolveCatalogue(opt = {}) {
     }
 
     //resolveProviders, env為null時不傳(用其預設process.env)
-    let ro = { pick, exes: get(opt, 'exes', null), patch }
+    let ro = { pick, exes: rexes.exes, patch }
     if (env !== null) {
         ro.env = env
     }
