@@ -539,7 +539,7 @@ describe('dispatchApiOpenaiCompat', function() {
         //規格: README行為變更紀錄1.0.48(送出前錯誤訊息遮蔽標頭值, errorType仍為fetch; 帳本R-REDACT-1)
         let key = 'sk-LEAKTEST-0123456789\nX'
         let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, model: 'echo', key })
-        let r = [t.ok, t.errorType, t.error.includes('LEAKTEST'), t.error.includes('[REDACTED]')]
+        let r = [t.ok, t.errorType, t.error.includes('LEAKTEST'), t.error.includes('***')]
         let rr = [false, 'fetch', false, true]
         assert.strict.deepEqual(r, rr)
     })

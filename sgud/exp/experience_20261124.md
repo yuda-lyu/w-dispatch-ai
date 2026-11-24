@@ -1,0 +1,67 @@
+# 累積經驗(2026-11-24 抽出:2026-11-13～11-21 之 Poolside 下架、可讀性探針、訂閱 opencode-go 到頂、免費池用盡、timeoutMs 與 Hydrogen、連網守門紅燈共六節,逐字搬自 experience.md)
+
+本檔為抽出之舊經驗,節號與標題不變;主檔見 `sgud/exp/experience.md`.
+
+## 移除 Poolside laguna 兩條目:清單仍列≠可用、移除之連動站點(2026-11-21 dl583,排程第 583 項;帳本 `rulebook_providers.md` R-PROVIDERS-1)
+
+- **「`GET /models` 仍列」不是可用證據**:Poolside 官方端點之 `/models` 仍列 laguna 兩型號,`POST /chat/completions` 卻一律 HTTP 400「Model version … is deactivated」(使用端 11-01 已記同一現象);判可用一律以實際請求為準,與檔頭既有「文件與目錄皆列不等於可用」同形.本輪由主控以 `.env` 之金鑰直呼查證後派工,本套件未自行發請求(不讀 `.env`).
+- **移除 N 條之連動站點**(逐處清單即 R-PROVIDERS-1 站點表):條目數斷言在 3 個測試檔(`unit-providersOpencodeFreeEntries`、`unit-providersOpencodeGoDocs`〔含 README「量級感受」整句與 `resolveProviders.mjs` JSDoc 之字面錨點〕、`unit-providersOpencodeGoEntries`),群組順序在 `unit-providersCodexEntries`;`unit-resolveProviders` 之「可展開內建 providers」案以模擬 env 備齊**全部** envVar 驗無停用,條目不再使用之變數須自該 env 移除(留著不會紅,但誤導讀者以為內建仍用它).盤點用 `Grep "37|35|laguna|poolside|POOLSIDE"` 於 `src`／`test`／`README.md`／`sgud`;歷史紀錄(README 行為變更第 10／44 條、檔頭 2026-09-22 與 11-18 漂移紀錄)保留日期與當時事實、只加「已移除」註記.
+- **範例改用仍存在之條目時要核對其語意**:README／`dispatchAiFallback` 之「同一模型經不同路徑」原以 laguna 三路(額度池與故障域各自獨立)為例;改用 agnes(CLI 與 REST 同用 `AGNES_KEYS`,額度池相同)會寫成不實,故改 `claude:`／`claude-api:`／`anthropic:`(訂閱與 API 金鑰之額度池獨立;後兩者共用 Console 額度而游標與冷卻各自獨立,取自檔頭既有說明).`pick` 打錯字之 `hints` 範例改 `agnes/agnes-3.0-flash` 先以真實 `resolveProviders` 跑過(回 `agnes:agnes-3.0-flash`)再寫入.
+- **守門測試踩到之坑**:①`resolveProviders(providers, { env: {}, pick: [...] })` 中帶 `envVar` 之條目(如 `agnes:`)在無金鑰環境下會被 `skipped` 而不在 `providers`,「pick 後存活之條目」須選無 `envVar` 者(`claude:sonnet`)才不被誤導;②README 現行說明與行為變更歷史紀錄須分段檢查(以 `#### Options shared by all dispatch functions:` 之後為現行),否則「README 不含 laguna」永遠紅.
+- **修前紅取證**(同 2026-11-11 回饋):`git archive --format=tar HEAD src README.md | tar -x -C tmp/<案>/old`,新測試複製進 `old/test/`(測試以 `ROOT = dirname(test)/..` 讀 `src`／`README`),`npx mocha ./tmp/<案>/old/test/…` 即對 HEAD 碼跑;node 自 `tmp/` 往上解析得 repo 之 `node_modules`,不必連結.「通用機制不改」之保持案(自訂條目仍可用 `POOLSIDE_KEYS`、`readEnvFile` 仍讀出)修前即綠,須在報告逐案標明.
+
+## 可讀性探針取代「借判斷函數拋錯之防線」、金鑰型 opt 收嚴(2026-11-19 dai492i2;帳本 `rulebook_userfn.md` R-USERFN-4、`rulebook_anthropic.md` R-KEYOPT-1)
+
+- **判斷函數不拋後,「try／catch 轉 params」之防線不是壞了而是改走他支**:`isobj(v)` 於已撤銷之 Proxy 上由拋錯變回 `false`,於是 `readCallerObj` 把它原樣交回(`ok:true`),下游改成「照常執行」「靜默略過」「讀取時才 reject」。修法不是補 try,而是**先以明確探針判「可讀」再交判斷函數判型**(`probeReadable`:`Object.prototype.toString.call` ＋ `Reflect.ownKeys`,拋錯即不可讀;兩步各抓一類:`toStringTag` getter／已撤銷之 Proxy 由前者、`ownKeys` 陷阱由後者;屬性值 getter 由後續展開之 try 抓)。`readCallerObj` 對 `typeof` 非 `'object'` 者(含函數 Proxy)仍原樣交回——修前即如此,不屬本次(契約外)。
+- **新舊版差異掃描是找站點之可靠法**(Grep `isobj|isarr…` 有 546 命中、人工逐站點易漏):取舊版發布包(`npm pack wsemi@1.9.68` 解到 `./tmp/`)＋ `module.register` 解析鉤子把 `wsemi/src/*` 導向之,對各公開函數之各 opt 鍵餵 11 種敵意值(已撤銷之 Proxy〔物件／陣列／函數〕、`toStringTag` 拋錯、陷阱全拋、拋錯 getter、`String` 包裝物件、陣列內含上列),新舊各跑一次、比對簽名(`ok`／`errorType`／reject)。分類:**A 舊為 `params` 而新不同＝防線失效**(修前 142 格 → 修後 2 格,僅訊息措辭)、**C 新 reject 而舊不＝退步**(11 → 1,餘 1 為包裝物件之工廠期拋錯)、**B 舊 reject 而新不＝契約外**(1643 格,見下)、D 其他。整體 10857 格,每個 chunk 約 1 分鐘。比對要把「兩邊皆 THROW」視為相同(訊息不同不算差異),否則被訊息噪音淹沒。
+- **掃描之坑(自身流程漏做)**:敵意 `exe` 等純量使 CLI 轉接器退回預設執行檔名(`claude`／`codex`／`opencode`／`agy`)而**啟動真實 CLI**(本輪於第一輪掃描啟動約 90 次 prompt 為 `abc` 之真實 CLI,發現於結果出現 `ok:true` 之 `exe` 敵意列;立即終止驅動、自 `PATH` 剔除含真實 CLI 之目錄並**自檢解析不到**後重跑)。對會起子進程或發請求之函數做敵意輸入掃描,**第一步是隔離預設執行檔與端點**;掃描驅動以 `taskkill /F /PID <根> /T` 終止後須回驗(`Get-CimInstance Win32_Process` 以命令列比對)。
+- **契約外之純量設定值(B 類)**:`model`、`exe`、`cwd`、`extraArgs`、`addDirs`、`sandbox`、`skipPermissions`、`maxRetries`、`validate`、`baseURL`、回調等於已撤銷之 Proxy 時,修前 reject、1.9.69 起視同未給／用預設——**其中影響安全／計費者(codex `sandbox` 退回 `workspace-write`、`skipPermissions` 退回 true、agy `addDirs` 退回 `[cwd]`、REST `baseURL` 退回官方端點)依 dspec §11 應拒絕**,本套件一般無效值(如數字)修前即退回預設,故非 1.9.69 新增;未改,待裁示。
+- **金鑰型 opt 收嚴之設計判斷**:①未給之清單採字面(`key`:undefined／null／`''`;`keys`:undefined／null／`[]`),**不在清單者含 `keys: ''`(非陣列)與字串 `keys: 'sk-…'` 一律視為給了而無效**——「環境變數缺值」之合法寫法是傳 `undefined`／`null`／`[]`／`''`(單一 key),盤點無使用端傳非空無效值;②混合(含有效字串)不拒絕,與 dai492i 之「包裝金鑰被濾除而原始字串金鑰成交」一致;③**`getErrorResult` 檔頭寫「`params` 只可用於與金鑰無關之檢核」**——本規則之 `params` 發生在**條目層／呼叫層**(整個條目無有效金鑰、非逐把),整組跳過正確;④**`subFamilyOf` 對 `key` 無效者仍判為「登入態之 claude」而會起用量查詢**(`isestr(key)` 為假),故條目已判 params 失敗者要把 `sq` 置 null,否則「不送請求」不成立(K8 變異抓到);⑤`readKeys` 之 `length`／元素讀取要在 try 內(有 `length` getter 拋錯之陣列 Proxy)。
+- **測試設計**:「不起子進程」以假 CLI 啟動即寫標記檔計數(`unit-keyOptReject`),「不送請求」以計數用本機伺服器(依端點回各協定之成功本體,以便驗遞補後 `keyIndex`);用量查詢零次以注入之 `quotaGate.readers.claude` 計數;`keysAreActualAuth`／`isOfficialAnthropicEntry`／`initState` 為內部函數,**匯出供單元直測**(不列入套件匯出)。
+- **修前紅取證**:修前樹為 dai492i 交件時之工作樹——開工先把 `src`／`test/tools` 複製到 `./tmp/<案>/snap/`(後續掃描與修前紅皆用快照,不受工作樹繼續修改影響;node 自 `tmp/` 往上解析得 repo 之 `node_modules`,不連結不另裝);新測試檔因 import 新匯出而整檔不註冊(紅),改寫之既有測試案逐案紅。
+- **獨立複審(sonnet 唯讀,只給契約與新舊碼路徑、不給結論)補出之遺漏,皆已處理**:①**函數型之已撤銷 Proxy**:`readCallerObj` 對 `typeof 'function'` 原樣交回,而 `keepEntry` 之探針把它「保留」→ `entry[ENTRY_ERR]` 讀取時 TypeError、整個 `dispatchAiFallback` reject(初版修法使 1.9.69 樹原本之靜默濾除變成 reject,即修出新退步)——探針要涵蓋函數型,且新舊樹要再比一次(修後對修前樹之 reject 退步格數須為 0);②**同步函數 `resolveProviders`／`resolveCatalogue`／`createAiCaller` 之 `env`／`pick`／`catalogue` 不可讀**:1.9.69 下 `isobj`／`isearr` 回 false 而靜默改用 `process.env`(換掉金鑰來源)、`pick` 視同未給而**全取**(含付費條目)——差異掃描把它歸在「舊 THROW 新不 THROW」(B 類)而漏看,**B 類裡仍要逐項問「不拋之後改走何處」**;③`readKeys` 之 `length` 未驗(陣列 Proxy 讀出 `undefined`／負數即被當空陣列而靜默走登入態;巨大稀疏陣列卡事件迴圈)與以內部標籤判陣列(偽造 `Symbol.toStringTag` 之物件)——改 `Array.isArray`＋`length` 驗證＋元素數上限 10000;④測試鑑別力:條目層單一 `key` 之檢查拿掉後,多數 kind 因轉接器層同樣回 params 而全綠,只有「claude × 用量查詢計數」分辨得出(等價變異之一類,故該案以用量讀者計數為斷言)。**差異掃描與變異結果不能當作「站點全集」**:全集要靠新舊差異掃描＋獨立複審交叉。
+
+## 訂閱 `opencode-go` 到頂:同樣不結束,判準加專屬字樣、遞補層依 `limitScope` 分流(2026-11-16 wda158,Gitea #158;帳本 `rulebook_oclimit.md` R-OCLIMIT-2)
+
+- **「額度綁誰」決定遞補層怎麼分流**:免費池用盡與金鑰無關(換金鑰、匿名皆同錯)⇒ 整組跳過;訂閱到頂綁「該金鑰所屬之訂閱」⇒ 換組內下一把才對.轉接器以結果欄(`limitScope: 'key'`)把這個區別交給遞補層,遞補層**不新增語意**,只讓它走既有 `failureKind 'no-credit'` 之「該把沒額度 → 換下一把」路徑(併入 `noCreditIdx`、組盡才 `quotaExhausted`／`reason 'quota'` 條目冷卻);要避免的是「每次嘗試即寫條目冷卻」(他把可能成交,且成交會刪冷卻、徒生 `cooled` 事件)與「經 `coolDetect`」(no-credit 之既有語意不經它).
+- **既有「沒額度之金鑰冷卻／跨條目共享略過」只屬 Anthropic 官方端點(`scoped`)**,不隨手擴到 Go:同一把 Console 金鑰另可走 `opencode/`(免費池或按量)條目,指紋鍵會把不同額度池混在一起;且 Go 金鑰到頂時其他 `ocgo:` 模型是否亦不可用無實證.要擴須另立命名空間與證據,列待辦不做.
+- **派工要求「若已涵蓋/極小改動才做」之項,先查帳鍵是否存在**:額度帳(`store.quota`)之鍵只有讀者家族與 `entry:<id>`,Go 之快取是行程內記憶體(指紋鍵)且刻意不盲信 `resetsAt`——「與既有 Go 金鑰之帳鍵一致」無對象 ⇒ 須新設計(帳號比對、升級／Extra Usage 令金鑰於重置前復用之作廢、`forgetQuota`),不做;用量端點到頂同一秒即回 `limited`,入帳只省一次查詢.
+- **變異存活常是冗餘條件之訊號**:初擬變異「去掉 `nk > 0`」存活——因 `trusted` 已含 `nk > 0`.處置是刪冗餘條件、改變異為「去掉 `trusted`」(無金鑰案轉紅),不是為等價變異補測試.
+- **假 CLI 依注入之金鑰子字串分流**(讀環境 `OPENCODE_AUTH_CONTENT` 含 `LIMITED`／`BAD`／否則成功),即可用真實之 `dispatchAiFallback`＋真實 `dispatchOpencode` 證明「第一把到頂換第二把成功」;Go 條目另須 `quotaGate: false` 或注入 `usage`,否則預設會對假金鑰打真實用量端點.
+- **假 CLI 之小陷阱**:`{ a: 'x', bare: '' }[name] || 預設` 遇空字串值會退回預設(`bare` 變體首次紅即此);改以 `hasOwnProperty` 判.
+- **修前紅與變異都在 `./tmp/wda158/` 副本做,不動 repo**:`git archive HEAD src` 解到 `./tmp/…/before/src`,測試副本置同層 `test/`;副本在 repo 之下,Node 沿父層找得到 repo 之 `node_modules`,不必 junction.修前跑(全部新測試)時 README 守門案因副本無 README 而假紅,須與真紅分開判讀.
+- **工作區代號屬帳號識別而非金鑰**:遮蔽以 `DIAG_PATTERNS` 宣告具名樣式交 wsemi `maskDiagText` 執行(診斷輸出與遮罩規格 D1,不另寫遮罩);有長度下限(8 碼以上)以免誤遮短詞;結果 `stderr` 欄原樣不遮(同既有).
+- **舊文件之「未查明／未知」要隨實例改**:`providers.mjs`、`dispatchOpencode.mjs`、`goQuotaGate.mjs`、`opencodeGoUsage.mjs` 檔頭與 README、`rulebook_opencodego.md`、`rulebook_spawngate.md` 各有一句「Go 到頂未知」,且有文件守門測試釘住該句——改實例時守門案同改(守新敘述並斷言舊句不再出現),不是刪守門.
+
+## opencode 免費池用盡／免費層 429:run 不結束,讀 stderr 錯誤列即樹狀終止(2026-11-15 wda156,Gitea #156;帳本 `rulebook_oclimit.md` R-OCLIMIT-1)
+
+- **`--print-logs` 會令 opencode 不寫日誌檔**:同一匿名成功呼叫(beam-free,opencode 1.19.5),帶 `--print-logs --log-level ERROR` 者 `opencode.log` 增 0 位元組、不帶者增 17490 位元組(58 行 INFO).凡自動補此旗標者,原本「失敗後讀日誌檔對時擷取」之路徑對本行程即失效(讀到的只會是他行程之列),上游原因須改由 stderr 之 ERROR 列取.反過來也說明:**要偵測就讀 stderr、不讀日誌檔**——日誌檔是多行程共用之累積檔,同模型並行時無從歸屬,據以終止行程會誤殺他人.
+- **實際錯誤列形狀以本機日誌檔統計為準,不憑建議檔轉述**:以 `grep … | awk -F'level=' … | sort | uniq -c` 統計本機 opencode.log 之 124 筆,得 build／title 兩類各兩種字樣(`AI_APICallError: Free usage limit reached. …`／`Rate limit exceeded. …`;title 為 `AI_RetryError: Failed after 3 attempts. Last error: …`、`small=true`),且皆 `providerID=opencode`.免費池此刻未用盡時,真實 CLI 無從重現,測試字樣即取自這些實際列.
+- **wsemi `execCli` 之內部重試無法中途喊停**:被 taskkill 之子行程離開碼為 1(屬其可重試者),只有 ENOENT／離開碼 2／啟動失敗不重試.要「判中即不重試」只能由本套件接管重試(交 `execCli` 之 `maxRetries` 為 0)——沿用 R-COOL-4 已有之接管迴圈,`maxRetries` 為 0 時不接管,逐位元同修前;接管迴圈無期限時要沿用首次之逾時、不重新守門,才與 `execCli` 內部重試等價(以事件序列比對測試釘住).
+- **Windows 上「只殺根行程」常看起來像「樹狀終止」**:Node(libuv)把非 detached 之子行程放進「父行程結束即殺」之 job 物件,根 node 行程一死,其所起之子行程隨之結束——變異「taskkill 去掉 /T」初版全綠(等價變異).測試之孫行程須 `detached: true`(不入 job),才分辨得出 `/T` 之有無;真實 opencode.exe 自行另起之子行程是否在 job 內未查證,故仍以 `/T` 為準.
+- **wsemi `execProcessKillPid`(tree-kill)於 Windows 以 `exec('taskkill …')` 執行、未設 windowsHide**:本套件主動終止改用自寫之 `execFile('taskkill', [...], { windowsHide: true })`;execCli 逾時樹殺仍走 wsemi 之路徑(既有,未改,已列回饋).
+- **跨區塊之確定性測試**:假 CLI 印出前半段後等「閘門檔」,測試在 `onStderr` 收到前半段後才建閘門檔——區塊必然被切開,且以「沒有任何單一區塊含完整字樣」斷言之;不以延時排序.並行案亦同:b 先起並停在閘門前,a 判中終止回傳後才開 b 之閘門.
+- **假 CLI 與孫行程一律設存活上限**(60～120 秒自行結束):變異「只殺根行程」等情形下孤兒不會永久殘留.
+- **「修前紅」之測試本身也要有上界**:新增之並行案在修前程式上無限等待一個永不出現之事件(b 之 title 列),整輪修前紅被 quiet-run 之 900 秒上限截斷、結果全失;等待事件一律與「被等者已結束」取先到者(`Promise.race([事件, 行程結束])`).
+- **以 key=value 日誌判讀時,要解析頂層欄位,不可用 `(?:^|\s)key=` 正規式取第一個出現**:引號內之文字(如 `message="… agent=build …"`)會被誤取,令附帶請求之列被當主要請求(外審 terra 指出).
+- **「接管 execCli 之重試」要逐項比照其行為**:除間隔公式與不重試判準外,還有①無效 `maxRetries`(`Infinity` 等)execCli 改用 0、本套件之 `isp0int`＋`cint` 則轉成極大有限數——接管即近乎無限重試;②暫時性重試輪在修前是單獨一次 execCli 呼叫,其失敗不再一般重試;③有驗證路徑之事件序列與暫時性重試先後.兩位外審分別找出這些破口,皆以「stopOnLimit:false 對照」之等價測試釘住.
+- **wsemi 之 tree-kill 於非 Windows 只監聽 `close`**:`ps`／`pgrep` 不存在時 ENOENT 成為未處理之 `'error'`,呼叫端行程崩潰——主動終止改自寫 `execFile('ps')`(callback 承接錯誤).
+
+## `timeoutMs` 判定單一來源與 Hydrogen 條目(2026-11-13 da-hy,排程第 438 項與 Gitea #137;帳本 `rulebook_timeout.md` R-TIMEOUT-1、`rulebook_agy.md` R-AGY-1／R-AGY-2)
+
+- **wsemi 升版後「相容」之假象**:wsemi 1.9.59 起 `execCli` 對 `timeoutMs` 改 `iseint` 判定(超過上限者用自有預設 120000),本套件舊之 `castPintOr`(`ispint` 通過後 `cint`)把 `Infinity`→1.8e308、`'0x10'`→16、`new Number(5000)`→5000、超過上限者原樣轉交——測試全綠(只測有效值):1.8e308 與超過上限者被 `execCli` 判無效而用 120 秒(與套件預設 300 秒不一致),`'0x10'`(16 毫秒)與包裝物件(5000)則被當有效而得非預期值.外審#18 指出初稿把後兩者也寫成「落入 120 秒」(誤述,已更正).**升級被呼叫之自有套件後,對「它把非預期值改成預設」之輸入格,逐入口以記錄替身觀察「實際交給它之值」**,不能只看既有測試綠.
+- **同一個非預期值在不同入口有三種後果**:CLI 交 `execCli`→120 秒;REST 交 `setTimeout`→Node 視為 1 毫秒(`TimeoutOverflowWarning`,立即 `TIMEOUT`);`--print-timeout` 推導→`2147513s`.盤點時以「值最終流到哪個計時器」分類,而非只看函數名.
+- **觀察「實際交給外部函數之值」之作法**:`module.register` 之 resolve hook 把 `wsemi/src/execCli.mjs` 換成記錄替身(precedent:`strictStrTruncateHooksForTest`),子行程探針逐入口×逐輸入值呼叫、印單行 JSON,測試以 `spawnSync` 解析;不 spawn、不等逾時、與負載無關.REST 類改用「延遲代理」(`test/tools/delayProxyForTest.mjs`:收完請求等 300 毫秒才轉給既有假伺服器)——誤採為 1 毫秒者必 `TIMEOUT`、正確者與負載無關必成功.
+- **極短逾時之真實 spawn 測試必偶發**:舊 `unit-dispatchAntigravity` 之 printTimeout 案含 `timeoutMs` 1、999 毫秒格而實際啟動假 CLI:Windows 上 `.cmd` shim 經 cmd 啟動,外層 `taskkill` 與子進程輸出競速,正常負載時子進程常贏、高負載時 `taskkill` 先到而得空輸出(`JSON.parse('')` → `Unexpected end of JSON input`).本機常態負載實測(各 20 次,`tmp/da-hy/flake.mjs`):`timeoutMs` 1 → 20/20 為 `TIMEOUT` 結果、但 stdout 仍完整(殺程序延遲大於子進程輸出時間);999／5000／40000 → 0 次逾時、stdout 完整——即 1 毫秒格本就恆處於「逾時競速」區,斷言只靠殺程序之延遲才不空;**未以人為負載重現空輸出**(派工禁止加壓),成因由機制與常態實測推定,修法(移出 spawn)消除該依賴.修法是把「只需推導出之參數」之斷言移到不 spawn 之參數層,真實 spawn 只留長逾時格;**不放寬容忍、不重試**.
+- **修前紅取證**:`git archive --format=tar -o <檔> HEAD src README.md sgud package.json` 解至 `tmp/<案>/head`(解壓用相對路徑:GNU tar 會把 `C:` 當遠端主機),疊上工作區新測試與工具,逐檔跑;node 自 `tmp/` 往上解析得 repo 之 `node_modules`,不必另裝(同樣作法用於變異副本).
+- **agy 寫檔金絲雀須分「工作區內／外」**:agy 1.5.7 在 `skipPermissions:false` 下,工作區(`addDirs['.']`＝cwd)內之寫入放行、工作區外被擋(`ok:true`、stdout 空、stderr `write_file` permission `auto-denied`);只寫「被擋、未落地」會因路徑選擇而得相反結論.同提示詞對 3.8、Argon 各 1 次對照,確認非 Hydrogen 特有.
+- **額度對照之讀數**:`/usage` 之 7 天窗口讀數跳動(同帳號數十秒內 ±0.4～0.8 個百分點)大於數次呼叫之增量,**5 小時窗口較單調**(本次 4 次 Hydrogen:7.51→8.09);歸屬判斷以「Argon 不動、Gemini 群組 5 小時窗口上升」為證,不精算單次耗用;對照前之其他對照呼叫(3.8、Argon 金絲雀)須先做完再讀基準,否則基準被污染(本次 Argon 因金絲雀由 0 升至 1.01).
+- **codex 唯讀審查之中文讀檔**:本機 codex 0.167.0 以 `rg` 讀含中文註解之行,審查者回覆之引用與原文不符(讀回之內容失真,模型自行改寫);ASCII 行正確.外審提示詞須註明「中文註解不可讀者標明不可讀、不臆測」,註解真實性由主責自行核對.
+
+## 連網守門紅燈:下架 `oc:opencode/glm-5.3-flash-free`(2026-11-18 wda530;帳本 `rulebook_opencodefree.md` R-OCFREE-2①⑤)
+
+- **處置次序**:①`opencode models opencode --refresh` 看清單有無該 id,並以 `filterOpencodeFree(providers, { refresh: true })` 之 `removed`／`uncatalogued` 核對其餘條目(本次 `removed` 恰 1 條、`uncatalogued` 4 個);②依條目欄位以 `dispatchOpencode` 呼叫 2 次並直呼 `opencode run -m <model>` 1 次,取失敗形狀與耗時(本次 3.0～5.2 秒、離開碼 1、`UnknownError`「Unexpected server error」;先例記「約 2 秒」,實務上數秒內即回,判準看「清單消失＋呼叫即回 UnknownError」兩條件而非精確秒數);③再改碼。
+- **下架一條 `oc:opencode/*` 條目要同步之站點**(`Grep "(^|[^0-9.])N([^0-9.]|$)"` 於 `src`／`test`／`README.md`／`sgud` 配合 `Grep "<id>"` 盤點;ripgrep 預設不支援 look-around,數字邊界要用 `(^|[^0-9.])N([^0-9.]|$)`):`providers.mjs` 之條目區塊與鄰近註解(「以下兩條」群註解、被移除條目前後之位置註解、同名付費條目之註解)＋檔頭漂移紀錄;`resolveProviders.mjs` JSDoc 範例條數;README「量級感受」(條數 N×300s、3 階段×3,兩組條數都要重算)＋行為變更新增一條;測試端釘死條數之三處(`unit-providersOpencodeFreeEntries` 之 pulse 條數案與順序案、`unit-providersOpencodeGoDocs` 之條數案、`unit-providersOpencodeGoEntries` 之共 N 條案);sgud 之現況敘述.**歷史敘述不改**(README 舊行為變更條、檔頭舊漂移紀錄、`unit-providersHydrogenDocs` 之「37 → 38」皆是當時事實).
+- **修前紅取證**:`git archive HEAD src README.md test package.json | tar -x -C ./tmp/<案>/head`,再把改過之測試檔覆蓋進 `./tmp/<案>/head/test/` 跑(node 自 `tmp/` 往上解析得 repo 之 `node_modules`,不必連結或另裝);本次 9 案紅、修後全綠.
+- **`unit-filterOpencodeFree` 之合成條目沿用已下架 id 為夾具**(`oc('glm-5.3-flash-free')` 與其 `opencode models` 輸出樣本):該檔以注入之 `query` 與自備目錄測過濾邏輯(僅「預設目錄」一案動態取內建目錄之免費條目,不釘 id),不依賴內建目錄收錄該條,故不動;日後 Grep 該 id 見此處命中屬預期。
+

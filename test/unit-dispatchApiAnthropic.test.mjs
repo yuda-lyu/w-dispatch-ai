@@ -16,7 +16,7 @@ import fakeServerForAnthropicTest from './tools/fakeServerForAnthropicTest.mjs'
 
 
 let KEY = 'sk-ant-api03-TESTKEY-AAAA1111BBBB2222cccc3333'
-let MASK = '[REDACTED]'
+let MASK = '***'
 
 
 describe('dispatchApiAnthropic', function() {
@@ -407,6 +407,14 @@ describe('dispatchApiAnthropic', function() {
         })
         let want = 'set ANTHROPIC_KEYS=sk-ant-api03-DOC-EXAMPLE-0000 in your .env'
         assert.strict.deepEqual([t.ok, t.stdout, seen], [true, want, [want]])
+    })
+
+    it('金鑰不外洩: 成功stdout(模型輸出)只精確遮蔽本次key, 憑證字樣範例(password=、網址帳密、Bearer、他把sk-ant-)原樣保留(正常成功、給validate、max_tokens經acceptTruncated放行三條成功路徑皆然; 2026-11-24 tdai4: 精確家族)', async function() {
+        let a = await call('text-with-cred-words')
+        let b = await call('text-with-cred-words', { validate: () => true })
+        let c = await call('text-with-cred-words-max', { acceptTruncated: true })
+        let want = `docs: password=demo https://u1:pw1234@db/a Bearer abc.def sk-ant-api03-DOC-EXAMPLE-0000 and ${MASK}`
+        assert.strict.deepEqual([[a.ok, a.stdout], [b.ok, b.stdout], [c.ok, c.stdout, c.truncated]], [[true, want], [true, want], [true, want, true]])
     })
 
     it('金鑰不外洩: 呼叫端validate之例外訊息(同步throw、Promise.reject、max_tokens放行後之validate)夾帶key時, stderr、tried、事件皆已遮蔽', async function() {

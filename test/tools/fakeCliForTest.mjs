@@ -25,6 +25,9 @@ let FD_BASE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '
 
 //假CLI本體, 由node執行
 let CODE_ENTRY = `
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 let args = process.argv.slice(2)
 
 //--fake-exit=N, 令假CLI以指定離開碼結束, 供測試失敗與重試路徑
@@ -64,6 +67,12 @@ process.stdin.on('end', () => {
             PWD: process.env.PWD || '',
         },
     }
+    //側通道(2026-11-24 tdai4b): 結果之stdout於注入金鑰時會被轉接器遮蔽(帳本R-REDACT-3), 要驗證「本次實際注入了什麼」之測試改讀本檔(createFakeCli回傳之lastReport()),
+    //本檔與stdout內容相同、於子進程結束前寫出(entry置於<fd>/node_modules/<name>/, 故fd為其上兩層)
+    try {
+        fs.writeFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'last-report.json'), JSON.stringify(r), 'utf8')
+    }
+    catch {}
     let end = () => {
         process.stdout.write(JSON.stringify(r))
         process.exit(exitCode)
@@ -152,7 +161,17 @@ function createFakeCli(name, entryCode = CODE_ENTRY) {
         catch {}
     }
 
-    return { exe, fd, clean }
+    //lastReport, 讀最近一次被呼叫時預設回聲腳本寫出之報告(與其stdout之JSON相同: args、stdin、cwd、env); 尚無呼叫或自訂entry者回null
+    let lastReport = () => {
+        try {
+            return JSON.parse(fs.readFileSync(path.join(fd, 'last-report.json'), 'utf8'))
+        }
+        catch {
+            return null
+        }
+    }
+
+    return { exe, fd, clean, lastReport }
 }
 
 

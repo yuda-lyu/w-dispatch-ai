@@ -1,6 +1,6 @@
 # 現況(state)(類型:2026-11-22 tdai1 維護批次:次數類、安全 opt、守門取嚴、ask 被拒、codex 事件與 refs、README 版號)
 
-本檔自 2026-11-22 tdai1 起單列(全域 §14:依功能類型分檔);索引見 `sgud/state/state.md`.只記現況,過程寫入經驗(`sgud/exp/experience.md`〈tdai1 批次〉).
+本檔自 2026-11-22 tdai1 起單列(全域 §14:依功能類型分檔);索引見 `sgud/state/state.md`.只記現況,過程寫入經驗(`sgud/exp/experience_20261124b.md`〈tdai1 批次〉;2026-11-24 自 `experience.md` 抽出).
 
 ## 一、版本與未發布之改動
 

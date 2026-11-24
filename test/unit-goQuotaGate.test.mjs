@@ -277,8 +277,9 @@ describe('goQuotaGate(R-SPAWNGATE-2)', function() {
         })
 
         let goEntry = (extra = {}) => ({ id: 'ocgo:fake', kind: 'opencode', provider: 'opencode-go', model: 'opencode-go/beam-free', exe: fake.exe, keys: ['oc_sk_AAAAAAAA', 'oc_sk_BBBBBBBB'], ...extra })
-        let keyUsed = (r) => {
-            let auth = JSON.parse(JSON.parse(r.stdout).env.OPENCODE_AUTH_CONTENT)
+        let keyUsed = () => {
+            //2026-11-24 tdai4b: 結果之stdout已遮蔽注入之金鑰(帳本R-REDACT-3), 改讀假CLI之側通道報告(最近一次實際spawn者)
+            let auth = JSON.parse(fake.lastReport().env.OPENCODE_AUTH_CONTENT)
             return auth['opencode-go'].key
         }
         let quota = (map, calls = []) => ({

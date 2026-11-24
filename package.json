@@ -1,12 +1,12 @@
 {
   "name": "w-dispatch-ai",
-  "version": "1.0.113",
+  "version": "1.0.114",
   "main": "dist/w-dispatch-ai.umd.js",
   "dependencies": {
     "wsemi": "^1.9.73"
   },
   "devDependencies": {
-    "w-package-tools": "^1.1.29"
+    "w-package-tools": "^1.1.30"
   },
   "scripts": {
     "test": "mocha --parallel \"test/*.test.mjs\" --timeout 180000",

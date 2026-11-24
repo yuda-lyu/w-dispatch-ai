@@ -90,6 +90,24 @@ process.stdin.on('end', () => {
         }, 250)
         return
     }
+    //--fake-stream: 多列輸出、結尾無換行、各塊間隔250ms, 測串流回調以列為單位、跨塊遮蔽、結尾補送與兩個遮罩家族之差異
+    //(stdout只遮key本身; stderr另遮sk-ant-樣式與內建憑證樣式〔網址帳密、鍵值對、Bearer〕); 不呼叫process.exit, 令輸出自然排空
+    if (opt('fake-stream') && key) {
+        process.stdout.write('first ' + key.slice(0, 11))
+        process.stderr.write('warn https://u1:pw12')
+        setTimeout(() => {
+            process.stdout.write(key.slice(11) + ' password=demo ' + other + '\\nsecond https://u1:pw1234@db/a\\nlast-no-newline ' + key)
+            process.stderr.write('34@db/a token=abc123 Bearer abc.def ' + other + '\\ntail-no-nl password=zzz ' + key.slice(0, 9))
+        }, 250)
+        return
+    }
+    //--fake-hang: 輸出無換行之一段後卡住(等被逾時終止), 測子進程被終止時串流回調仍補送結尾無換行之一段(已遮蔽)
+    if (opt('fake-hang') && key) {
+        process.stdout.write('partial ' + key)
+        process.stderr.write('perr token=abc123 ' + key)
+        setInterval(() => {}, 1000)
+        return
+    }
     let failKey = opt('fake-fail-key')
     if (failKey && key && key.includes(failKey)) {
         let ft = opt('fake-fail-text') || 'Invalid API key'
@@ -107,7 +125,7 @@ process.stdin.on('end', () => {
 
 let KEY = 'sk-ant-api03-TESTKEY-AAAA1111BBBB2222cccc3333'
 let KEY2 = 'sk-ant-api03-TESTKEY-ZZZZ9999YYYY8888xxxx7777'
-let MASK = '[REDACTED]'
+let MASK = '***'
 
 //會優先於(或可能干擾)ANTHROPIC_API_KEY之變數(序位見檔頭)
 let OVERRIDE_VARS = [
@@ -368,6 +386,119 @@ describe('dispatchClaude key(Anthropic API金鑰計費)', function() {
         assert.strict.deepEqual(o, oo)
     })
 
+    it('R05 串流回調以列為單位(2026-11-24 tdai4): 回調只收到完整之列(不收到半列), 結尾無換行之一段於子進程結束後補送, 不以空字串呼叫, 兩個家族之差異依規格(stdout只遮key; stderr另遮sk-ant-樣式與網址帳密、鍵值對、Bearer), 與結果物件所見一致', async function() {
+        //規格(主控定): stdout用genDiagStreamMasker([key], { credPatterns: false }); stderr用genDiagStreamMasker([key], { patterns: [sk-ant-] })(另含內建憑證樣式); push／flush回傳非空才轉交; 以列為單位、不再逐塊即時
+        let outChunks = []
+        let errChunks = []
+        let { r } = await withEnv(cleanParent(), () => run({
+            key: KEY,
+            onStdout: (c) => outChunks.push(c),
+            onStderr: (c) => errChunks.push(c),
+        }, ['--fake-stream=1']))
+        let so = outChunks.join('')
+        let se = errChunks.join('')
+        let isLines = (cs) => cs.slice(0, -1).every((c) => c.endsWith('\n')) && !cs[cs.length - 1].endsWith('\n') //除最後一次(flush補送之無換行尾段)外皆為完整之列
+        let o = [
+            r.ok,
+            so,
+            se,
+            outChunks.every((c) => typeof c === 'string' && c !== ''),
+            errChunks.every((c) => typeof c === 'string' && c !== ''),
+            isLines(outChunks),
+            isLines(errChunks),
+            r.stdout === so,
+            r.stderr === se,
+        ]
+        let oo = [
+            true,
+            `first *** password=demo sk-ant-api03-OTHERLEAK1234567890abcdef\nsecond https://u1:pw1234@db/a\nlast-no-newline ***`,
+            `warn https://***@db/a token=*** Bearer *** ***\ntail-no-nl password=*** ${KEY.slice(0, 9)}`,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+        ]
+        assert.strict.deepEqual(o, oo)
+    })
+
+    it('R05 子進程被逾時終止時, 串流回調仍補送結尾無換行之一段(stdout只遮key、stderr另遮鍵值對與金鑰), 回調與結果皆不含完整key', async function() {
+        //規格: 回調收到之文字皆已遮蔽、flush於子進程結束後補送(含被終止者)
+        let outChunks = []
+        let errChunks = []
+        let { r } = await withEnv(cleanParent(), () => run({
+            key: KEY,
+            timeoutMs: 2000,
+            onStdout: (c) => outChunks.push(c),
+            onStderr: (c) => errChunks.push(c),
+        }, ['--fake-hang=1']))
+        let o = [r.ok, r.errorType, outChunks.join(''), errChunks.join(''), JSON.stringify({ r, outChunks, errChunks }).includes(KEY)]
+        assert.strict.deepEqual(o, [false, 'timeout', 'partial ***', 'perr token=*** ***', false])
+    })
+
+    it('R05 只給opt.env.ANTHROPIC_API_KEY(不給opt.key)時, 結果之stdout／stderr與onStdout／onStderr回調亦遮蔽該金鑰(與給opt.key同一路徑; 2026-11-24 tdai4b, 主控裁定(c)); 失敗結果之stdout改用診斷家族', async function() {
+        let outChunks = []
+        let errChunks = []
+        let { r } = await withEnv(cleanParent(), () => run({
+            env: { ANTHROPIC_API_KEY: KEY },
+            onStdout: (c) => outChunks.push(c),
+            onStderr: (c) => errChunks.push(c),
+        }, ['--fake-leak=both']))
+        let { r: rf } = await withEnv(cleanParent(), () => run({ env: { ANTHROPIC_API_KEY: KEY } }, ['--fake-leak=both', '--fake-exit=1']))
+        assert.strict.deepEqual(
+            [
+                [r.ok, r.stdout, r.stderr, outChunks.join(''), errChunks.join(''), JSON.stringify({ r, outChunks, errChunks }).includes(KEY)],
+                [rf.ok, rf.stdout, rf.stderr, JSON.stringify(rf).includes(KEY)],
+            ],
+            [
+                [true, 'OK key=*** other=sk-ant-api03-OTHERLEAK1234567890abcdef', ' key=*** other=***', 'OK key=*** other=sk-ant-api03-OTHERLEAK1234567890abcdef', ' key=*** other=***', false],
+                [false, 'OK key=*** other=***', ' key=*** other=***', false],
+            ],
+        )
+    })
+
+    it('R05 只給opt.env且ANTHROPIC_API_KEY有大小寫不同之兩個名稱時(子進程只用其一), 兩個值皆遮蔽(結果與回調皆不洩漏; 2026-11-24 tdai4b獨立複審)', async function() {
+        let outChunks = []
+        let errChunks = []
+        let { r } = await withEnv(cleanParent(), () => run({
+            env: { anthropic_api_key: KEY2, ANTHROPIC_API_KEY: KEY },
+            onStdout: (c) => outChunks.push(c),
+            onStderr: (c) => errChunks.push(c),
+        }, ['--fake-leak=both']))
+        assert.strict.deepEqual(
+            [r.ok, JSON.stringify({ r, outChunks, errChunks }).includes(KEY), JSON.stringify({ r, outChunks, errChunks }).includes(KEY2)],
+            [true, false, false],
+        )
+    })
+
+    it('R05 診斷家族共用金鑰樣式集(2026-11-24 tdai4b, 主控裁定(d)): stderr回調與結果stderr皆遮蔽oc_sk_／AIza／ghp_／JWT／wrk_／sk-等非sk-ant-金鑰, 非金鑰字樣原樣', async function() {
+        let errChunks = []
+        let txt = 'bad oc_sk_ABCDEFGHIJKLMNOP1234 AIzaSy0123456789abcdefghijklmnopqrstuv ghp_0123456789abcdefghijABCDEFGHIJ012345 eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghij123456 wrk_abcdef123456 sk-projABCDEFGHIJKLMNOP ok task-abcdefghijklmnop'
+        let { r } = await withEnv(cleanParent(), () => run({ key: KEY, onStderr: (c) => errChunks.push(c) }, ['--fake-fail-key=TESTKEY', `--fake-fail-text=${txt}`]))
+        let want = 'bad *** *** *** *** *** *** ok task-abcdefghijklmnop'
+        assert.strict.deepEqual([r.ok, r.stderr, errChunks.join('')], [false, want, want])
+    })
+
+    it('R05 長度不足6之key不遮蔽(已知限制, 與串流遮蔽器之機密值長度下限一致): 回調與結果之stdout皆原樣, stderr之他把sk-ant-仍以樣式遮蔽', async function() {
+        let outChunks = []
+        let errChunks = []
+        let { r } = await withEnv(cleanParent(), () => run({
+            key: 'abcde',
+            onStdout: (c) => outChunks.push(c),
+            onStderr: (c) => errChunks.push(c),
+        }, ['--fake-leak=both']))
+        let o = [r.ok, outChunks.join(''), errChunks.join(''), r.stdout, r.stderr]
+        let oo = [
+            true,
+            'OK key=abcde other=sk-ant-api03-OTHERLEAK1234567890abcdef',
+            ' key=abcde other=***',
+            'OK key=abcde other=sk-ant-api03-OTHERLEAK1234567890abcdef',
+            ' key=abcde other=***',
+        ]
+        assert.strict.deepEqual(o, oo)
+    })
+
     it('R03 未給key時onStdout／onStderr回調原樣收到子進程輸出(不包遮蔽器, 與舊版相同)', async function() {
         let outChunks = []
         let { r } = await withEnv(cleanParent(), () => run({ onStdout: (c) => outChunks.push(String(c)) }, ['--fake-leak=out']))
@@ -383,6 +514,12 @@ describe('dispatchClaude key(Anthropic API金鑰計費)', function() {
         })
         let r = await dispatchClaude('abc', { exe: fake.exe, key: KEY, env })
         assert.strict.deepEqual([r.ok, r.errorType, r.attempts, JSON.stringify(r).includes(KEY), r.error.includes(MASK)], [false, 'params', 0, false, true])
+    })
+
+    it('R05 結果之error夾帶key(以exe名含key模擬子進程啟動失敗之訊息: ENOENT: spawn <exe> ENOENT)亦以***遮蔽key, 不洩漏', async function() {
+        //規格: key不得出現在任何錯誤訊息或回傳物件; 啟動失敗之error原文含exe名, 此處為不經診斷尾段遮罩(addErrorDetail)之error路徑
+        let r = await dispatchClaude('abc', { exe: `${KEY}-no-such-exe`, key: KEY, timeoutMs: 5000 })
+        assert.strict.deepEqual([r.ok, r.errorType, r.error, JSON.stringify(r).includes(KEY)], [false, 'spawn', 'ENOENT: spawn *** ENOENT', false])
     })
 
     it('key含NUL字元(無法放進環境變數)時回INVALID_KEY(errorType exec, attempts 0, 不啟動子進程); dispatchAiFallback換下一把而非整組跳過', async function() {

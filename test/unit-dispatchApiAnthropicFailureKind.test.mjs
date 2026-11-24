@@ -78,7 +78,7 @@ describe('dispatchApiAnthropic failureKind', function() {
 
     it('failureDetail遮蔽訊息中回顯之金鑰', async function() {
         let t = await call('echo-key-error')
-        assert.strict.deepEqual([t.failureKind, t.failureDetail.includes(KEY), t.failureDetail.includes('[REDACTED]')], ['other', false, true])
+        assert.strict.deepEqual([t.failureKind, t.failureDetail.includes(KEY), t.failureDetail.includes('***')], ['other', false, true])
     })
 
     it('脈絡過長與額度不足(400)不重試，限流(429)與過載(529)依maxRetries重試', async function() {
@@ -164,7 +164,7 @@ describe('dispatchApiAnthropic failureKind', function() {
             throw new TypeError(`Headers.append: "${init.headers['x-api-key']}" is an invalid header value`)
         }
         let t = await dispatchApiAnthropic('abc', { key: KEY, model: 'claude-haiku-5-5', fetch: fakeFetch })
-        assert.strict.deepEqual([t.failureKind, t.errorType, t.error.includes(KEY), t.error.includes('[REDACTED]')], ['key-invalid', 'fetch', false, true])
+        assert.strict.deepEqual([t.failureKind, t.errorType, t.error.includes(KEY), t.error.includes('***')], ['key-invalid', 'fetch', false, true])
     })
 
     it('注入之fetch拋出無法判定之例外(無cause.code、非標頭問題) → other(維持既有處置: 換下一把)，不憑空歸為網路', async function() {
@@ -172,7 +172,7 @@ describe('dispatchApiAnthropic failureKind', function() {
             throw new Error(`boom with ${init.headers['x-api-key']}`)
         }
         let t = await dispatchApiAnthropic('abc', { key: KEY, model: 'claude-haiku-5-5', fetch: fakeFetch })
-        assert.strict.deepEqual([t.failureKind, t.errorType, t.error.includes(KEY), t.error.includes('[REDACTED]')], ['other', 'fetch', false, true])
+        assert.strict.deepEqual([t.failureKind, t.errorType, t.error.includes(KEY), t.error.includes('***')], ['other', 'fetch', false, true])
     })
 
     //外審#15: 純分類器測過error_code，但轉接器是否把error.details.error_code接進分類須獨立驗證(訊息不含任何已知字樣)

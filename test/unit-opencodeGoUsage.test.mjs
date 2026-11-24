@@ -377,10 +377,10 @@ describe('opencodeGoUsage(Go用量端點)', function() {
             assert.strict.deepEqual(leaks, [])
         })
 
-        it('對端回顯完整Authorization標頭與金鑰時, 錯誤訊息中皆遮蔽(含[REDACTED]字樣)', async function() {
+        it('對端回顯完整Authorization標頭與金鑰時, 錯誤訊息中皆遮蔽(含***字樣)', async function() {
             let r = await call('oc_sk_echo')
             assert.strict.deepEqual(
-                [r.ok, r.errorType, r.error.includes('oc_sk_echo'), r.error.includes('[REDACTED]')],
+                [r.ok, r.errorType, r.error.includes('oc_sk_echo'), r.error.includes('***')],
                 [false, 'auth', false, true],
             )
         })
@@ -394,6 +394,23 @@ describe('opencodeGoUsage(Go用量端點)', function() {
             let [, out2] = await captureOutput(() => opencodeGoUsage({ key: 'oc_sk_with space' }))
             allOut.push(...out2)
             assert.strict.deepEqual(allOut, [])
+        })
+
+        it('最後防線(內部未預期例外, 其訊息夾帶金鑰)之訊息以***遮蔽金鑰(經全庫單一入口, 字樣與其他入口一致), 不reject', async function() {
+            //規格(2026-11-24 tdai4): 全庫遮罩字樣統一為'***'; 此站點原為自寫之split/join(字樣[REDACTED]), 改經redactText單一入口。
+            //以baseURL之getter於金鑰通過驗證(setKey)之後拋出夾帶金鑰之例外, 走到最外層之catch
+            let K = 'oc_sk_final_defense_key'
+            let opt = {
+                key: K,
+                get baseURL() {
+                    throw new Error(`boom with ${K} inside`)
+                },
+            }
+            let r = await opencodeGoUsage(opt)
+            assert.strict.deepEqual(
+                [r.ok, r.errorType, r.error, JSON.stringify(r).includes(K)],
+                [false, 'other', 'unexpected error: boom with *** inside', false],
+            )
         })
 
         it('網路錯誤之訊息不含金鑰', async function() {

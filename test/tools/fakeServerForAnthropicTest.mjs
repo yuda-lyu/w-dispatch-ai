@@ -162,6 +162,12 @@ async function fakeServerForAnthropicTest() {
             else if (model === 'text-with-example-key') { //成功回覆含合法之sk-ant-範例字樣(非本次key), 不得被樣式遮蔽破壞
                 msg([{ type: 'text', text: 'set ANTHROPIC_KEYS=sk-ant-api03-DOC-EXAMPLE-0000 in your .env' }])
             }
+            else if (model === 'text-with-cred-words') { //成功回覆含合法之憑證字樣範例(password=、網址帳密、Bearer、他把sk-ant-)且回顯本次key: 模型輸出只精確遮蔽本次key, 範例字樣不得被樣式遮蔽破壞
+                msg([{ type: 'text', text: `docs: password=demo https://u1:pw1234@db/a Bearer abc.def sk-ant-api03-DOC-EXAMPLE-0000 and ${key}` }])
+            }
+            else if (model === 'text-with-cred-words-max') { //同上, 但stop_reason為max_tokens(經acceptTruncated放行之成功路徑)
+                msg([{ type: 'text', text: `docs: password=demo https://u1:pw1234@db/a Bearer abc.def sk-ant-api03-DOC-EXAMPLE-0000 and ${key}` }], 'max_tokens')
+            }
             else if (model === 'nonjson-ct-key') { //HTTP 200非JSON, 且回應Content-Type標頭參數夾帶x-api-key
                 res.writeHead(200, { 'Content-Type': `text/plain; debug-key=${key}` })
                 res.end('oops')

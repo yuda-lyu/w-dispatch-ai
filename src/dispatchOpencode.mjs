@@ -21,6 +21,7 @@ import { readOpencodeUpstream, UPSTREAM_MAX } from './opencodeUpstream.mjs'
 import { logFlagsToAdd, printLogsOn, createLimitWatch, upstreamFromLines } from './opencodeLimit.mjs'
 import killProcessTree from './killProcessTree.mjs'
 import { createDenyWatch } from './opencodeDeny.mjs'
+import { redactResult, maskStreamCallbacks, SECRET_MIN_LEN } from './redactText.mjs'
 
 
 // dispatchOpencode.mjs — 以opencode CLI呼叫AI模型
@@ -85,7 +86,7 @@ import { createDenyWatch } from './opencodeDeny.mjs'
 //     子行程於終止前已自行以0結束者亦回失敗(主要請求已失敗; 不等validate, error為`Exit code 0 [分類]: …`; 外審terra #1)。上游原因即觸發終止之該列。
 //     訂閱(opencode-go)到頂(2026-11-16 wda158, Gitea #158; 判準見opencodeLimit.mjs檔頭【訂閱(opencode-go)到頂】) → 同免費池用盡之形狀(errorType 'quota'、failureKind 'no-credit'), error之分類詞為`[Go usage limit]`,
 //     另帶limitScope 'key'(額度綁該金鑰所屬之訂閱; 免費池用盡無此欄)與字樣內可解析時之limitWindow(如'weekly')、limitResetsInMs、limitUntil(判中時刻加重置所餘, ISO字串; 重置所餘之字樣只到分鐘, 精度為分鐘級);
-//     failureDetail與errorDetail.upstream內之工作區代號(網址內之wrk_…)一律遮蔽(failureDiag.mjs之DIAG_PATTERNS; 結果之stderr欄為子行程原始輸出之前段, 不經此遮蔽, 同既有)。
+//     failureDetail與errorDetail.upstream內之工作區代號(網址內之wrk_…)一律遮蔽(redactText.mjs之DIAG_PATTERNS; 結果之stderr欄為子行程原始輸出之前段, 不經此工作區代號遮蔽, 同既有; 有機密值時另依下方【金鑰之不外洩】遮蔽金鑰)。
 //     呼叫端判定「因額度而未完成」: r.ok === false && r.errorType === 'quota'(不必讀stderr、不必自行終止); 欲分辨免費池用盡或訂閱到頂者看limitScope是否為'key'。
 //     已知限制(外審terra #2／#3): 樹狀終止失敗(taskkill回錯)時須等execCli之逾時; execCli之「樹殺後3秒仍未close即定案」路徑之後若重試, 舊行程遲到之stderr仍會進入監看(execCli之onStderr不分嘗試),
 //     理論上可令新一次嘗試被誤判——兩者皆須終止失敗在先, 本機與測試皆未見, 未處理。
@@ -110,6 +111,12 @@ import { createDenyWatch } from './opencodeDeny.mjs'
 //   同時給key與provider時金鑰注入本就整份取代auth.json, 此旗標不再作用。
 //   風險備忘: 原始碼Auth.set會以Auth.all()(即注入內容)為底寫回auth.json, 僅於OAuth權杖刷新等寫入時發生;
 //   api型金鑰與空憑證皆無刷新, 實測未觸發。
+//
+// 【金鑰之不外洩(2026-11-24 tdai4b; 帳本R-REDACT-2、R-REDACT-3)】本次子進程實際收到之OPENCODE_AUTH_CONTENT(本轉接器依key與provider注入者、呼叫端以opt.env自給者, 或env未給而繼承自本行程環境者; opt.env以undefined移除者不取)
+//   所含之金鑰(各層字串值, 屬性名type之字串值除外)與key本身, 於結果之stdout／stderr／error與呼叫端自給之onStdout／onStderr回調一律遮蔽(字樣***; 長度不足6者不遮):
+//   結果之成功stdout(模型輸出)只遮蔽機密值本身, 失敗之stdout、stderr、error另遮蔽金鑰樣式集與內建憑證樣式(同dispatchClaude之key模式; 見redactText.mjs之redactResult);
+//   回調經串流遮蔽器(maskStreamCallbacks)以列為單位收到文字(收到換行才收到該列, 結尾無換行之一段於子進程結束後補送; 跨塊跨列之金鑰整段遮到), 內部之事件流累積與限額／被拒監看仍收原文;
+//   無任何機密值(未注入金鑰、環境亦無OPENCODE_AUTH_CONTENT)時完全不包, 回調與結果原樣。已知限制: validate收到未遮蔽之原始stdout; 呼叫端行程若在子進程結束前被外力終止, 最後未滿一列不落檔。
 //
 // 【provider與model必須配對】不同provider的金鑰不可互換：
 //   實測把agnes-ai的金鑰用於opencode/...模型 → `Invalid API key`。
@@ -193,6 +200,55 @@ let ACC_MAX = 32 * 1024 * 1024
 
 
 /**
+ * 取本次子進程實際收到之OPENCODE_AUTH_CONTENT所含之機密值(連同key)，供遮蔽結果與回調之用
+ *
+ * 來源：key參數；env(本轉接器注入之或呼叫端以opt.env自給者，名稱不分大小寫；env未給該變數時為本行程環境所繼承者)之OPENCODE_AUTH_CONTENT(JSON)內各層字串值(屬性名type者除外)；
+ * 無法解析為JSON者只取key。長度下限6由遮罩入口(redactText.mjs)過濾
+ *
+ * @param {Object} env 輸入交子進程之環境物件
+ * @param {String} key 輸入key參數(無則null)
+ * @returns {Array} 回傳不重複之機密值字串陣列，皆無為空陣列
+ * @example
+ *
+ * console.log(authSecretsOf({ OPENCODE_AUTH_CONTENT: '{"opencode":{"type":"api","key":"sk-secret-1"}}' }, null))
+ * // => [ 'sk-secret-1' ]
+ *
+ */
+function authSecretsOf(env, key) {
+    let list = new Set()
+    if (isestr(key)) {
+        list.add(key)
+    }
+    let nk = Object.keys(env).find((k) => k.toUpperCase() === 'OPENCODE_AUTH_CONTENT')
+    let content = nk === undefined ? process.env.OPENCODE_AUTH_CONTENT : env[nk]
+    if (isestr(content)) {
+        let walk = (v, depth) => {
+            if (depth > 6 || v === null) {
+                return
+            }
+            if (typeof v === 'string') {
+                if (v.length >= SECRET_MIN_LEN) { //過短者(如帳號簡稱)不收: 同時供failureDiag.maskDiag(不設長度下限)作診斷尾段遮蔽, 收了會把一般文字誤遮
+                    list.add(v)
+                }
+            }
+            else if (typeof v === 'object') {
+                for (let [k, x] of Object.entries(v)) {
+                    if (!(k === 'type' && typeof x === 'string')) { //type為憑證種類(如'api'、'oauth'), 非機密值; 其值為物件者(provider名稱恰為type)仍須走訪
+                        walk(x, depth + 1)
+                    }
+                }
+            }
+        }
+        try {
+            walk(JSON.parse(content), 0)
+        }
+        catch {}
+    }
+    return [...list]
+}
+
+
+/**
  * 由命令列旗標陣列取`--format`之值(支援`--format json`與`--format=json`，取最後一個)
  *
  * @param {Array} args 輸入旗標字串陣列
@@ -219,7 +275,7 @@ function getFormatArg(args) {
  * 特點：
  * prompt一律走stdin而非位置參數，因摘要內文可達數萬字，當命令列參數會spawn ENAMETOOLONG，
  * 而opencode run未帶位置message時即從stdin讀取；
- * 同時給予key與provider時，以OPENCODE_AUTH_CONTENT環境變數逐次注入金鑰，
+ * 同時給予key與provider時，以OPENCODE_AUTH_CONTENT環境變數逐次注入金鑰(結果之stdout／stderr／error與onStdout／onStderr回調遮蔽該金鑰，字樣***，回調以列為單位，見檔頭【金鑰之不外洩】)，
  * 該注入僅作用於當次子進程且不改寫auth.json，故可多把金鑰輪替並與其他程序並行；
  * 未給key或provider時沿用CLI既有登入狀態(auth.json)，useStoredAuth為false則改以匿名存取；
  * 使用opencode未內建之第三方provider時，須另以config給予其provider定義；
@@ -477,6 +533,13 @@ async function dispatchOpencode(prompt, opt = {}) {
     //optCli, 剔除本轉接器自用鍵後原樣轉傳, 令呼叫端可用execCli全部設定(例如onStdout、maxBuffer)
     let optCli = omit(opt, OWN_KEYS)
 
+    //金鑰之不外洩(2026-11-24 tdai4b, 帳本R-REDACT-2、R-REDACT-3): 本次子進程之OPENCODE_AUTH_CONTENT(本轉接器注入或呼叫端以opt.env自給)與key所含之機密值, 結果之stdout／stderr／error與
+    //呼叫端自給之onStdout／onStderr回調皆遮蔽(同dispatchClaude之key模式: stdout精確家族、stderr診斷家族; 回調以列為單位, 結束時補送結尾之一段)。
+    //包裝須先於下方各監看包裝(事件流累積、免費池用盡與ask被拒之監看): 其以userOnStdout／userOnStderr轉交呼叫端回調, 內部判讀仍收原文、只有呼叫端回調收遮蔽文字。
+    //無任何機密值時完全不包(回調原樣、行為與修前相同)
+    let maskSecrets = authSecretsOf(env, key)
+    let flushStreams = maskSecrets.length > 0 ? maskStreamCallbacks(optCli, maskSecrets) : null
+
     //ask被自動拒絕之判讀(排程第454項; 見opencodeDeny.mjs檔頭): evDenied為最後一次嘗試之事件流所見被拒資訊(reshapeResult設), evSeen為事件流是否可讀(可讀者只信事件流, 不另看stderr);
     //stderr簽章行由denyWatch逐行判讀(每次spawn重置); 皆於runExecCli回傳後統一判定
     let evDenied = null
@@ -614,14 +677,19 @@ async function dispatchOpencode(prompt, opt = {}) {
         env,
         timeoutMs,
         spawnGateKind: 'opencode',
-        diagSecrets: isestr(key) ? [key] : [],
+        diagSecrets: maskSecrets, //本次子進程收到之OPENCODE_AUTH_CONTENT所含之金鑰與key(同回調與結果之遮蔽對象, 見檔頭【金鑰之不外洩】)
     })
+
+    //補送串流遮蔽器保留之結尾無換行之一段(回調拋錯不外拋)
+    if (flushStreams !== null) {
+        flushStreams()
+    }
 
     //免費池用盡／免費層429(最後一次嘗試判中者): 先等樹狀終止完成(令回傳時子孫行程已不在; 上限KILL_WAIT_MS), 失敗結果改標分類——
     //免費池用盡: errorType 'quota'、failureKind 'no-credit'; 免費層429: errorType不動(依既有判定, 通常'exec')、failureKind 'rate-limit'; 皆帶failureDetail(遮蔽後之原因)。
     //子行程於終止前已自行以0結束者亦為失敗(主要請求已失敗, 需求為「讀到錯誤列即回失敗」; runExecCli此時不驗證、原樣回傳——外審terra #1): 改為失敗之形狀
     //(error `Exit code 0`＋分類與尾段、stdout裁500同execCli、去掉成功專屬之finish／outputChars、加errorDetail)
-    let secrets = isestr(key) ? [key] : []
+    let secrets = maskSecrets //failureDetail、deniedRule、errorDetail與上游原因所用之遮蔽對象(2026-11-24 tdai4b起含OPENCODE_AUTH_CONTENT所含之金鑰, 不只key)
     let hit = lim !== null ? lim.watch.hit() : null
     if (lim !== null && lim.killing() !== null) {
         let tk = null
@@ -731,7 +799,9 @@ async function dispatchOpencode(prompt, opt = {}) {
         }
         r = addUpstream(r, up)
     }
-    return r
+
+    //結果之stdout／stderr／error遮蔽注入之機密值(成功之stdout為模型輸出, 只遮機密值本身; 失敗之輸出另遮金鑰樣式集與內建憑證樣式); 無機密值時原樣
+    return maskSecrets.length > 0 ? redactResult(r, maskSecrets) : r
 }
 
 

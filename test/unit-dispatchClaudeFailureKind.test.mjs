@@ -450,7 +450,7 @@ describe('dispatchClaude failureKind与「沒額度」交叉確認', function() 
             let f = mkFetch(REST_NOCREDIT)
             let { r } = await run({ key: KEY, fetch: f }, [`--fake-out=${CREDIT}: ${KEY}`, '--fake-exit=1'])
             // 純文字須夠短; 命中文字含金鑰, failureDetail須遮蔽之
-            assert.strict.deepEqual([r.failureDetail.includes(KEY), r.failureDetail.includes('[REDACTED]')], [false, true])
+            assert.strict.deepEqual([r.failureDetail.includes(KEY), r.failureDetail.includes('***')], [false, true])
         })
 
         it('注入之fetch收到金鑰屬預期(送往Anthropic端點)，但失敗之交叉確認過程不寫入結果', async function() {

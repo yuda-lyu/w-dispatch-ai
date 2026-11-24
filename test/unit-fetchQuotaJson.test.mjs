@@ -63,8 +63,34 @@ describe('fetchQuotaJson', function() {
     it('redact: 錯誤訊息中之機密值被遮蔽(長度不足6者不處理, 避免誤遮常見短字串)', async function() {
         //tok-echo會把標頭回顯, 模擬對端把權杖夾進錯誤頁的情境: 以403路徑令本文含權杖字樣
         let r = await fetchQuotaJson(svr.usageUrlClaude, { headers: { 'Authorization': 'Bearer tok-403-org', 'X-Secret': 'my-secret-value' }, redact: ['oauth_not_allowed_for_organization', 'org'] })
-        let rr = [r.errorType, /\[REDACTED\]/.test(r.error), /oauth_not_allowed_for_organization/.test(r.error), /forbidden\(403\)/.test(r.error)]
+        let rr = [r.errorType, /\*\*\*/.test(r.error), /oauth_not_allowed_for_organization/.test(r.error), /forbidden\(403\)/.test(r.error)]
         assert.strict.deepEqual(rr, ['forbidden', true, false, true])
+    })
+
+    it('2026-11-24 tdai4: 本文讀取失敗(串流讀取拋出夾帶機密值之例外)之訊息以***遮蔽機密值, errorType network, 不reject', async function() {
+        //規格: 全庫遮罩字樣統一為***(單一入口redactText); 暫時以替身取代全域fetch(只此一案, finally還原), 令本文讀取拋出夾帶機密值之例外
+        let orig = globalThis.fetch
+        globalThis.fetch = async () => ({
+            status: 200,
+            ok: true,
+            headers: { get: () => null },
+            body: {
+                getReader: () => ({
+                    read: async () => {
+                        throw new Error('socket reset while reading, token=tok-secret-0123 echoed')
+                    },
+                    cancel: async () => {},
+                }),
+            },
+        })
+        let r = null
+        try {
+            r = await fetchQuotaJson('http://quota.invalid/usage', { redact: ['tok-secret-0123'], timeoutMs: 3000 })
+        }
+        finally {
+            globalThis.fetch = orig
+        }
+        assert.strict.deepEqual([r.ok, r.errorType, r.error], [false, 'network', 'read body error: socket reset while reading, token=*** echoed'])
     })
 
     it('network錯誤訊息附cause.code(連線拒絕→ECONNREFUSED); 無cause.code者(fetch禁用埠、送出前之標頭錯誤)不附, 整句照舊先經redact', async function() {
@@ -77,7 +103,7 @@ describe('fetchQuotaJson', function() {
         let rr = [
             [r1.ok, r1.status, r1.errorType, /^network error: .+ \(ECONNREFUSED\)$/.test(r1.error)],
             [r2.ok, r2.errorType, r2.error],
-            [r3.ok, r3.errorType, r3.error.includes('tok-secret'), r3.error.includes('[REDACTED]')],
+            [r3.ok, r3.errorType, r3.error.includes('tok-secret'), r3.error.includes('***')],
         ]
         assert.strict.deepEqual(rr, [[false, 0, 'network', true], [false, 'network', 'network error: fetch failed'], [false, 'network', false, true]])
     })

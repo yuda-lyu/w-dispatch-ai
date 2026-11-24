@@ -1,6 +1,6 @@
 # 現況(state)(類型:2026-11-23 tdai2:`env`／`exes` 各值、`pick`／`patch`,與影響計費之 opt 盤點)
 
-承 `state_tdai1b.md`(2026-11-23 tdai1b);索引見 `sgud/state/state.md`.只記現況,過程寫入經驗(`sgud/exp/experience.md`〈tdai2〉).
+承 `state_tdai1b.md`(2026-11-23 tdai1b);索引見 `sgud/state/state.md`.只記現況,過程寫入經驗(`sgud/exp/experience_20261124b.md`〈tdai2〉;2026-11-24 自 `experience.md` 抽出).
 
 ## 一、版本與未發布之改動
 

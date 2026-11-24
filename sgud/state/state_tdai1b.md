@@ -1,6 +1,6 @@
 # 現況(state)(類型:2026-11-23 tdai1b 修正輪:opencode 計費與權限相關 opt、四家 CLI 與目錄展開之 env／exes)
 
-承 `state_tdai1.md`(2026-11-22 tdai1);索引見 `sgud/state/state.md`.只記現況,過程寫入經驗(`sgud/exp/experience.md`〈tdai1b〉).
+承 `state_tdai1.md`(2026-11-22 tdai1);索引見 `sgud/state/state.md`.只記現況,過程寫入經驗(`sgud/exp/experience_20261124b.md`〈tdai1b〉;2026-11-24 自 `experience.md` 抽出).
 
 ## 一、版本與未發布之改動
 

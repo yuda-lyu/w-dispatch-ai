@@ -88,7 +88,8 @@ describe('dispatchOpencode: provider無效而key有效、useStoredAuth非布林 
             ['provider 無效 + key null', true, ''],
         ])
         let t = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: KEY })
-        assert.strict.deepEqual([t.ok, JSON.parse(JSON.parse(t.stdout).env.OPENCODE_AUTH_CONTENT)], [true, { opencode: { type: 'api', key: KEY } }])
+        //2026-11-24 tdai4b: 結果之stdout已遮蔽注入之金鑰(帳本R-REDACT-3), 改讀假CLI之側通道報告
+        assert.strict.deepEqual([t.ok, JSON.parse(fake.lastReport().env.OPENCODE_AUTH_CONTENT)], [true, { opencode: { type: 'api', key: KEY } }])
     })
 
     //(2026-11-23 tdai2b 改寫: 修前斷言「config為數字、布林之定義值沿用既有設定(不拒絕)」; config無效則沿用使用者既有設定(其內可載model、provider之預設), 主控裁定給了而非字串亦非一般物件改以params拒絕——帳本R-SAFEOPT-1規則11, 細案見unit-patchCatalogueConfig; agent仍維持退回build, config為''仍為未給)

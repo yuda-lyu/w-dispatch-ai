@@ -5,9 +5,9 @@ import createFakeCli, { createUnstartableExe } from './tools/fakeCliForTest.mjs'
 import fakeServerForApiTest from './tools/fakeServerForApiTest.mjs'
 
 
-//assertKey, 由假CLI回聲之OPENCODE_AUTH_CONTENT解出本次注入之金鑰
-let getInjectedKey = (stdout) => {
-    let o = JSON.parse(stdout)
+//getInjectedKey, 由假CLI之側通道報告(fake.lastReport(), 須於下一次呼叫前取)解出本次注入之金鑰;
+//2026-11-24 tdai4b: 結果之stdout已遮蔽注入之金鑰(帳本R-REDACT-3), 不再從stdout回聲取
+let getInjectedKey = (o) => {
     let auth = o.env.OPENCODE_AUTH_CONTENT
     if (auth === '') {
         return ''
@@ -77,7 +77,7 @@ describe('dispatchAiFallback', function() {
             t.ok,
             t.providerId,
             t.keyIndex,
-            getInjectedKey(t.stdout),
+            getInjectedKey(fake.lastReport()),
             t.tried.map((x) => [x.keyId, x.outcome]),
         ]
         let rr = [
@@ -100,8 +100,8 @@ describe('dispatchAiFallback', function() {
         }]
         let r = []
         for (let i = 0; i < 4; i++) {
-            let t = await dispatchAiFallback('abc', { providers })
-            r.push(getInjectedKey(t.stdout))
+            await dispatchAiFallback('abc', { providers })
+            r.push(getInjectedKey(fake.lastReport()))
         }
         let rr = ['sk-k0', 'sk-k1', 'sk-k2', 'sk-k0']
         assert.strict.deepEqual(r, rr)
@@ -122,11 +122,13 @@ describe('dispatchAiFallback', function() {
             provider: 'opencode',
             keys: ['sk-a0', 'sk-a1'],
         }]
-        let t1 = await dispatchAiFallback('abc', { providers, store })
-        let t2 = await dispatchAiFallback('abc', { providers, store })
+        await dispatchAiFallback('abc', { providers, store })
+        let k1 = getInjectedKey(fake.lastReport())
+        await dispatchAiFallback('abc', { providers, store })
+        let k2 = getInjectedKey(fake.lastReport())
         let r = [
-            getInjectedKey(t1.stdout),
-            getInjectedKey(t2.stdout),
+            k1,
+            k2,
             stored.cursors['g-store-a'],
             stored.cursors['g-store-b'],
         ]
@@ -487,7 +489,7 @@ describe('dispatchAiFallback', function() {
                 config,
             }],
         })
-        let o = JSON.parse(t.stdout)
+        let o = fake.lastReport() //結果之stdout已遮蔽注入之金鑰, 讀側通道報告
         let r = [
             t.ok,
             JSON.parse(o.env.OPENCODE_CONFIG_CONTENT),
@@ -530,7 +532,7 @@ describe('dispatchAiFallback', function() {
             t.ok,
             t.providerId,
             t.keyIndex,
-            getInjectedKey(t.stdout),
+            getInjectedKey(fake.lastReport()),
             t.tried.map((x) => [x.keyId, x.outcome]),
         ]
         let rr = [
@@ -985,7 +987,7 @@ describe('dispatchAiFallback', function() {
         let t = await dispatchAiFallback('abc', {
             providers: [{ id: 'g-fetch-key', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', keys: ['sk-bad\nX', 'sk-good'] }],
         })
-        let r = [t.ok, t.keyIndex, t.tried.map((x) => [x.outcome, x.errorType || null]), t.tried[0].error.includes('sk-bad'), t.tried[0].error.includes('[REDACTED]')]
+        let r = [t.ok, t.keyIndex, t.tried.map((x) => [x.outcome, x.errorType || null]), t.tried[0].error.includes('sk-bad'), t.tried[0].error.includes('***')]
         let rr = [true, 1, [['next-key', 'fetch'], ['ok', null]], false, true]
         assert.strict.deepEqual(r, rr)
     })

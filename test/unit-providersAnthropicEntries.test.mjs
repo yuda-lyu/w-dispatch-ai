@@ -15,7 +15,7 @@ import createFakeCli from './tools/fakeCliForTest.mjs'
 
 let K1 = 'sk-ant-api03-ENTRY-KEY-ONE-1111'
 let K2 = 'sk-ant-api03-ENTRY-KEY-TWO-2222'
-let MASK = '[REDACTED]'
+let MASK = '***'
 
 //假claude: 把收到的argv與ANTHROPIC_API_KEY/AUTH_TOKEN回寫stdout(JSON); key會被dispatchClaude遮蔽, 故以遮蔽字樣證明「key確在子進程環境」
 let ENTRY = `

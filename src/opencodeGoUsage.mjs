@@ -2,6 +2,7 @@ import get from 'lodash-es/get.js'
 import isobj from 'wsemi/src/isobj.mjs'
 import isestr from 'wsemi/src/isestr.mjs'
 import castTimerMs from './castTimerMs.mjs'
+import redactText from './redactText.mjs'
 import fetchQuotaJson from './quota/fetchQuotaJson.mjs'
 
 
@@ -145,7 +146,7 @@ async function opencodeGoUsage(opt = {}) {
     catch (err) {
         let msg = String(get(err, 'message', 'unknown'))
         if (isestr(key)) {
-            msg = msg.split(key).join('[REDACTED]')
+            msg = redactText(msg, [key]) //單一入口(遮蔽字樣'***'; key於run已驗為6字元以上, 達遮蔽下限)
         }
         return fail('other', `unexpected error: ${msg}`, null, t0)
     }

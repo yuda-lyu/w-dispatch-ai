@@ -77,7 +77,7 @@ describe('dispatchAi', function() {
 
     it('opt原樣轉傳至對應轉接器', async function() {
         let t = await dispatchAi('opencode', 'abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc', extraArgs: ['--fake-stderr=warn'] })
-        let o = JSON.parse(t.stdout)
+        let o = fake.lastReport() //2026-11-24 tdai4b: 結果之stdout已遮蔽注入之金鑰(帳本R-REDACT-3), 改讀假CLI之側通道報告
         let r = [t.stderr, JSON.parse(o.env.OPENCODE_AUTH_CONTENT).opencode.key]
         let rr = ['warn', 'sk-abc']
         assert.strict.deepEqual(r, rr)

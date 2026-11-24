@@ -13,7 +13,7 @@ import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
 import { readStrOpt, readNameOpt, checkReadObj } from './readSafeOpt.mjs'
-import redactText, { secretHeaderValues } from './redactText.mjs'
+import { secretHeaderValues, redactApiKeyText } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { safeValidateAsync } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
@@ -53,6 +53,9 @@ import { readAttemptHints, retryFits, capByHints, createCutTracker } from './att
 //   HTTP 200但本體非JSON時另報INVALID_RESPONSE: body is not JSON(附原始位元組資訊), 與「缺answers」分開
 //   (同dispatchApiOpenaiCompat, 見describeNonJsonBody.mjs)。
 //
+// 【key不外洩(2026-11-24 tdai4b; 帳本R-REDACT-3, 比照dispatchApiAnthropic)】錯誤路徑(fetch例外訊息、HTTP錯誤本體、非JSON診斷之回應標頭值、answers缺漏之stderr、
+//   validate例外訊息與失敗時之stdout、啟動前params錯誤之外來例外訊息)一律先經redactApiKeyText: 遮蔽本次全部機密標頭值與key本身(伺服器常回顯去掉Bearer前綴之本體)、金鑰樣式集與內建憑證樣式(見redactText.mjs), 字樣***。
+//   成功之stdout與answers為模型輸出, 不遮蔽(既有; validate收到原文)。
 // 【混用注意】
 //   1. 答案形狀與文字模型完全不同, 不可與文字生成條目混在同一條dispatchAiFallback鏈中遞補;
 //      同一鏈只放本kind之條目(可多把金鑰輪替)。預設providers.mjs收有typesafe:jev-latest,
@@ -85,11 +88,15 @@ let optTruncate = {
  * @param {Array} ids 輸入請求之題目id陣列，用於檢核回應是否每題皆有答案
  * @param {Number} timeoutMs 輸入逾時毫秒
  * @param {Function|null} validator 輸入驗證函式
+ * @param {Array} secrets 輸入須遮蔽之機密值字串陣列(全部機密標頭值與key本身)
  * @returns {Promise} 回傳Promise，resolve回傳結果物件
  */
-async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
+async function callOnce(url, headers, bodyText, ids, timeoutMs, validator, secrets) {
 
     let t0 = Date.now()
+
+    //red, 錯誤路徑文字(外來之回應本體、診斷、validate例外訊息、fetch例外訊息)一律先遮蔽機密值與金鑰樣式集(2026-11-24 tdai4b起比照dispatchApiAnthropic; 見redactText.mjs)
+    let red = (s) => redactApiKeyText(s, secrets)
 
     //mkResult, 結果形狀之單一來源(欄位對齊其他api類轉接器, 追加answers與modelResolved)
     let mkResult = (patch) => ({
@@ -135,7 +142,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
 
         //網路層錯誤(DNS/連線拒絕等); 無cause.code者(送出前之例外, 如標頭值含換行)之訊息會夾帶標頭值(含金鑰), 一律遮蔽(見redactText.mjs)
         //拋出值可為null或已撤銷之Proxy(如標頭值之toString拋出者), 一律安全讀取, 訊息經errMsg
-        let cause = errField(err, 'cause.code') || redactText(errMsg(err), secretHeaderValues(headers))
+        let cause = errField(err, 'cause.code') || red(errMsg(err))
         return mkResult({ error: `FETCH_ERROR: ${cause}`, errorType: 'fetch' })
     }
     clearTimeout(timer)
@@ -143,7 +150,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
     //HTTP非2xx, 原始回應本體放stderr(401/400之detail.message、422之detail陣列皆在其中)
     if (!res.ok) {
         return mkResult({
-            stderr: strTruncate(txt, 1000, optTruncate),
+            stderr: strTruncate(red(txt), 1000, optTruncate),
             code: res.status,
             error: `HTTP ${res.status}`,
             errorType: 'http',
@@ -159,9 +166,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
         let j = JSON.parse(txt)
         answers = get(j, 'answers', null)
         modelResolved = get(j, 'model', '')
-        if (!isestr(modelResolved)) {
-            modelResolved = ''
-        }
+        modelResolved = isestr(modelResolved) ? red(modelResolved) : '' //取自伺服器回應之外來文字(進成功與失敗結果), 先遮蔽
         usage = get(j, 'usage', null)
         if (!isobj(usage)) {
             usage = null
@@ -174,15 +179,15 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
     //本體非JSON, 與「JSON缺answers」分開回報並附原始位元組資訊; 遞補層據前綴整組跳過(見describeNonJsonBody.mjs)
     if (!parsed) {
         return mkResult({
-            stderr: strTruncate(txt, 500, optTruncate),
+            stderr: strTruncate(red(txt), 500, optTruncate),
             code: res.status,
-            error: describeNonJsonBody(raw, res.headers),
+            error: red(describeNonJsonBody(raw, res.headers)), //含回應標頭值(content-type等), 屬外來文字故一併遮蔽(前綴INVALID_RESPONSE: body is not JSON不受影響)
             errorType: 'invalid-response',
         })
     }
     if (!isobj(answers)) {
         return mkResult({
-            stderr: strTruncate(txt, 500, optTruncate),
+            stderr: strTruncate(red(txt), 500, optTruncate),
             code: res.status,
             error: 'INVALID_RESPONSE: missing answers object',
             errorType: 'invalid-response',
@@ -195,7 +200,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
     let missing = ids.filter((id) => !isobj(answers[id]))
     if (missing.length > 0) {
         return mkResult({
-            stderr: strTruncate(txt, 500, optTruncate),
+            stderr: strTruncate(red(txt), 500, optTruncate),
             code: res.status,
             error: `INVALID_RESPONSE: missing answers for [${missing.join(', ')}]`,
             errorType: 'invalid-response',
@@ -212,8 +217,8 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator) {
         let v = await safeValidateAsync(validator, content, Math.max(timeoutMs - (Date.now() - t0), 1)) //validate與本次嘗試共用timeoutMs(剩餘時間)
         if (!v.pass) {
             return mkResult({
-                stdout: strTruncate(content, 500, optTruncate),
-                stderr: v.note,
+                stdout: strTruncate(red(content), 500, optTruncate),
+                stderr: red(v.note), //呼叫端validate之例外訊息(外來文字)
                 code: res.status,
                 error: 'OUTPUT_VALIDATION_FAILED',
                 errorType: 'validation',
@@ -337,17 +342,20 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     }
     let key = rkey.key === '' ? null : rkey.key
 
+    //redEarly, 啟動前params錯誤之外來例外訊息(body／headers之getter、toJSON、標頭值toString拋出者)可能夾帶key, 先遮蔽(key本身與其Bearer標頭值; 其餘標頭值此時尚未物化)
+    let redEarly = (s) => redactApiKeyText(s, isestr(key) ? [key, `Bearer ${key}`] : [])
+
     //bodyExtra
     let rbody = readCallerObj(get(opt, 'body', null), 'body') //呼叫端物件不可讀(拋錯之getter、已撤銷之Proxy)以params回報, 可讀者取物化之淺層副本
     if (!rbody.ok) {
-        return getErrorResult(rbody.msg)
+        return getErrorResult(redEarly(rbody.msg))
     }
     let bodyExtra = rbody.value
 
     //body為影響計費之opt(額外請求本體): 未給(undefined、null)為空物件; 給了而非一般物件(字串、數字、陣列、Map等)以params回報、不送請求(修前被略過而用預設請求本體; 帳本R-SAFEOPT-1規則11)
     let ebody = checkReadObj(bodyExtra, 'body')
     if (ebody !== '') {
-        return getErrorResult(ebody)
+        return getErrorResult(redEarly(ebody))
     }
     if (!isobj(bodyExtra)) {
         bodyExtra = {}
@@ -356,7 +364,7 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
     //headersExtra
     let rheaders = readCallerObj(get(opt, 'headers', null), 'headers')
     if (!rheaders.ok) {
-        return getErrorResult(rheaders.msg)
+        return getErrorResult(redEarly(rheaders.msg))
     }
     let headersExtra = rheaders.value
     if (!isobj(headersExtra)) {
@@ -393,7 +401,7 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
         ids = Object.keys(isobj(body.questions) ? body.questions : questions)
     }
     catch (err) {
-        return getErrorResult(`body is not JSON-serializable: ${errMsg(err)}`)
+        return getErrorResult(redEarly(`body is not JSON-serializable: ${errMsg(err)}`))
     }
     if (isestr(key)) {
         headers['Authorization'] = `Bearer ${key}`
@@ -407,8 +415,11 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
         }
     }
     catch (err) {
-        return getErrorResult(`headers is not readable: ${errMsg(err)}`)
+        return getErrorResult(redEarly(`headers is not readable: ${errMsg(err)}`))
     }
+
+    //secrets, 錯誤路徑須遮蔽之機密值: 全部機密標頭值(Authorization、呼叫端自給之x-api-key等; Content-Type與Accept-Encoding除外)與key本身(伺服器常回顯去掉Bearer前綴之本體)
+    let secrets = [...secretHeaderValues(headers), ...(isestr(key) ? [key] : [])]
 
     let lastResult = null
     let totalAttempts = 0
@@ -430,7 +441,7 @@ async function dispatchApiTypesafeSystemone(prompt, opt = {}) {
 
         //重試之逾時以期限封頂(首次已由遞補層封頂)
         let tmo = attempt > 0 ? capByHints(timeoutMs, hints) : timeoutMs
-        lastResult = await callOnce(url, headers, bodyText, ids, tmo, validator)
+        lastResult = await callOnce(url, headers, bodyText, ids, tmo, validator, secrets)
         cut.note(tmo, lastResult)
         totalAttempts = attempt + 1
 

@@ -23,8 +23,8 @@ import { maskApiKeys } from '../redactText.mjs'
 //   WARN／ERROR無專屬方法時退用INFO之方法(寧可等級不準也不讓「providerPick 有無效 id」這類設定錯誤消失)。
 //   記錄器自身拋錯或回傳Promise之rejection一律吞掉——診斷輸出不得影響已取得之AI結果(診斷輸出與遮罩規格D4)。
 //
-// 【不外洩憑證】日誌內容來自結果之tried／error(轉接器已就注入之金鑰遮蔽, 見redactText.mjs), 本層再對整行套Anthropic金鑰樣式遮蔽(sk-ant-…)
-//   作底線防護; 不輸出金鑰、不輸出stdout內容(模型輸出)。
+// 【不外洩憑證】日誌內容來自結果之tried／error(轉接器已就注入之金鑰遮蔽, 見redactText.mjs), 本層再對整行套診斷家族遮蔽(maskApiKeys: sk-ant-…樣式與
+//   wsemi內建憑證樣式〔網址帳密、password／token等鍵值對、Bearer〕, 字樣'***'; 全庫同一入口redactText.mjs)作底線防護; 不輸出金鑰、不輸出stdout內容(模型輸出)。
 //
 // 【tag】多個呼叫點共用同一記錄器時區分來源: tag原樣接在每行訊息之前(不加括號與空白, 分隔符由呼叫端自帶, 如tag: '步驟6：'),
 //   非字串視為''; 與執行殼原契約一致, 使用端的步驟行皆以`步驟N：`起頭, AI行須同形才能逐步驟grep。

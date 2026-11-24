@@ -219,7 +219,7 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
             let rs = []
             for (let p of rr.providers) {
                 let r = await dispatchAiFallback('hello', { providers: [p] })
-                let o = JSON.parse(r.stdout)
+                let o = fake.lastReport() //2026-11-24 tdai4b: 結果之stdout已遮蔽注入之金鑰(帳本R-REDACT-3), 改讀假CLI之側通道報告
                 rs.push([
                     r.ok,
                     r.providerId,
@@ -244,7 +244,7 @@ describe('providers之OpenCode Go條目(CLI類)', function() {
                 patch: { 'ocgo:opencode-go/beam-free': { extraArgs: ['--fake-fail-key=oc_sk_bad_one'] } },
             })
             let r = await dispatchAiFallback('hi', { providers: rr.providers })
-            let o = JSON.parse(r.stdout)
+            let o = fake.lastReport() //結果之stdout已遮蔽注入之金鑰, 讀側通道報告(第2把之呼叫)
             assert.strict.deepEqual(
                 [r.ok, JSON.parse(o.env.OPENCODE_AUTH_CONTENT), r.tried.length],
                 [true, { 'opencode-go': { type: 'api', key: 'oc_sk_good_two' } }, 2],

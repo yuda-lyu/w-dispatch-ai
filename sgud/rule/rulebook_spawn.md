@@ -1,6 +1,6 @@
 # 規則帳本(類型:spawn)
 
-> 自 `rulebook.md` 抽出(2026-10-25 依全域 sgud 規則整理:過長即依類型拆檔;節號與標題不變,不刪內容,只搬移).類型說明:子進程未能啟動／呼叫無法開始之回報與分流、遞補分流、CLI 單一入口、validate 判定、錯誤訊息遮蔽、不 reject(R-SPAWN-1～3、R-VALIDATE-1、R-REDACT-1、R-NOREJECT-1).主檔索引見 `sgud/rule/rulebook.md`.
+> 自 `rulebook.md` 抽出(2026-10-25 依全域 sgud 規則整理:過長即依類型拆檔;節號與標題不變,不刪內容,只搬移).類型說明:子進程未能啟動／呼叫無法開始之回報與分流、遞補分流、CLI 單一入口、validate 判定、錯誤訊息遮蔽、不 reject(R-SPAWN-1～3、R-VALIDATE-1、R-REDACT-1、R-NOREJECT-1).**R-REDACT-1～3 與其變異驗證表已於 2026-11-24 tdai4b 抽出至 `sgud/rule/rulebook_redact.md`**(本檔逾約 30KB 門檻;節號與標題不變,只搬移).主檔索引見 `sgud/rule/rulebook.md`.
 
 ## 「子進程未能啟動／呼叫無法開始」之回報與分流(2026-10-14 立)
 
@@ -49,11 +49,7 @@
 - onStdout／onStderr(Q9):拋錯仍會使行程崩潰(wsemi 文件載明不攔截),本套件只於 README 文件化,不包裝;回調為 async 者其 rejection 同樣不被攔截(2026-10-16 補)。
 - 對應測試:T6 四家 CLI 轉接器測試之「自訂validate拋錯時視同驗證失敗…且stderr前綴validate threw訊息」;R-USERFN-2 之 T-U3～T-U9。
 
-### R-REDACT-1 錯誤訊息不得夾帶機密值;遮蔽規則單一來源 `redactText`
-
-- 規則:`src/redactText.mjs`(`redactText`、`secretHeaderValues`)為唯一遮蔽實作;REST 三家之 fetch 例外訊息(無 cause.code 時)以請求標頭中 Content-Type、Accept-Encoding 以外之值遮蔽;`quota/fetchQuotaJson` 之 redact 亦用之,其網路錯誤訊息附 cause.code(Q10,整句先經 redact)。
-- 盤點指令:`Grep "redactText|REDACT_MASK" src`——預期定義只在 `src/redactText.mjs`;`Grep "FETCH_ERROR|network error" src` 之每處皆經遮蔽。
-- 對應測試:T7 REST 三家測試之「金鑰含換行等非法標頭字元(送出前失敗)時錯誤訊息遮蔽金鑰」;T4 之守門案例(tried 不含金鑰);T10 `test/unit-fetchQuotaJson.test.mjs` 之「連線拒絕之network錯誤附cause.code」。
+### R-REDACT-1～3 與變異驗證(已於 2026-11-24 tdai4b 抽出至 `sgud/rule/rulebook_redact.md`;節號與標題不變,只搬移)
 
 ### R-NOREJECT-1 參數組裝與工作流之呼叫端程式拋錯不得 reject
 

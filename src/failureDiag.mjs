@@ -2,7 +2,7 @@ import get from 'lodash-es/get.js'
 import isestr from 'wsemi/src/isestr.mjs'
 import isobj from 'wsemi/src/isobj.mjs'
 import maskDiagText from 'wsemi/src/maskDiagText.mjs'
-import { API_KEY_PATTERN } from './redactText.mjs'
+import { DIAG_PATTERNS } from './redactText.mjs'
 
 
 // failureDiag.mjs — CLI失敗結果之診斷資訊(errorDetail)、error文字補原因、成功結果之finish與outputChars(2026-11-08 da110, Gitea #110)
@@ -25,7 +25,7 @@ import { API_KEY_PATTERN } from './redactText.mjs'
 //   先去ANSI色碼、CRLF正規化、行內空白折疊、略過空白行後再取尾; error文字內換行折為單一空白。完整輸出不在此保存(結果之stdout/stderr欄位維持execCli原樣: 失敗時stdout 500、stderr 1000字元)。
 //
 // 【遮罩(診斷輸出與遮罩規格, dspec〈診斷輸出與遮罩〉D1單一實作)】不另寫遮罩: 全部交wsemi之maskDiagText(呼叫端給的機密值、網址帳密、password／token／secret／authorization／api-key鍵值對、Bearer憑證),
-//   並以opt.patterns宣告本套件之金鑰樣式(DIAG_PATTERNS: sk-ant-〔沿用redactText.mjs之API_KEY_PATTERN, 單一來源〕、sk-／oc_sk_／AIza／ghp_／JWT等, 由maskDiagText執行);
+//   並以opt.patterns宣告本套件之金鑰樣式(DIAG_PATTERNS: sk-ant-、sk-／oc_sk_／AIza／ghp_／JWT／wrk_等, 單一定義於redactText.mjs並與其診斷家族共用, 由maskDiagText執行);
 //   一律以'***'取代(與共用語料之期望一致, 測試以語料之wire案重跑); 遮蔽先於截尾(跨尾段邊界之金鑰不會殘留前段); 遮蔽失敗回'***'(fail-closed)。
 //
 // 【不改變既有失敗分類】error文字加了原因後, 既有以error文字判定之處不得因此改判:
@@ -39,18 +39,7 @@ let DIAG_TAIL_MAX = 300
 //輸出擷取視窗(字元): 子進程輸出只保留此長度之尾端供取尾段(記憶體上限)
 let DIAG_KEEP = 4096
 
-//本套件宣告之金鑰樣式, 交wsemi maskDiagText以opt.patterns執行(re自動加g旗標)
-//sk-ant-(Anthropic金鑰, 沿用redactText.mjs之樣式單一來源)、sk-／oc_sk_(OpenAI相容與OpenCode金鑰)、AIza(Google API金鑰)、ghp_等(GitHub權杖)、JWT(eyJ…三段)、
-//wrk_(opencode Console工作區代號, 帳號識別; 有長度下限, `wrk_ab12`等短詞不遮)
-let DIAG_PATTERNS = [
-    { re: new RegExp(API_KEY_PATTERN.source) },
-    { re: /\b(?:sk|oc_sk|pk|rk)[-_][A-Za-z0-9_-]{12,}/ },
-    { re: /\bAIza[0-9A-Za-z_-]{30,}/ },
-    { re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/ },
-    { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
-    //opencode Console之工作區代號(wrk_ + 8碼以上英數; 訂閱到頂之錯誤文字內之網址帶此代號: https://opencode.ai/console/wrk_…/go)——非金鑰, 屬帳號識別, 不隨診斷文字外流(2026-11-16 wda158, Gitea #158)
-    { re: /\bwrk_[A-Za-z0-9]{8,}/ },
-]
+//金鑰樣式集(DIAG_PATTERNS)之定義已於2026-11-24 tdai4b移至redactText.mjs(單一定義; 診斷家族與本檔之maskDiag共用同一個陣列), 本檔自該處匯入並於下方照舊匯出
 
 //ANSI控制序列(刻意比對控制字元ESC)
 // eslint-disable-next-line no-control-regex
@@ -76,7 +65,7 @@ let UPSTREAM_CLASSES = [
     [/context[ _-]?(?:length|window)|maximum context|too long/i, 'context too long'],
 ]
 
-//方括號詞中視為雜訊者(遮罩字樣、JS物件字串化等)
+//方括號詞中視為雜訊者(外來文字之[REDACTED]類遮罩字樣、JS物件字串化等; 本套件自身之遮罩字樣為***, 不加方括號)
 let BRACKET_IGNORE = ['redacted', 'object', 'done']
 
 

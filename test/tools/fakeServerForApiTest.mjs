@@ -140,6 +140,46 @@ async function fakeServerForApiTest() {
 
             let model = body.model || ''
 
+            //洩漏重現用之共通型號(三種端點皆同; 2026-11-24 tdai4b): 回顯收到之Authorization標頭與去掉Bearer前綴之金鑰本體
+            //err-echo-key: HTTP 401, 錯誤本體回顯; nonjson-echo-key: HTTP 200非JSON, Content-Type之參數與本文皆回顯;
+            //junk-json-echo-key: HTTP 200 JSON但無可用欄位(三家各回invalid-response), 本體回顯; trunc-echo-key(僅chat/completions): finish_reason為length且部分內容回顯
+            let bare = auth.replace(/^Bearer\s+/i, '')
+            if (model === 'err-echo-key') {
+                res.writeHead(401, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ error: { message: `bad credential ${auth} / ${bare}` } }))
+                return
+            }
+            if (model === 'nonjson-echo-key') {
+                res.writeHead(200, { 'Content-Type': `text/plain; debug-key=${bare}` })
+                res.end(`oops ${bare}`)
+                return
+            }
+            if (model === 'junk-json-echo-key') {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ note: 'no usable fields', echo: bare }))
+                return
+            }
+            if (model === 'failed-echo-key' && isResponses) { //responses端點: status為failed, error.message回顯金鑰(進入error字串之detail與stderr)
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ status: 'failed', model, error: { code: 'server_error', message: `boom ${bare}` }, incomplete_details: null, output: [], usage: { input_tokens: 7, output_tokens: 3 } }))
+                return
+            }
+            if (model === 'incomplete-echo-key' && isResponses) { //responses端點: status為incomplete, incomplete_details.reason回顯金鑰(進入judgeTruncated之error字串)
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ status: 'incomplete', model, error: null, incomplete_details: { reason: bare }, output: [], usage: { input_tokens: 7, output_tokens: 3 } }))
+                return
+            }
+            if (model === 'model-echo-key' && isSystemOne) { //systemone端點: 回應之model欄(modelResolved)回顯金鑰, answers缺漏令結果為失敗
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ model: bare, answers: {}, usage: { input_tokens: 7, output_tokens: 3 } }))
+                return
+            }
+            if (model === 'trunc-echo-key' && !isResponses && !isSystemOne) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ choices: [{ finish_reason: 'length', message: { role: 'assistant', content: `partial ${bare}` } }], usage: { prompt_tokens: 3, completion_tokens: 7, total_tokens: 10 } }))
+                return
+            }
+
             //System One路由(/systemone): 回answers而非文字, 見dispatchApiTypesafeSystemone檔頭
             if (isSystemOne) {
                 let send = (code, obj) => {

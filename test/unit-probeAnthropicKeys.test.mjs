@@ -102,7 +102,7 @@ describe('probeAnthropicKeys (金鑰探測)', function() {
                 }
             }
         }
-        assert.strict.deepEqual([leaks, json.includes('[REDACTED]')], [[], true])
+        assert.strict.deepEqual([leaks, json.includes('***')], [[], true])
     })
 
     it('fetch拋出夾帶金鑰之例外: 有cause.code → network；標頭值非法 → key-invalid；無法判定 → other；訊息皆遮蔽，不reject', async function() {
@@ -129,7 +129,26 @@ describe('probeAnthropicKeys (金鑰探測)', function() {
         }
         let r = await probeAnthropicKeys([K1], { fetch: fetchByKey({ [K1]: { status: 200, body: okBody, headers } }) })
         let json = JSON.stringify(r)
-        assert.strict.deepEqual([json.includes(K1), json.includes('PROBEKEY-ONE'), r.results[0].limits.requests.reset], [false, false, 'echo-[REDACTED]-tail'])
+        //2026-11-24 tdai4: wsemi之遮罩於原文上求全部規則之命中區間再合併一次取代(不再先精確後樣式依序取代): 與金鑰相接之'-tail'屬sk-ant-樣式之字元集([A-Za-z0-9_-])而併入同一個***
+        //(此前為'echo-[REDACTED]-tail'; 只會多遮、不會漏遮)
+        assert.strict.deepEqual([json.includes(K1), json.includes('PROBEKEY-ONE'), r.results[0].limits.requests.reset], [false, false, 'echo-***'])
+    })
+
+    it('2026-11-24 tdai4: 最後防線(回應物件之headers存取拋出夾帶金鑰之例外)與伺服器回顯之error.type夾帶金鑰時, detail與apiErrorType皆以***遮蔽, 不reject', async function() {
+        let bad = async () => ({
+            ok: false,
+            status: 429,
+            text: async () => '',
+            get headers() {
+                throw new Error(`headers boom ${K1}`)
+            },
+        })
+        let a = await probeAnthropicKey(K1, { fetch: bad })
+        let b = await probeAnthropicKey(K1, { fetch: fetchByKey({ [K1]: { status: 400, body: errBody(`${K1}-weird`, `msg ${K1}`) } }) })
+        assert.strict.deepEqual(
+            [a.kind, a.detail, JSON.stringify(a).includes(K1), b.apiErrorType, b.detail, JSON.stringify(b).includes(K1)],
+            ['other', 'headers boom ***', false, '***', 'msg ***', false],
+        )
     })
 
     it('限額標頭reset過長時截斷至64字元', async function() {

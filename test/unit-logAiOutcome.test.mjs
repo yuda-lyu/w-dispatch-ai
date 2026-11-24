@@ -366,7 +366,27 @@ describe('logAiOutcome', function() {
         let all = JSON.stringify(lg.lines)
         assert.strict.equal(all.includes('SECRETSECRET'), false)
         assert.strict.equal(all.includes('sk-ant-api03'), false)
-        assert.strict.equal(all.includes('[REDACTED]'), true)
+        assert.strict.equal(all.includes('***'), true)
+    })
+
+    it('日誌底線防護與診斷家族共用同一份金鑰樣式集(2026-11-24 tdai4b, 主控裁定(d)): oc_sk_／AIza／ghp_／JWT／wrk_／sk-等非sk-ant-金鑰亦遮蔽, 非金鑰字樣原樣', function() {
+        let lg = mkLog()
+        logAiOutcome({
+            result: {
+                ok: false,
+                tried: [
+                    { providerId: 'a', keyIndex: 0, outcome: 'next-key', errorType: 'http', error: 'bad oc_sk_ABCDEFGHIJKLMNOP1234 and sk-projABCDEFGHIJKLMNOP rejected task-abcdefghijklmnop' },
+                    { providerId: 'b', keyIndex: 0, outcome: 'next-key', errorType: 'http', reason: 'AIzaSy0123456789abcdefghijklmnopqrstuv ghp_0123456789abcdefghijABCDEFGHIJ012345 wrk_abcdef123456' },
+                ],
+            },
+            log: lg,
+        })
+        let all = JSON.stringify(lg.lines)
+        let leaks = ['oc_sk_ABCDEF', 'sk-projABCDEF', 'AIzaSy0123', 'ghp_0123456789', 'wrk_abcdef']
+        assert.strict.deepEqual(
+            [leaks.filter((x) => all.includes(x)), all.includes('task-abcdefghijklmnop'), all.includes('***')],
+            [[], true, true],
+        )
     })
 
     it('日誌不含金鑰: pick誤填金鑰字串（出現於providersMissing、providersSkipped、providerId、kind／model）時整行遮蔽', function() {

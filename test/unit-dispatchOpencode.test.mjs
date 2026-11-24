@@ -73,7 +73,7 @@ describe('dispatchOpencode', function() {
 
     it('同時給予key與provider時注入OPENCODE_AUTH_CONTENT', async function() {
         let t = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc123' })
-        let o = JSON.parse(t.stdout)
+        let o = fake.lastReport() //2026-11-24 tdai4b: 結果之stdout已遮蔽注入之金鑰(帳本R-REDACT-3), 改讀假CLI之側通道報告
         let r = [t.ok, JSON.parse(o.env.OPENCODE_AUTH_CONTENT)]
         let rr = [true, { opencode: { type: 'api', key: 'sk-abc123' } }]
         assert.strict.deepEqual(r, rr)
@@ -109,10 +109,11 @@ describe('dispatchOpencode', function() {
     })
 
     it('useStoredAuth為false但同時給key與provider時以金鑰注入為準; 亦覆寫呼叫端env內之同名變數', async function() {
-        let t1 = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc123', useStoredAuth: false })
+        await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc123', useStoredAuth: false })
+        let o1 = fake.lastReport() //結果之stdout已遮蔽注入之金鑰, 讀側通道報告(須於下一次呼叫前取)
         let t2 = await dispatchOpencode('abc', { exe: fake.exe, useStoredAuth: false, env: { OPENCODE_AUTH_CONTENT: '', FAKE_ENV: 'x' } })
         let o2 = JSON.parse(t2.stdout)
-        let r = [JSON.parse(JSON.parse(t1.stdout).env.OPENCODE_AUTH_CONTENT), o2.env.OPENCODE_AUTH_CONTENT, o2.env.FAKE_ENV]
+        let r = [JSON.parse(o1.env.OPENCODE_AUTH_CONTENT), o2.env.OPENCODE_AUTH_CONTENT, o2.env.FAKE_ENV]
         let rr = [{ opencode: { type: 'api', key: 'sk-abc123' } }, '{}', 'x']
         assert.strict.deepEqual(r, rr)
     })
@@ -130,8 +131,8 @@ describe('dispatchOpencode', function() {
     it('逐次可帶不同金鑰, 供多把金鑰輪替', async function() {
         let r = []
         for (let key of ['sk-key1', 'sk-key2', 'sk-key3']) {
-            let t = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key })
-            let o = JSON.parse(t.stdout)
+            await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key })
+            let o = fake.lastReport() //結果之stdout已遮蔽注入之金鑰, 讀側通道報告
             r.push(JSON.parse(o.env.OPENCODE_AUTH_CONTENT).opencode.key)
         }
         let rr = ['sk-key1', 'sk-key2', 'sk-key3']
@@ -149,8 +150,8 @@ describe('dispatchOpencode', function() {
                 },
             },
         }
-        let t = await dispatchOpencode('abc', { exe: fake.exe, model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: 'sk-abc123', config })
-        let o = JSON.parse(t.stdout)
+        await dispatchOpencode('abc', { exe: fake.exe, model: 'agnes-ai/agnes-2.0-flash', provider: 'agnes-ai', key: 'sk-abc123', config })
+        let o = fake.lastReport() //結果之stdout已遮蔽注入之金鑰, 讀側通道報告
         let r = [
             JSON.parse(o.env.OPENCODE_CONFIG_CONTENT),
             JSON.parse(o.env.OPENCODE_AUTH_CONTENT),
@@ -192,8 +193,8 @@ describe('dispatchOpencode', function() {
     })
 
     it('自帶env可與金鑰注入併存', async function() {
-        let t = await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc123', env: { FAKE_ENV: 'hello' } })
-        let o = JSON.parse(t.stdout)
+        await dispatchOpencode('abc', { exe: fake.exe, provider: 'opencode', key: 'sk-abc123', env: { FAKE_ENV: 'hello' } })
+        let o = fake.lastReport() //結果之stdout已遮蔽注入之金鑰, 讀側通道報告
         let r = [o.env.FAKE_ENV, JSON.parse(o.env.OPENCODE_AUTH_CONTENT).opencode.key]
         let rr = ['hello', 'sk-abc123']
         assert.strict.deepEqual(r, rr)
