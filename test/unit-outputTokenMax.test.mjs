@@ -4,7 +4,7 @@ import { OUTPUT_TOKEN_MAX_ENV, DEFAULT_OUTPUT_TOKEN_MAX, castOutputTokenMax, app
 
 // unit-outputTokenMax.test.mjs — opencode輸出上限環境變數之決定與注入(2026-11-04 da78, Gitea #78; 帳本R-OCGO-4)
 //
-// 對應規格句(sgud/rule/rulebook_opencodego.md R-OCGO-4):
+// 對應規格句(sgud/rule/rulebook_ocoutputcap.md R-OCGO-4):
 //   S1 預設: 呼叫端環境無有效值且未給opt.outputTokenMax → 注入套件預設DEFAULT_OUTPUT_TOKEN_MAX
 //   S2 覆寫: opt.outputTokenMax為有效正整數(數字或數字字串) → 採用並蓋過呼叫端環境
 //   S3 呼叫端環境優先於預設: opt.env或process.env已設有效值 → 原樣保留不改(兩處皆有時opt.env優先, 與execCli併入順序一致)

@@ -17,7 +17,7 @@
 | 功能 | 帳本 | 測試 | 狀態 |
 |---|---|---|---|
 | `oc:opencode/hy4-flash-free` 條目(欄位、排序、註解證據、檔頭漂移紀錄、README 第 89 條)與 tidepool／iceman 不收 | `rulebook_opencodefree.md` R-OCFREE-2(2026-11-24 盤點、⑦) | `test/unit-providersOpencodeFreeEntries.test.mjs`(新 describe 6 案;順序案、條數案改);`test/unit-providersOpencodeGoDocs.test.mjs`／`unit-providersOpencodeGoEntries.test.mjs`／`unit-patchCatalogueConfig.test.mjs`(條數 35 → 36) | 完成;連網守門 `api-providersOpencodeFree`(真 PATH 單獨跑)綠 |
-| agy `readOnly` 真防寫(旗標、順序、兩路徑、無效值、`extraArgs` 衝突、遞補層、內建條目、README／註解文件守門) | `rulebook_agy.md` R-AGY-5;`rulebook_safeopt.md` R-SAFEOPT-1(`readOnly` 列入站點表) | `test/unit-dispatchAntigravityReadOnly.test.mjs`(13 案);`test/unit-agyFailShapes.test.mjs`(Hydrogen 條目鍵集合含 `readOnly`) | 完成;真 agy 1.5.12 實測見帳本 R-AGY-5 實測表 |
+| agy `readOnly` 真防寫(旗標、順序、兩路徑、無效值、`extraArgs` 衝突、遞補層、內建條目、README／註解文件守門) | `rulebook_agyreadonly.md` R-AGY-5;`rulebook_safeopt.md` R-SAFEOPT-1(`readOnly` 列入站點表) | `test/unit-dispatchAntigravityReadOnly.test.mjs`(13 案);`test/unit-agyFailShapes.test.mjs`(Hydrogen 條目鍵集合含 `readOnly`) | 完成;真 agy 1.5.12 實測見帳本 R-AGY-5 實測表 |
 
 ## 三、已知待辦
 

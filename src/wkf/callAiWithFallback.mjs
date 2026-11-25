@@ -303,7 +303,8 @@ async function callAiWithFallback(prompt, opt = {}) {
             result = parsedOf.get(r.stdout).j
         }
         else {
-            //防禦性: 未經本層驗證即成功者(不應發生), 補跑完整parse＋check(上限timeoutMs), 不過即判驗證失敗
+            //防禦性: 未經本層驗證即成功者, 補跑完整parse＋check(上限timeoutMs), 不過即判驗證失敗。
+            //2026-11-25 t628起REST轉接器之成功stdout於回傳前遮蔽金鑰: 模型輸出含金鑰而被遮蔽時, 回傳文字(已遮蔽)不同於validate所收之原文, 即走此路(使用者check多呼叫一次, json取自遮蔽後文字; 遮蔽後文字不過則判驗證失敗, fail-closed)
             let p = await awaitUserFn(() => wkfValidate(r.stdout), castTimerMs(get(opt, 'timeoutMs', null), dfTimeoutMs))
             result = (p.state === 'value' && p.value === true && parsedOf.has(r.stdout)) ? parsedOf.get(r.stdout).j : null
         }

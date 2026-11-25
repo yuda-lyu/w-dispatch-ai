@@ -10,7 +10,7 @@ import iseint from 'wsemi/src/iseint.mjs'
 //     未設環境變數: limit.output 384000 → 32000; 131072 → 32000; 8000 → 8000;
 //     設64000: limit.output 384000 → 64000; 131072 → 64000; 8000 → 8000; 設200000且limit.output 131072 → 131072。
 //   即「單次輸出32,000 token」是opencode CLI端之預設上限(源碼常數OUTPUT_TOKEN_MAX), 不是閘道限制; 推理模型之reasoning與output共用此額度
-//   (OpenAI相容協定之max_tokens含推理token), 檔位越高推理越長、正文越易被擠光。真實Go模型驗證見sgud/rule/rulebook_opencodego.md R-OCGO-4。
+//   (OpenAI相容協定之max_tokens含推理token), 檔位越高推理越長、正文越易被擠光。真實Go模型驗證見sgud/rule/rulebook_ocoutputcap.md R-OCGO-4。
 //   環境變數之解析: 正整數(含科學記號'1e5'、頭尾空白)有效; '0'、'-5'、''、'abc'、'64000.5'皆被CLI靜默忽略而回預設32000。
 //
 // 【取值優先序(高→低)】

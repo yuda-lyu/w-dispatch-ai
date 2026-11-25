@@ -74,11 +74,17 @@ function secretList(secrets) {
         }
 
         //變體: 原值、去頭尾空白(fetch送出前會去掉標頭值之頭尾空白, 伺服器回顯之金鑰即為去空白者)、再去Authorization之Bearer前綴(伺服器常回顯去前綴之本體);
-        //各變體須達長度下限(原值之下限判定同修前: 長度不足者不處理)
+        //各變體須達長度下限(原值之下限判定同修前: 長度不足者不處理); 各變體另展開JSON跳脫形(含引號、反斜線、換行等之金鑰,
+        //於伺服器回應之JSON文字或本轉接器之JSON.stringify結果內已被跳脫, 原值比對不到; 2026-11-25 t628獨立複審L1)
         let t = v.trim()
         for (let x of [v, t, t.replace(/^Bearer\s+/i, '')]) {
-            if (x.length >= SECRET_MIN_LEN && !out.includes(x)) {
-                out.push(x)
+            if (x.length < SECRET_MIN_LEN) {
+                continue
+            }
+            for (let y of [x, JSON.stringify(x).slice(1, -1)]) {
+                if (!out.includes(y)) {
+                    out.push(y)
+                }
             }
         }
     }
@@ -144,7 +150,8 @@ function secretHeaderValues(headers) {
         if (NON_SECRET_HEADERS.includes(k.toLowerCase())) {
             continue
         }
-        if (isestr(hs[k])) {
+        //值為undefined／null者(呼叫端給了undefined之標頭值, fetch送出前字串化為'undefined'／'null')不是任何憑證, 不登錄(否則合法模型輸出中之'undefined'字樣於成功路徑被改成***; 2026-11-25 t628獨立複審M1)
+        if (isestr(hs[k]) && hs[k] !== 'undefined' && hs[k] !== 'null') {
             r.push(hs[k])
         }
     }
@@ -186,6 +193,71 @@ function maskApiKeys(text) {
  */
 function redactApiKeyText(text, redact) {
     return maskFull(text, redact, OPT_DIAG)
+}
+
+
+//redactDeep走訪之深度上限(JSON.parse之結果可任意深); 超過者整段以遮蔽字取代(fail-closed, 不原樣放行)
+let DEEP_MAX = 64
+
+
+/**
+ * 深層遮蔽值中之機密值：走訪純物件與陣列(回應本體經JSON.parse所得者)，所有字串值與屬性名皆遮蔽，回傳新值(原值不動)；其餘型別(數字、布林、null)原樣
+ *
+ * 供REST轉接器遮蔽取自伺服器回應之結構化外來文字(usage、answers)；僅供JSON.parse之產物(純物件、陣列、字串、數字、布林、null)，其他型別(Map、Date、類別實例、存取器等)非設計對象；
+ * 永不拋錯：走訪失敗(如存取器拋錯)時回傳null(fail-closed，不原樣放行)；字樣、家族與redactText／redactApiKeyText相同(diag為true時走診斷家族，另遮蔽金鑰樣式集與內建憑證樣式)。
+ * 屬性名遮蔽後同名者後者覆寫前者(屬性名含機密值之極端情形)；超過深度上限(64層)之子樹改為其JSON序列化文字整段遮蔽後之字串(序列化失敗者為null)；以defineProperty建立屬性，不因'__proto__'等屬性名改動原型
+ *
+ * @param {*} v 輸入值(通常為JSON.parse所得之物件、陣列或字串)
+ * @param {Array} secrets 輸入機密值字串陣列，長度不足6者不處理
+ * @param {Boolean} [diag=false] 輸入是否用診斷家族，預設false(精確家族，只遮蔽機密值；供模型輸出)
+ * @returns {*} 回傳遮蔽後之新值
+ * @example
+ *
+ * import { redactDeep } from './src/redactText.mjs'
+ *
+ * console.log(redactDeep({ a: 'key=SECRET-VALUE-1', n: 3, l: ['SECRET-VALUE-1'] }, ['SECRET-VALUE-1']))
+ * // => { a: 'key=***', n: 3, l: [ '***' ] }
+ *
+ */
+function redactDeep(v, secrets, diag = false) {
+    try {
+        return redactDeepCore(v, secrets, diag)
+    }
+    catch {
+        return null //永不拋錯、fail-closed: 走訪失敗(如存取器拋錯)時整個值捨棄, 不原樣放行(2026-11-25 t628獨立複審C3)
+    }
+}
+
+
+//redactDeep之本體(可拋錯, 由redactDeep包裝)
+function redactDeepCore(v, secrets, diag) {
+    let sm = genDiagStreamMasker(secretList(secrets), diag ? OPT_DIAG : OPT_EXACT)
+    let mask = (s) => sm.push(s) + sm.flush() //flush後遮罩器重設, 可重複使用於下一個字串
+    let walk = (x, depth) => {
+        if (typeof x === 'string') {
+            return mask(x)
+        }
+        if (x === null || typeof x !== 'object') {
+            return x
+        }
+        if (depth >= DEEP_MAX) {
+            try {
+                return mask(JSON.stringify(x)) //過深之子樹整段序列化後當一個字串遮蔽(不再走訪; 不原樣放行); 序列化失敗者捨棄
+            }
+            catch {
+                return null
+            }
+        }
+        if (Array.isArray(x)) {
+            return x.map((e) => walk(e, depth + 1))
+        }
+        let o = {}
+        for (let [k, e] of Object.entries(x)) {
+            Object.defineProperty(o, mask(k), { value: walk(e, depth + 1), enumerable: true, writable: true, configurable: true })
+        }
+        return o
+    }
+    return walk(v, 0)
 }
 
 
@@ -310,4 +382,4 @@ function maskStreamCallbacks(optCli, secrets) {
 
 
 export default redactText
-export { secretHeaderValues, maskApiKeys, redactApiKeyText, createStreamRedactor, redactResult, maskStreamCallbacks, API_KEY_PATTERN, DIAG_PATTERNS, SECRET_MIN_LEN }
+export { secretHeaderValues, maskApiKeys, redactApiKeyText, redactDeep, createStreamRedactor, redactResult, maskStreamCallbacks, API_KEY_PATTERN, DIAG_PATTERNS, SECRET_MIN_LEN }

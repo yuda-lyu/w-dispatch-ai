@@ -304,19 +304,20 @@ describe('自訂validate之回傳形態(CLI、REST、遞補層同規則)', funct
         let rows = []
 
         //REST三家(直呼轉接器): 未給key, 故Authorization來自headers
+        //(成功之stdout／answers回聲之Authorization已遮蔽為***[2026-11-25 t628], 標頭與本體改讀伺服器端取證通道svr.lastRequest())
         let c = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, model: 'echo', body, headers })
-        let jc = JSON.parse(c.stdout)
+        let jc = svr.lastRequest()
         rows.push(['compat', c.ok, jc.auth, pick(jc.body)])
         let s = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url, model: 'echo', body, headers })
-        let js = JSON.parse(s.stdout)
+        let js = svr.lastRequest()
         rows.push(['responses', s.ok, js.auth, pick(js.body)])
         let o = await dispatchApiTypesafeSystemone('abc', { baseURL: svr.url, model: 'echo', questions: { q1: { type: 'noul', instructions: 'x?' } }, body, headers })
-        let ao = o.answers.q1
-        rows.push(['systemone', o.ok, ao.echoAuth, pick(ao.echoBody)])
+        let ao = svr.lastRequest()
+        rows.push(['systemone', o.ok, ao.auth, pick(ao.body)])
 
         //遞補條目(條目本身經readCallerObj物化)
         let f = await dispatchAiFallback('abc', { providers: [{ id: 'A', kind: 'api-openai-compat', baseURL: svr.url, model: 'echo', body, headers }] })
-        let jf = JSON.parse(f.stdout)
+        let jf = svr.lastRequest()
         rows.push(['fallback', f.ok, jf.auth, pick(jf.body)])
 
         //CLI四家之env

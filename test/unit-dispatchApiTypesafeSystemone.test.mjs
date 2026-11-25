@@ -45,16 +45,17 @@ describe('dispatchApiTypesafeSystemone', function() {
 
     it('請求打/systemone: prompt置於state、questions原樣送出、model預設jev-latest、body額外鍵併入', async function() {
         let t = await dispatchApiTypesafeSystemone('房間水龍頭滴水\n第二行', { baseURL: svr.url, key: 'sk-good-1', questions: Q, body: { tag: 'x' } })
-        let a = t.answers.urgent
-        let r = [t.ok, t.code, t.attempts, a.echoAuth, a.echoBody.model, a.echoBody.state, a.echoBody.questions, a.echoBody.tag]
+        let a = svr.lastRequest() //伺服器端取證通道(成功之answers回聲之金鑰已遮蔽為***, 2026-11-25 t628; 不以回聲驗標頭)
+        let r = [t.ok, t.code, t.attempts, a.auth, a.body.model, a.body.state, a.body.questions, a.body.tag]
         let rr = [true, 200, 1, 'Bearer sk-good-1', 'jev-latest', '房間水龍頭滴水\n第二行', Q, 'x']
         assert.strict.deepEqual(r, rr)
     })
 
     it('baseURL尾端斜線正規化, 未給key時不帶Authorization標頭', async function() {
         let t = await dispatchApiTypesafeSystemone('abc', { baseURL: svr.url + '///', model: 'echo', questions: Q })
-        let r = [t.ok, t.answers.urgent.echoAuth]
-        let rr = [true, '']
+        let o = svr.lastRequest() //伺服器端取證通道
+        let r = [t.ok, o.auth, Object.keys(o.headers).includes('authorization')]
+        let rr = [true, '', false]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -150,6 +151,7 @@ describe('dispatchApiTypesafeSystemone', function() {
 
     it('可作為dispatchAi之kind; dispatchAiFallback之questions可置於呼叫層並隨金鑰輪替透傳', async function() {
         let t1 = await dispatchAi('api-typesafe-systemone', 'abc', { baseURL: svr.url, key: 'sk-good-1', questions: Q })
+        let o1 = svr.lastRequest() //t1之請求; 伺服器端取證通道(成功之answers回聲之金鑰已遮蔽為***, 2026-11-25 t628)
         let t2 = await dispatchAiFallback('abc', {
             providers: [
                 { id: 'typesafe:jev-latest', kind: 'api-typesafe-systemone', baseURL: svr.url, model: 'jev-latest', keys: ['sk-bad-a', 'sk-good-b'] },
@@ -157,8 +159,8 @@ describe('dispatchApiTypesafeSystemone', function() {
             questions: Q,
         })
         let r = [
-            t1.ok, t1.answers.urgent.echoBody.model,
-            t2.ok, t2.providerId, t2.tried.map((x) => [x.keyId, x.outcome]), JSON.parse(t2.stdout).category.echoAuth,
+            t1.ok, o1.body.model,
+            t2.ok, t2.providerId, t2.tried.map((x) => [x.keyId, x.outcome]), svr.lastRequest().auth, //t2最後一個請求為第2把金鑰之成功請求(成功之answers回聲之金鑰已遮蔽為***)
         ]
         let rr = [
             true, 'jev-latest',

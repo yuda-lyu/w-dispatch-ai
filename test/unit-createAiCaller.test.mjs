@@ -157,7 +157,8 @@ describe('createAiCaller', function() {
             env.DA40_ONCE_KEYS = 'second'
             let r = await c.callAI('hello')
             assert.strict.equal(r.ok, true)
-            assert.strict.equal(JSON.parse(r.stdout).auth, 'Bearer first')
+            let qs = reqOf('echo').filter((q) => q.prompt === 'hello') //伺服器端取證通道(成功之stdout回聲之金鑰已遮蔽為***, 2026-11-25 t628; 不以回聲驗標頭)
+            assert.strict.equal(qs[qs.length - 1].auth, 'Bearer first')
         })
 
     })

@@ -13,7 +13,7 @@ import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
 import { readStrOpt, readEnumOpt, readFunOpt, checkReadObj, ANTHROPIC_EFFORTS } from './readSafeOpt.mjs'
-import redactText, { secretHeaderValues, redactApiKeyText } from './redactText.mjs'
+import redactText, { secretHeaderValues, redactApiKeyText, redactDeep } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
@@ -65,7 +65,7 @@ import { readAttemptHints, retryFits, capByHints, createCutTracker } from './att
 // 【key不外洩】錯誤路徑(fetch例外訊息、HTTP錯誤本體、refusal細節、部分輸出、非JSON診斷之回應標頭值、呼叫端validate之例外訊息、
 //   啟動前params錯誤之外來例外訊息)一律先經redactApiKeyText: 遮蔽本次全部機密標頭值與key本身、再遮蔽sk-ant-樣式(見redactText.mjs);
 //   成功之stdout為模型輸出: 只精確遮蔽本次機密值(redactText), 不做樣式遮蔽(合法內容可含「sk-ant-api03-…」範例字樣)。
-//   usage、finishReason為伺服器回傳值原樣透傳, 不遮蔽。標頭值先物化為字串且只讀一次, 與其他REST轉接器相同。
+//   usage(深層)、finishReason取自伺服器回應, 亦先遮蔽(診斷家族; 2026-11-25 t628起與三家REST一致, 修前原樣透傳)。標頭值先物化為字串且只讀一次, 與其他REST轉接器相同。
 //
 // 【沿用其他REST轉接器之既有規則】預設Accept-Encoding: identity(防伺服器壓縮卻漏標Content-Encoding)、HTTP 200但本體非JSON另報INVALID_RESPONSE(describeNonJsonBody.mjs)、
 //   截斷於validate之前裁定、validate支援Promise與該次嘗試共用timeoutMs、body/headers不可讀或不可序列化以params回報、不reject。
@@ -227,13 +227,17 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
     if (!isobj(usage)) {
         usage = null
     }
+    usage = redactDeep(usage, secrets, true) //原樣透傳之token用量物件, 其字串值與屬性名屬外來文字(成功與失敗結果皆帶出), 先遮蔽(診斷家族; 2026-11-25 t628與三家REST一致)
     let content = get(j, 'content', null)
     let blocks = isarr(content) ? content : []
     let stopDetails = get(j, 'stop_details', null)
 
     //fin, 自此起之每個結果皆外顯終止原因(stop_reason小寫原值)與是否截斷(僅max_tokens)
     let finishReason = normalizeFinishReason(get(j, 'stop_reason', null))
-    let fin = { finishReason, truncated: finishReason === 'max_tokens' }
+    //外顯之終止原因取自伺服器回應: 先遮蔽原值、正規化(轉小寫)、再遮蔽一次(前者遮大小寫相符者, 後者遮「轉小寫後才與登錄值相同」者——
+    //如全小寫之金鑰而伺服器回顯其大寫版); 判斷用之finishReason維持原值
+    let stopRaw = get(j, 'stop_reason', null)
+    let fin = { finishReason: red(normalizeFinishReason(isestr(stopRaw) ? red(stopRaw) : stopRaw)), truncated: finishReason === 'max_tokens' }
 
     //text, 全部text區塊依序串接(thinking、redacted_thinking等其他區塊略過); hasText為是否至少有一個text區塊
     let texts = blocks.filter((b) => get(b, 'type', '') === 'text' && typeof get(b, 'text', null) === 'string')

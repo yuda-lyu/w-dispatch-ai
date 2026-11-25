@@ -13,7 +13,7 @@ import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { readKey } from './readKeyOpt.mjs'
 import { readStrOpt, readNameOpt, checkReadObj } from './readSafeOpt.mjs'
-import { secretHeaderValues, redactApiKeyText } from './redactText.mjs'
+import { secretHeaderValues, redactApiKeyText, redactDeep } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { safeValidateAsync } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
@@ -55,7 +55,8 @@ import { readAttemptHints, retryFits, capByHints, createCutTracker } from './att
 //
 // 【key不外洩(2026-11-24 tdai4b; 帳本R-REDACT-3, 比照dispatchApiAnthropic)】錯誤路徑(fetch例外訊息、HTTP錯誤本體、非JSON診斷之回應標頭值、answers缺漏之stderr、
 //   validate例外訊息與失敗時之stdout、啟動前params錯誤之外來例外訊息)一律先經redactApiKeyText: 遮蔽本次全部機密標頭值與key本身(伺服器常回顯去掉Bearer前綴之本體)、金鑰樣式集與內建憑證樣式(見redactText.mjs), 字樣***。
-//   成功之stdout與answers為模型輸出, 不遮蔽(既有; validate收到原文)。
+//   【成功路徑(2026-11-25 t628; 帳本R-REDACT-3, 比照dispatchApiAnthropic)】成功之answers(深層)與stdout(由遮蔽後之answers序列化)為模型輸出: 只精確遮蔽本次機密值(不套樣式集; validate收到原文);
+//   取自伺服器回應之usage(深層)亦先遮蔽(診斷家族)。
 // 【混用注意】
 //   1. 答案形狀與文字模型完全不同, 不可與文字生成條目混在同一條dispatchAiFallback鏈中遞補;
 //      同一鏈只放本kind之條目(可多把金鑰輪替)。預設providers.mjs收有typesafe:jev-latest,
@@ -97,6 +98,11 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator, secre
 
     //red, 錯誤路徑文字(外來之回應本體、診斷、validate例外訊息、fetch例外訊息)一律先遮蔽機密值與金鑰樣式集(2026-11-24 tdai4b起比照dispatchApiAnthropic; 見redactText.mjs)
     let red = (s) => redactApiKeyText(s, secrets)
+
+    //redOkDeep, 成功路徑之answers(模型輸出, 結構化)深層只精確遮蔽機密值, 不套樣式集(同dispatchApiAnthropic之stdout; 2026-11-25 t628);
+    //redV, 取自伺服器回應之結構化外來值(usage)深層遮蔽(診斷家族: 屬回應中介資料而非模型輸出, 與modelResolved同)
+    let redOkDeep = (v) => redactDeep(v, secrets, false)
+    let redV = (v) => redactDeep(v, secrets, true)
 
     //mkResult, 結果形狀之單一來源(欄位對齊其他api類轉接器, 追加answers與modelResolved)
     let mkResult = (patch) => ({
@@ -175,6 +181,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator, secre
     catch {
         parsed = false
     }
+    usage = redV(usage) //原樣透傳之token用量物件, 其字串值與屬性名屬外來文字(成功與失敗結果皆帶出), 先遮蔽(置於解析之try外: 遮蔽失敗不得被誤報為本體非JSON; redV永不拋錯, 失敗時為null)
 
     //本體非JSON, 與「JSON缺answers」分開回報並附原始位元組資訊; 遞補層據前綴整組跳過(見describeNonJsonBody.mjs)
     if (!parsed) {
@@ -228,12 +235,14 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator, secre
         }
     }
 
+    //成功之answers與stdout為模型輸出: 只精確遮蔽(validate已於上方收原文); stdout由遮蔽後之answers序列化(不對序列化文字再遮蔽: 含引號或反斜線之機密值於JSON文字內已被跳脫, 精確比對不到)
+    let answersOk = redOkDeep(answers)
     return mkResult({
         ok: true,
-        stdout: content,
+        stdout: JSON.stringify(answersOk),
         code: res.status,
         usage,
-        answers,
+        answers: answersOk,
         modelResolved,
     })
 }
@@ -266,7 +275,7 @@ async function callOnce(url, headers, bodyText, ids, timeoutMs, validator, secre
  * @param {String|Function} [opt.validate=undefined] 輸入stdout(answers之JSON字串)驗證規則字串或自訂驗證函數，規則字串支援'nonempty'、'json'、'min:100'，多規則可用逗號串接，自訂函數可回傳Promise(以resolve值判定，與該次HTTP嘗試共用timeoutMs)，拋錯或reject視同驗證失敗(stderr前綴'validate threw: 訊息')，逾時亦同(前綴'validate timed out: did not settle within Ns')，durationMs含驗證時間，預設undefined代表不驗證
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，4xx(429除外)不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(answers之JSON字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，欄位名為input_tokens/output_tokens，無則null)、answers(成功時為已解析之答案物件，否則null)、modelResolved(回應所載之實際模型版本字串，如'jev-1.13.0'，無則'')，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(answers之JSON字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件，字串值已遮蔽金鑰、其餘原樣透傳，欄位名為input_tokens/output_tokens，無則null)、answers(成功時為已解析之答案物件，字串值與屬性名已精確遮蔽金鑰，否則null)、modelResolved(回應所載之實際模型版本字串，如'jev-1.13.0'，無則'')，本函數不會reject
  * @example
  * //need network and a TypeSafe api key, no cli required
  *

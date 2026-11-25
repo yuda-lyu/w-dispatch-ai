@@ -12,7 +12,9 @@ import { API_KEY_PATTERN, DIAG_PATTERNS } from '../src/redactText.mjs'
 //   S1 src內不得殘留自行以[REDACTED]或自訂遮罩字取代機密值之站點(split/join、REDACT_MASK等常數);
 //   S2 只有src/redactText.mjs(單一入口)與src/failureDiag.mjs(宣告本套件樣式交maskDiagText)可直接引用wsemi之遮罩函數;
 //   S3 全庫經單一入口遮蔽之站點全集(12檔含入口; tdai4b起含dispatchOpencode.mjs)固定, 新增或移除站點須同步改本表(防止新站點自寫遮罩、或舊站點被改回自寫);
-//   S4 金鑰樣式集只有一份定義(redactText.mjs之DIAG_PATTERNS, 首項為sk-ant-之API_KEY_PATTERN), failureDiag.mjs與診斷家族共用同一個陣列; 其餘檔不另寫金鑰樣式。
+//   S4 金鑰樣式集只有一份定義(redactText.mjs之DIAG_PATTERNS, 首項為sk-ant-之API_KEY_PATTERN), failureDiag.mjs與診斷家族共用同一個陣列; 其餘檔不另寫金鑰樣式;
+//   S5 (2026-11-25 t628; 帳本R-REDACT-3(成功路徑)) REST四家(api-anthropic、api-openai-compat、api-openai-responses、api-typesafe-systemone)之成功路徑盤點:
+//     每個ok:true之結果, stdout經精確遮蔽(redOk／redactText／遮蔽後之answers序列化), typesafe之answers亦然; 取自伺服器回應之usage與finishReason先遮蔽。
 // 盤點方法為文字掃描(去掉行註解與區塊註解後), 掃描範圍壞掉(檔數過少)時以防空集合斷言先失敗。
 // 重跑: npx mocha --no-parallel test/unit-redactSites.test.mjs
 
@@ -126,6 +128,22 @@ describe('redactSites(全庫遮罩站點盤點)', function() {
             [DIAG_PATTERNS_FD === DIAG_PATTERNS, DIAG_PATTERNS[0].re === API_KEY_PATTERN, other],
             [true, true, []],
         )
+    })
+
+    it('S5 REST四家之成功路徑盤點: 每個ok:true結果之stdout經精確遮蔽(typesafe另含answers), usage(深層)與取自伺服器回應之finishReason先遮蔽(防新增成功出口或改回原樣透傳)', function() {
+        //各檔之ok:true結果個數(成功之一般路徑與acceptTruncated放行之截斷成功路徑; typesafe無截斷)
+        let REST = { 'dispatchApiAnthropic.mjs': 2, 'dispatchApiOpenaiCompat.mjs': 2, 'dispatchApiOpenaiResponses.mjs': 2, 'dispatchApiTypesafeSystemone.mjs': 1 }
+        let rows = []
+        for (let [rel, n] of Object.entries(REST)) {
+            let code = files.find((f) => f.rel === rel).code
+            let oks = [...code.matchAll(/ok:\s*true[\s\S]*?\}\)/g)].map((m) => m[0])
+            let stdoutMasked = oks.filter((s) => /stdout:\s*(?:redOk\(|redactText\(|JSON\.stringify\(answersOk\))/.test(s)).length
+            let usageMasked = /usage\s*=\s*(?:redV|redactDeep)\(usage/.test(code)
+            let finMasked = rel === 'dispatchApiTypesafeSystemone.mjs' ? true : /finishReason:\s*red\((?:normalizeFinishReason\(isestr\(\w+\)\s*\?\s*red\(|finishOf\(redS\()/.test(code)
+            let answersMasked = rel === 'dispatchApiTypesafeSystemone.mjs' ? /answers:\s*answersOk\b/.test(code) : true
+            rows.push([rel, oks.length === n, stdoutMasked === n, usageMasked, finMasked, answersMasked])
+        }
+        assert.strict.deepEqual(rows, Object.keys(REST).map((rel) => [rel, true, true, true, true, true]))
     })
 
 })

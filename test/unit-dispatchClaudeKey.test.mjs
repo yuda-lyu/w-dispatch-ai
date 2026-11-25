@@ -115,6 +115,11 @@ process.stdin.on('end', () => {
         say('err', ' key=' + key + ' other=' + other)
         process.exit(1)
     }
+    //--fake-say: 原樣寫一段字面文字於stdout(不取自環境變數; 測「子進程並未持有該值」時不應被遮蔽)
+    let sayText = opt('fake-say')
+    if (sayText) {
+        process.stdout.write(sayText + ' ')
+    }
     process.stdout.write('OK')
     say('out', ' key=' + key + ' other=' + other)
     say('err', ' key=' + key + ' other=' + other)
@@ -470,6 +475,109 @@ describe('dispatchClaude key(Anthropic API金鑰計費)', function() {
             [r.ok, JSON.stringify({ r, outChunks, errChunks }).includes(KEY), JSON.stringify({ r, outChunks, errChunks }).includes(KEY2)],
             [true, false, false],
         )
+    })
+
+    //========== R09 繼承自本行程環境之ANTHROPIC_API_KEY(2026-11-25 t628, 主控裁定②; 帳本R-REDACT-3; 與dispatchOpencode之authSecretsOf對稱) ==========
+    //金鑰本體刻意不屬任何金鑰樣式(非sk-ant-等), 令斷言只靠「已登錄之機密值」而非樣式
+
+    let INH = 'LEAK-INHERITED-0123456789'
+
+    it('R09 opt.key與opt.env皆未給、父環境有ANTHROPIC_API_KEY時, 結果之stdout／stderr與onStdout／onStderr回調皆遮蔽該繼承值(成功與失敗結果); 僅遮蔽, 不參與失敗分類(無failureKind、無交叉確認)', async function() {
+        let outChunks = []
+        let errChunks = []
+        let parent = cleanParent()
+        parent.ANTHROPIC_API_KEY = INH
+        let { r } = await withEnv(parent, () => run({
+            onStdout: (c) => outChunks.push(c),
+            onStderr: (c) => errChunks.push(c),
+        }, ['--fake-leak=both']))
+        let { r: rf } = await withEnv(parent, () => run({}, ['--fake-leak=both', '--fake-exit=1']))
+        assert.strict.deepEqual(
+            [
+                [r.ok, r.stdout, r.stderr, outChunks.join(''), errChunks.join(''), JSON.stringify({ r, outChunks, errChunks }).includes(INH)],
+                [rf.ok, rf.stdout, rf.stderr, JSON.stringify(rf).includes(INH), rf.failureKind, rf.crossCheck],
+            ],
+            [
+                [true, 'OK key=*** other=sk-ant-api03-OTHERLEAK1234567890abcdef', ' key=*** other=***', 'OK key=*** other=sk-ant-api03-OTHERLEAK1234567890abcdef', ' key=*** other=***', false],
+                [false, 'OK key=*** other=***', ' key=*** other=***', false, undefined, undefined],
+            ],
+        )
+    })
+
+    it('R09 繼承值之串流回調以列為單位(同opt.key路徑): 回調只收到完整之列, 結尾無換行之一段於結束後補送, 與結果物件所見一致', async function() {
+        let outChunks = []
+        let errChunks = []
+        let parent = cleanParent()
+        parent.ANTHROPIC_API_KEY = INH
+        let { r } = await withEnv(parent, () => run({
+            onStdout: (c) => outChunks.push(c),
+            onStderr: (c) => errChunks.push(c),
+        }, ['--fake-stream=1']))
+        let isLines = (cs) => cs.slice(0, -1).every((c) => c.endsWith('\n')) && !cs[cs.length - 1].endsWith('\n')
+        let so = outChunks.join('')
+        let se = errChunks.join('')
+        assert.strict.deepEqual(
+            [r.ok, isLines(outChunks), isLines(errChunks), r.stdout === so, r.stderr === se, JSON.stringify({ r, outChunks, errChunks }).includes(INH), so.includes('first ***'), so.endsWith('last-no-newline ***')],
+            [true, true, true, true, true, false, true, true],
+        )
+    })
+
+    it('R09 opt.env給了但未含ANTHROPIC_API_KEY(只含無關變數)時, 子進程仍繼承父環境之金鑰, 其值同樣遮蔽', async function() {
+        let parent = cleanParent()
+        parent.ANTHROPIC_API_KEY = INH
+        let { r, rep } = await withEnv(parent, () => run({ env: { FAKE_ENV: 'e1' } }, ['--fake-leak=both']))
+        assert.strict.deepEqual(
+            [r.ok, rep.env.ANTHROPIC_API_KEY, rep.env.FAKE_ENV, r.stdout, r.stderr, JSON.stringify(r).includes(INH)],
+            [true, INH, 'e1', 'OK key=*** other=sk-ant-api03-OTHERLEAK1234567890abcdef', ' key=*** other=***', false],
+        )
+    })
+
+    it('R09 opt.env以undefined明示移除ANTHROPIC_API_KEY時(子進程未持有繼承值)不收該值, 與dispatchOpencode之authSecretsOf同語意; opt.key有效時繼承值被移除、亦不收', async function() {
+        let parent = cleanParent()
+        parent.ANTHROPIC_API_KEY = INH
+        let outChunks = []
+        //子進程未持有INH: 假CLI以字面文字說出INH(不取自環境), 不應被遮蔽
+        let { r: r1, rep: rep1 } = await withEnv(parent, () => run({ env: { ANTHROPIC_API_KEY: undefined }, onStdout: (c) => outChunks.push(c) }, [`--fake-say=${INH}`, '--fake-leak=out']))
+        let { r: r2, rep: rep2 } = await withEnv(parent, () => run({ key: KEY }, [`--fake-say=${INH}`]))
+        //對照: 同一字面文字於子進程確實持有該繼承值時(未移除)被遮蔽
+        let { r: r3 } = await withEnv(parent, () => run({}, [`--fake-say=${INH}`]))
+        assert.strict.deepEqual(
+            [
+                [r1.ok, rep1.env.ANTHROPIC_API_KEY, r1.stdout.startsWith(`${INH} OK key=undefined`), outChunks.join('') === r1.stdout],
+                [r2.ok, rep2.env.ANTHROPIC_API_KEY === KEY, r2.stdout.startsWith(`${INH} OK`)],
+                [r3.ok, r3.stdout.startsWith('*** OK')],
+            ],
+            [
+                [true, null, true, true],
+                [true, true, true],
+                [true, true],
+            ],
+        )
+    })
+
+    it('R09 繼承值長度不足6不收(同遮蔽器之機密值長度下限; 此時不包回調: 第一塊於子進程寫出當下即原樣收到, 不等換行); 父環境無該變數時回調與結果原樣(與修前相同)', async function() {
+        let parent = cleanParent()
+        parent.ANTHROPIC_API_KEY = 'abcde'
+        let c1 = []
+        let c0 = []
+        let { r } = await withEnv(parent, () => run({ onStdout: (c) => c1.push(String(c)) }, ['--fake-leak=out', '--fake-stream=1']))
+        let { r: r0 } = await withEnv(cleanParent(), () => run({ onStdout: (c) => c0.push(String(c)) }, ['--fake-leak=out']))
+        assert.strict.deepEqual(
+            [r.ok, c1[0], c1.join('') === r.stdout, r0.ok, r0.stdout, c0.join('')],
+            [true, 'first abcde', true, true, 'OK key=undefined other=sk-ant-api03-OTHERLEAK1234567890abcdef', 'OK key=undefined other=sk-ant-api03-OTHERLEAK1234567890abcdef'],
+        )
+    })
+
+    it('R09 經dispatchAiFallback(claude條目不帶keys、父環境有ANTHROPIC_API_KEY): 頂層、tried與事件皆不含繼承值', async function() {
+        let events = []
+        let parent = cleanParent()
+        parent.ANTHROPIC_API_KEY = INH
+        let f = await withEnv(parent, () => dispatchAiFallback('abc', {
+            providers: [{ id: 'cl-inh', kind: 'claude', exe: fake.exe, extraArgs: ['--fake-leak=both', '--fake-exit=1'] }],
+            onEvent: (ev) => events.push(ev),
+        }))
+        let all = JSON.stringify({ f, events })
+        assert.strict.deepEqual([f.ok, all.includes(INH), all.includes('key=***')], [false, false, true])
     })
 
     it('R05 診斷家族共用金鑰樣式集(2026-11-24 tdai4b, 主控裁定(d)): stderr回調與結果stderr皆遮蔽oc_sk_／AIza／ghp_／JWT／wrk_／sk-等非sk-ant-金鑰, 非金鑰字樣原樣', async function() {

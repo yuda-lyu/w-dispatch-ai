@@ -10,7 +10,7 @@ import { readKey } from './readKeyOpt.mjs'
 import { readStrOpt, readBoolOpt, readEnvOpt, readNameOpt, readFunOpt } from './readSafeOpt.mjs'
 import castTimerMs from './castTimerMs.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
-import { redactApiKeyText, redactResult, maskStreamCallbacks } from './redactText.mjs'
+import { redactApiKeyText, redactResult, maskStreamCallbacks, SECRET_MIN_LEN } from './redactText.mjs'
 import { classifyCliFailure } from './failureKind.mjs'
 import { probeAnthropicKey } from './probeAnthropicKeys.mjs'
 
@@ -65,7 +65,9 @@ import { probeAnthropicKey } from './probeAnthropicKeys.mjs'
 //   這是令key「有機會勝出」之必要修正而非證明: 是否確實走API金鑰仍以apiKeySource==='ANTHROPIC_API_KEY'(必要條件)加Console用量(充分條件)驗證, 見上節。
 //
 // 【key之不外洩(帳本R-ANTHROPIC-1)】
-//   適用範圍(2026-11-24 tdai4b起): 給opt.key, 或不給opt.key而只以opt.env.ANTHROPIC_API_KEY傳入金鑰(不建議)——兩者走同一路徑(ckKey), 結果與回調皆遮蔽該金鑰。
+//   適用範圍(2026-11-24 tdai4b起): 給opt.key, 或不給opt.key而只以opt.env.ANTHROPIC_API_KEY傳入金鑰(不建議), 結果與回調皆遮蔽該金鑰;
+//   2026-11-25 t628起另含「子進程自本行程環境繼承之ANTHROPIC_API_KEY」(opt.key未給, 且opt.env未給或未含該名稱[含以undefined明示移除者不收]; 取呼叫當下之process.env值, 須達遮蔽長度下限6):
+//   該變數存在時同樣遮蔽結果與回調(與dispatchOpencode之authSecretsOf對稱), 不存在時回調與結果原樣; 此情形僅遮蔽, 不參與失敗分類與交叉確認(仍只認opt.key與opt.env.ANTHROPIC_API_KEY)。
 //   ①結果物件之stdout/stderr/error以redactText遮蔽key本身; stderr與error與失敗結果之stdout另以金鑰樣式集(sk-ant-殘段與他把金鑰、sk-／oc_sk_／AIza／ghp_／JWT／wrk_等, 單一定義於redactText.mjs之DIAG_PATTERNS)與內建憑證樣式遮蔽;
 //     成功之stdout為模型輸出, 只遮蔽key本身而不套樣式(合法內容可含「sk-ant-api03-…」範例字樣)。
 //   ②呼叫端自給之onStdout/onStderr回調(例如把串流寫入stdout.log): key模式下包一層串流遮蔽器(maskStreamCallbacks→createStreamRedactor, 實作為wsemi genDiagStreamMasker), 回調收到的是已遮蔽之文字——
@@ -162,6 +164,25 @@ function isLinkVar(name) {
         return false
     }
     return LINK_NAMES.some((n) => normName(n) === u) || LINK_PREFIXES.some((p) => u.startsWith(normName(p)))
+}
+
+
+/**
+ * 取子進程自本行程環境繼承之ANTHROPIC_API_KEY(僅供遮蔽，不參與失敗分類與交叉確認)
+ *
+ * 子進程環境為「本行程環境併入opt.env」(同名以opt.env為準，值為undefined者移除)：opt.env未含該名稱(不分大小寫，Windows)時，子進程所見者為呼叫當下之process.env值；
+ * opt.env含該名稱者(含以undefined明示移除)不取(其值已由呼叫端之env收進遮蔽集合，與dispatchOpencode之authSecretsOf同語意)；非字串、含NUL或長度不足遮蔽下限者不收
+ *
+ * @param {Object|null} envObj 輸入已物化之呼叫端env物件(未給為null)
+ * @returns {Array} 回傳機密值字串陣列(無則為空陣列)
+ */
+function inheritedKeyOf(envObj) {
+    let u = normName('ANTHROPIC_API_KEY')
+    if (envObj !== null && Object.keys(envObj).some((k) => normName(k) === u)) {
+        return []
+    }
+    let v = process.env.ANTHROPIC_API_KEY
+    return (isestr(v) && v.length >= SECRET_MIN_LEN && !v.includes('\u0000')) ? [v] : []
 }
 
 
@@ -410,7 +431,7 @@ async function dispatchClaude(prompt, opt = {}) {
     }
     let key = rkey.key === '' ? null : rkey.key
     let hasKey = isestr(key)
-    let maskKeys = [] //結果與回調須遮蔽之金鑰: opt.key, 或只給opt.env.ANTHROPIC_API_KEY時其全部大小寫變體之值
+    let maskKeys = [] //結果與回調須遮蔽之金鑰: opt.key, 或opt.env.ANTHROPIC_API_KEY全部大小寫變體之值, 或(opt.key與opt.env皆未給該變數時)子進程自本行程環境繼承之值(inheritedKeyOf)
     let ckKey = null //API金鑰在場(key，或opt.env.ANTHROPIC_API_KEY)時為該金鑰字串: 失敗結果加failureKind細分類與「沒額度」交叉確認(見檔頭)
     if (hasKey) {
 
@@ -451,6 +472,10 @@ async function dispatchClaude(prompt, opt = {}) {
                 .map((k) => er.env[k])
                 .filter((v) => isestr(v) && !v.includes('\u0000'))
         }
+
+        //繼承: opt.env未給或未含該名稱時, 子進程自本行程環境繼承ANTHROPIC_API_KEY(claude CLI即以之計費), 其值亦遮蔽(2026-11-25 t628; 帳本R-REDACT-3);
+        //呼叫當下該變數不存在(或過短)時maskKeys維持空陣列, 回調與結果原樣(行為與修前相同); 僅供遮蔽, 不改變失敗分類(ckKey)
+        maskKeys = [...maskKeys, ...inheritedKeyOf(er.env)]
     }
 
     //onStdout／onStderr(如把串流寫入stdout.log): API金鑰在場(opt.key, 或只給opt.env.ANTHROPIC_API_KEY; 2026-11-24 tdai4b起兩者同一路徑)時包串流遮蔽器,

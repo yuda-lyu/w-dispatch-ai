@@ -11,7 +11,7 @@ import { OUTPUT_TOKEN_MAX_ENV, DEFAULT_OUTPUT_TOKEN_MAX } from '../src/outputTok
 // api-opencodeOutputCap.test.mjs — 真實opencode CLI × 本機假OpenAI相容服務: 輸出上限(max_tokens)之來源與注入、截斷偵測(2026-11-04 da78, Gitea #78; 帳本R-OCGO-4)
 //
 // 【為何需要】issue #78稱「OpenCode Go單次輸出上限32,000 token(reasoning+output)」, 未查證是閘道還是CLI端。本檔以自建127.0.0.1服務攔截opencode run實際送出之請求,
-//   不花額度、不打外網, 釘住下列事實(證據: sgud/rule/rulebook_opencodego.md R-OCGO-4; 2026-11-04, opencode 1.19.5):
+//   不花額度、不打外網, 釘住下列事實(證據: sgud/rule/rulebook_ocoutputcap.md R-OCGO-4; 2026-11-04, opencode 1.19.5):
 //   A1 請求之輸出上限欄位為`max_tokens`, 值 = min(模型型錄limit.output, 環境變數OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX或CLI預設32000)
 //   A2 本套件預設注入DEFAULT_OUTPUT_TOKEN_MAX; opt.outputTokenMax可覆寫; 呼叫端環境內之有效值保留; 呼叫端環境內之無效值視為未給(套件預設);
 //      opt.outputTokenMax給了而無效以params拒絕、不起子行程(2026-11-23 tdai2起, 帳本R-SAFEOPT-1規則11; 修前視為未給)

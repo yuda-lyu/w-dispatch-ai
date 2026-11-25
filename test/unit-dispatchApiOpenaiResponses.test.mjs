@@ -57,7 +57,7 @@ describe('dispatchApiOpenaiResponses', function() {
         let t = await dispatchApiOpenaiResponses('中文prompt\n第二行', {
             baseURL: svr.url, key: 'sk-good-1', model: 'echo', system: '你是審計者', body: { max_output_tokens: 2048 },
         })
-        let o = JSON.parse(t.stdout)
+        let o = svr.lastRequest() //伺服器端取證通道(成功之stdout回聲之金鑰已遮蔽為***, 2026-11-25 t628; 不以回聲驗標頭)
         let r = [t.ok, t.code, t.attempts, o.auth, o.body.model, o.body.input, o.body.instructions, o.body.max_output_tokens, o.body.messages]
         let rr = [true, 200, 1, 'Bearer sk-good-1', 'echo', '中文prompt\n第二行', '你是審計者', 2048, undefined]
         assert.strict.deepEqual(r, rr)
@@ -65,9 +65,9 @@ describe('dispatchApiOpenaiResponses', function() {
 
     it('baseURL尾端斜線正規化, 未給key時不帶Authorization標頭', async function() {
         let t = await dispatchApiOpenaiResponses('abc', { baseURL: svr.url + '///', model: 'echo' })
-        let o = JSON.parse(t.stdout)
-        let r = [t.ok, t.code, o.auth]
-        let rr = [true, 200, '']
+        let o = svr.lastRequest() //伺服器端取證通道
+        let r = [t.ok, t.code, o.auth, Object.keys(o.headers).includes('authorization')]
+        let rr = [true, 200, '', false]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -259,7 +259,7 @@ describe('dispatchApiOpenaiResponses', function() {
             defaults: { promptPrefix: '' },
         })
         let t = await wkf.callAi('abc', { spec: { use: 'resp-echo' }, check: (j) => j.body.model === 'echo' })
-        let r = [t.ok, t.providerId, t.keyId, t.json.auth, t.json.body.input, t.usage.total_tokens]
+        let r = [t.ok, t.providerId, t.keyId, svr.lastRequest().auth, t.json.body.input, t.usage.total_tokens] //auth改讀伺服器端取證通道(t.json為遮蔽後之stdout所解析)
         let rr = [true, 'resp-echo', 'resp-echo#0', 'Bearer sk-good-w', 'abc', 16]
         assert.strict.deepEqual(r, rr)
     })

@@ -3,7 +3,7 @@ import createFakeCli from './fakeCliForTest.mjs'
 
 // fakeOpencodeEventsForTest.mjs — 模擬`opencode run`在預設格式與`--format json`兩種輸出之假CLI(2026-11-04 da78, Gitea #78)
 //
-// 形狀取自本機opencode 1.19.5(假OpenAI相容服務實測, 證據見sgud/rule/rulebook_opencodego.md R-OCGO-4):
+// 形狀取自本機opencode 1.19.5(假OpenAI相容服務實測, 證據見sgud/rule/rulebook_ocoutputcap.md R-OCGO-4):
 //   預設格式: stdout只寫已結束text之trim()+EOL; stderr為`\n> build · <model>\n\n`標頭, 錯誤另寫`Error: <訊息>`+EOL; 錯誤時離開碼1。
 //   json格式: 每個事件一行JSON(step_start/text/step_finish/error), step_finish.part帶reason與tokens; 錯誤改為type 'error'事件(寫stdout), 離開碼同為1。
 //

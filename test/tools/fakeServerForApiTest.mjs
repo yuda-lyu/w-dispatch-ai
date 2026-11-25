@@ -50,6 +50,12 @@ import zlib from 'zlib'
 //   其他              — 400 {detail:{error_type:'api_usage_error', message:'Unknown model: X'}}
 // 【金鑰規則】Authorization含'sk-bad'一律401(優先於model路由), 模擬無效金鑰;
 //   systemone路由之401本體採TypeSafe形狀{detail:{error_type:'authentication_error'}}。
+//
+// 【伺服器端取證通道(2026-11-25 t628)】三家REST轉接器之成功stdout／answers／usage已精確遮蔽金鑰,
+//   測試不得再以「成功回聲Authorization於stdout」驗標頭與請求本體(回聲之金鑰會被遮成***; 亦不得縮短測試金鑰或改用非金鑰字樣躲遮蔽);
+//   改由伺服器端記錄每個收到之請求, 以回傳物件之requests()／lastRequest()／clearRequests()讀取:
+//   每筆為{ method, url, headers(原標頭, 鍵為小寫), auth(authorization標頭值, 無則''), body(解析後JSON, 非JSON為null) }。
+//   echo／jev-latest路由仍回聲{auth, body}(echoAuth／echoBody), 專供「回聲被遮蔽」之洩漏重現測試用, 不作為取證通道。
 
 
 //TRUNC_ROUTES, chat/completions之截斷與終止原因情境(2026-09-24截斷處理之規格測試):
@@ -73,12 +79,17 @@ let TRUNC_ROUTES = {
 /**
  * 啟動測試用OpenAI相容假伺服器
  *
- * @returns {Promise} 回傳Promise，resolve回傳物件，內含port(埠號)、url(基底網址字串，等同baseURL)、close(關閉伺服器之async函數)
+ * @returns {Promise} 回傳Promise，resolve回傳物件，內含port(埠號)、url(基底網址字串，等同baseURL)、close(關閉伺服器之async函數)、
+ * requests(函數，回傳至今收到之全部請求之副本陣列)、lastRequest(函數，回傳最後一個請求，無則null)、clearRequests(函數，清空記錄)；
+ * 每筆請求為{ method, url, headers(原標頭, 鍵為小寫), auth, body }，見檔頭【伺服器端取證通道】
  */
 async function fakeServerForApiTest() {
 
     //flakyCount, 記錄flaky-429各金鑰之呼叫次數
     let flakyCount = {}
+
+    //reqLog, 伺服器端取證通道: 記錄每個收到之請求(依序; 不經轉接器之回傳值, 故不受成功路徑遮蔽影響)
+    let reqLog = []
 
     //sockets, 追蹤連線供close時強制斷開(避免keep-alive令close懸置)
     let sockets = new Set()
@@ -110,10 +121,18 @@ async function fakeServerForApiTest() {
 
             //body非JSON → 400
             let body = null
+            let bodyOk = true
             try {
                 body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
             }
             catch {
+                bodyOk = false
+            }
+
+            //取證記錄(先於任何回應; 非JSON本體之body為null)
+            reqLog.push({ method: req.method, url: req.url, headers: { ...req.headers }, auth, body })
+
+            if (!bodyOk) {
                 res.writeHead(400, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ error: { message: 'invalid json body' } }))
                 return
@@ -177,6 +196,72 @@ async function fakeServerForApiTest() {
             if (model === 'trunc-echo-key' && !isResponses && !isSystemOne) {
                 res.writeHead(200, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ choices: [{ finish_reason: 'length', message: { role: 'assistant', content: `partial ${bare}` } }], usage: { prompt_tokens: 3, completion_tokens: 7, total_tokens: 10 } }))
+                return
+            }
+
+            //成功路徑之洩漏重現用(三種端點皆同; 2026-11-25 t628; 成功之模型輸出與回應中介資料回顯金鑰):
+            //ok-echo-key: HTTP 200成功, 模型輸出(content／output_text／answers之note)回顯Authorization標頭與金鑰本體,
+            //  usage之字串值、屬性名與巢狀陣列、chat/completions之finish_reason(大小寫混合之金鑰, 正規化會轉小寫)亦回顯金鑰;
+            //ok-pattern-text: HTTP 200成功, 模型輸出含金鑰樣式字樣(sk-ant-、password=)但非本次金鑰——成功之stdout只精確遮蔽, 不得誤遮;
+            //status-echo-key(僅responses): status本身為金鑰(非completed之失敗結果, finishReason取自status);
+            //incomplete-echo-partial(僅responses): status為incomplete(max_output_tokens)且部分文字回顯金鑰(acceptTruncated放行時為成功結果);
+            //ok-echo-xkey／ok-echo-hdrs: 模型輸出回顯呼叫端自給之x-api-key標頭值／非機密標頭值(M1: 預設拒絕下, 非白名單標頭值之字樣於成功輸出亦被遮);
+            //ok-array-echo-key(僅chat/completions): content為陣列形態(轉接器序列化後遮蔽; 含引號或反斜線之金鑰於JSON文字內被跳脫);
+            //finish-upper-echo-key／status-upper-echo-key: 終止原因回顯金鑰之大寫版(全小寫之金鑰經正規化轉小寫後即還原為金鑰本體)
+            let meta = { served_by: bare, [bare]: 1, trace: [{ k: bare }], foreign: 'oc_sk_FOREIGNMETA0123456789' } //foreign: 非本次金鑰之他把金鑰字樣(回應中介資料以診斷家族遮蔽, 套金鑰樣式集)
+            let sample = 'see sk-ant-api03-SAMPLEONLY-0123456789 and password=hunter2-sample'
+            //ok-echo-xkey: 模型輸出回顯呼叫端自給之x-api-key標頭值; ok-echo-hdrs: 模型輸出回顯自給之非機密標頭值(X-Env: 不在白名單; HTTP-Referer: 白名單; X-Maybe: 值為undefined)
+            let hv = (n) => (req.headers[n] === undefined ? '' : String(req.headers[n]))
+            let textOf = {
+                'ok-echo-key': `reply ${auth} / ${bare}`,
+                'ok-pattern-text': sample,
+                'ok-echo-xkey': `reply ${hv('x-api-key')}`,
+                'ok-echo-hdrs': `env=${hv('x-env')} ref=${hv('http-referer')} maybe=${hv('x-maybe')}`,
+            }
+            if (textOf[model] !== undefined) {
+                let text = textOf[model]
+                let withMeta = model === 'ok-echo-key' //只有此型號附回顯金鑰之中介資料(usage之字串值、屬性名、巢狀陣列, finish_reason)
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                if (isSystemOne) {
+                    let answers = {}
+                    for (let id of Object.keys(body.questions || {})) {
+                        answers[id] = withMeta ? { type: 'noul', noul: 0.5, note: text, [bare]: 'x', list: [bare] } : { type: 'noul', noul: 0.5, note: text }
+                    }
+                    res.end(JSON.stringify({ model: 'jev-1.13.0', answers, usage: withMeta ? { input_tokens: 7, output_tokens: 3, ...meta } : { input_tokens: 7, output_tokens: 3 } }))
+                }
+                else if (isResponses) {
+                    res.end(JSON.stringify({ status: 'completed', model, error: null, incomplete_details: null, output: [{ type: 'message', content: [{ type: 'output_text', text }] }], usage: withMeta ? { input_tokens: 5, output_tokens: 11, ...meta } : { input_tokens: 5, output_tokens: 11 } }))
+                }
+                else {
+                    res.end(JSON.stringify({ choices: [{ finish_reason: withMeta ? bare : 'stop', message: { role: 'assistant', content: text } }], usage: withMeta ? { prompt_tokens: 3, completion_tokens: 7, ...meta } : { prompt_tokens: 3, completion_tokens: 7 } }))
+                }
+                return
+            }
+            //ok-array-echo-key(僅chat/completions): content為陣列形態(轉接器以JSON.stringify轉字串, 含引號或反斜線之金鑰於其內被跳脫)
+            if (model === 'ok-array-echo-key' && !isResponses && !isSystemOne) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: [{ type: 'text', text: `reply ${bare}` }] } }], usage: { prompt_tokens: 3, completion_tokens: 7 } }))
+                return
+            }
+            //finish-upper-echo-key(僅chat/completions)／status-upper-echo-key(僅responses): 終止原因(status)回顯金鑰之「大寫版」(全小寫之金鑰經正規化轉小寫後即還原為金鑰本體)
+            if (model === 'finish-upper-echo-key' && !isResponses && !isSystemOne) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ choices: [{ finish_reason: bare.toUpperCase(), message: { role: 'assistant', content: 'ok' } }], usage: { prompt_tokens: 3, completion_tokens: 7 } }))
+                return
+            }
+            if (model === 'status-upper-echo-key' && isResponses) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ status: bare.toUpperCase(), model, error: null, incomplete_details: null, output: [], usage: { input_tokens: 5, output_tokens: 11 } }))
+                return
+            }
+            if (model === 'status-echo-key' && isResponses) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ status: bare, model, error: null, incomplete_details: null, output: [], usage: { input_tokens: 5, output_tokens: 11 } }))
+                return
+            }
+            if (model === 'incomplete-echo-partial' && isResponses) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ status: 'incomplete', model, error: null, incomplete_details: { reason: 'max_output_tokens' }, output: [{ type: 'message', content: [{ type: 'output_text', text: `partial ${bare}` }] }], usage: { input_tokens: 5, output_tokens: 11 } }))
                 return
             }
 
@@ -454,7 +539,13 @@ async function fakeServerForApiTest() {
         })
     }
 
-    return { port, url: `http://127.0.0.1:${port}/v1`, close }
+    let requests = () => [...reqLog]
+    let lastRequest = () => reqLog.length === 0 ? null : reqLog[reqLog.length - 1]
+    let clearRequests = () => {
+        reqLog.length = 0
+    }
+
+    return { port, url: `http://127.0.0.1:${port}/v1`, close, requests, lastRequest, clearRequests }
 }
 
 

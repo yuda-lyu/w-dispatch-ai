@@ -1,5 +1,5 @@
 import assert from 'assert'
-import redactText, { secretHeaderValues, maskApiKeys, redactApiKeyText, createStreamRedactor, API_KEY_PATTERN, DIAG_PATTERNS } from '../src/redactText.mjs'
+import redactText, { secretHeaderValues, maskApiKeys, redactApiKeyText, redactDeep, createStreamRedactor, API_KEY_PATTERN, DIAG_PATTERNS } from '../src/redactText.mjs'
 
 
 // unit-redactText.test.mjs — 本套件對wsemi共用遮罩之單一入口(src/redactText.mjs)之規格測試
@@ -10,7 +10,9 @@ import redactText, { secretHeaderValues, maskApiKeys, redactApiKeyText, createSt
 //   S3 機密值長度下限6(由本檔之入口過濾, wsemi之遮罩器不設下限);
 //   S4 非串流入口輸出全文不截斷(成功之stdout為模型輸出, 可達數萬字元);
 //   S5 串流以列為單位(收到換行才交出該列、最後無換行之一段於flush交出), 輸出與切塊方式無關, 跨塊或跨列之機密值整段遮到;
-//   S6 串流與非串流同一家族之輸出一致(同一段文字經回調與結果物件所見相同)。
+//   S6 串流與非串流同一家族之輸出一致(同一段文字經回調與結果物件所見相同);
+//   S10 redactDeep(2026-11-25 t628; 三家REST成功路徑之answers、usage等結構化外來值): 純物件與陣列內之字串值與屬性名皆遮蔽, 其餘型別原樣,
+//     不改動輸入、不因'__proto__'屬性名改動原型, 超過深度上限之子樹整段序列化後遮蔽而不原樣放行; 家族依diag參數(預設精確)。
 
 
 let K = 'sk-ant-api03-STREAM-SECRET-0123456789'
@@ -295,6 +297,127 @@ describe('redactText', function() {
             streamAll(createStreamRedactor('not-an-array'), ['x']),
         ]
         assert.strict.deepEqual(r, ['中文***結尾', 'abcabc123', 'x'])
+    })
+
+    //── redactDeep(S10) ──
+
+    it('S10 redactDeep: 純物件與陣列內之字串值與屬性名皆遮蔽(含巢狀), 數字、布林、null原樣; 輸入物件不被改動', function() {
+        let K2 = 'DEEPSECRET-0123456789'
+        let input = { a: `x ${K2} y`, n: 7, t: true, z: null, list: [K2, 3, { k: `${K2}!`, deeper: [[K2]] }], s: 'plain' }
+        input[K2] = 1 //屬性名含機密值(計算屬性名與一般屬性混寫會觸發quote-props, 故另行賦值)
+        let snap = JSON.stringify(input)
+        let out = redactDeep(input, [K2])
+        let expected = { a: 'x *** y', n: 7, t: true, z: null, list: ['***', 3, { k: '***!', deeper: [['***']] }], s: 'plain' }
+        expected['***'] = 1
+        assert.strict.deepEqual(
+            [out, JSON.stringify(input) === snap, JSON.stringify(out).includes(K2)],
+            [expected, true, false],
+        )
+    })
+
+    it('S10 redactDeep: 非物件輸入(字串、數字、null、undefined)亦可用; 長度不足6之機密值不處理; 非陣列之機密值清單視為空', function() {
+        assert.strict.deepEqual(
+            [redactDeep('a abcdef b', ['abcdef']), redactDeep('a abcde b', ['abcde']), redactDeep(5, ['abcdef']), redactDeep(null, ['abcdef']), redactDeep(undefined, ['abcdef']), redactDeep({ a: 'abcdef' }, 'abcdef')],
+            ['a *** b', 'a abcde b', 5, null, undefined, { a: 'abcdef' }],
+        )
+    })
+
+    it('S10 redactDeep: 家族依diag參數——預設精確(不套樣式集, 範例字樣原樣), diag為true另遮蔽金鑰樣式集與內建憑證樣式', function() {
+        let K2 = 'DEEPSECRET-0123456789'
+        let v = { note: `see ${OTHER}-0123456789abc and password=hunter2 and ${K2}` }
+        assert.strict.deepEqual(
+            [redactDeep(v, [K2]), redactDeep(v, [K2], true)],
+            [{ note: `see ${OTHER}-0123456789abc and password=hunter2 and ***` }, { note: 'see *** and password=*** and ***' }],
+        )
+    })
+
+    it('S10 redactDeep: 屬性名為__proto__(JSON.parse之自有屬性)時以自有屬性保留, 不改動結果之原型', function() {
+        let K2 = 'DEEPSECRET-0123456789'
+        let input = JSON.parse(`{"__proto__":{"polluted":"${K2}"},"ok":1}`)
+        let out = redactDeep(input, [K2])
+        assert.strict.deepEqual(
+            [Object.getPrototypeOf(out) === Object.prototype, Object.keys(out), Object.getOwnPropertyDescriptor(out, '__proto__').value, out.polluted, {}.polluted],
+            [true, ['__proto__', 'ok'], { polluted: '***' }, undefined, undefined],
+        )
+    })
+
+    it('S10 redactDeep: 超過深度上限(64層)之子樹不原樣放行——整段序列化後遮蔽為一個字串, 結果不含機密值', function() {
+        let K2 = 'DEEPSECRET-0123456789'
+        let deep = K2
+        for (let i = 0; i < 70; i++) {
+            deep = { n: deep }
+        }
+        let out = redactDeep({ top: K2, deep }, [K2])
+        let s = JSON.stringify(out)
+        //頂層與淺層照常遮蔽; 第64層以下被序列化成字串(其中機密值已遮)
+        let cur = out.deep
+        let depthSeen = 1
+        while (cur !== null && typeof cur === 'object') {
+            cur = cur.n
+            depthSeen++
+        }
+        assert.strict.deepEqual([out.top, s.includes(K2), typeof cur, depthSeen <= 66, typeof cur === 'string' && cur.includes('***')], ['***', false, 'string', true, true])
+    })
+
+    it('S9 機密值之JSON跳脫形(2026-11-25 t628獨立複審L1): 含引號、反斜線、換行之機密值於JSON文字內已被跳脫, 兩種形態皆遮蔽(精確家族與診斷家族、非串流與串流)', function() {
+        let SP = 'LEAK"quo\\te\nline-0123456789' //含引號、反斜線與換行
+        let jsonText = JSON.stringify({ msg: `bad ${SP}`, n: 1 })
+        let raw = `raw ${SP} end`
+        let want = (s) => !s.includes('LEAK') && s.includes('***')
+        assert.strict.deepEqual(
+            [
+                jsonText.includes('LEAK"quo') === false, //前提: JSON文字內之金鑰已非原值
+                want(redactText(jsonText, [SP])),
+                want(redactApiKeyText(jsonText, [SP])),
+                want(streamAll(createStreamRedactor([SP]), [jsonText.slice(0, 20), jsonText.slice(20)])),
+                want(redactText(raw, [SP])), //原值形態仍遮蔽
+                JSON.parse(redactText(jsonText, [SP])).n, //遮蔽後之JSON文字仍可解析(金鑰本在字串值內)
+            ],
+            [true, true, true, true, true, 1],
+        )
+    })
+
+    it('S10 redactDeep: 永不拋錯、fail-closed——走訪失敗(存取器拋錯)時回傳null而非原樣放行或拋出', function() {
+        let K2 = 'DEEPSECRET-0123456789'
+        let bad = { ok: K2 }
+        Object.defineProperty(bad, 'boom', {
+            enumerable: true,
+            get: () => {
+                throw new Error(`getter saw ${K2}`)
+            },
+        })
+        assert.strict.deepEqual([redactDeep(bad, [K2]), redactDeep([bad], [K2], true)], [null, null])
+    })
+
+    it('S10 redactDeep: 含引號與反斜線之機密值於超過深度上限之後備(序列化後遮蔽)亦遮到(JSON跳脫形)', function() {
+        let SP = 'DEEP"sec\\ret-0123456789'
+        let deep = SP
+        for (let i = 0; i < 70; i++) {
+            deep = { n: deep }
+        }
+        let out = redactDeep({ deep }, [SP])
+        assert.strict.deepEqual([JSON.stringify(out).includes('DEEP'), JSON.stringify(out).includes('***')], [false, true])
+    })
+
+    it('secretHeaderValues(2026-11-25 t628獨立複審M1): 值為undefined／null者(fetch送出前字串化為字面undefined／null)不登錄, 其餘非白名單標頭值照舊登錄', function() {
+        assert.strict.deepEqual(
+            secretHeaderValues({ 'X-Maybe': 'undefined', 'X-Nil': 'null', 'X-Env': 'production', 'Authorization': 'Bearer sk-abc' }),
+            ['production', 'Bearer sk-abc'],
+        )
+    })
+
+    it('S10 redactDeep: 超過深度上限且無法序列化(含BigInt)之子樹捨棄為null, 不原樣放行', function() {
+        let K2 = 'DEEPSECRET-0123456789'
+        let deep = { v: 10n, s: K2 }
+        for (let i = 0; i < 70; i++) {
+            deep = { n: deep }
+        }
+        let out = redactDeep(deep, [K2])
+        let cur = out
+        while (cur !== null && typeof cur === 'object') {
+            cur = cur.n
+        }
+        assert.strict.deepEqual([cur, typeof out], [null, 'object'])
     })
 
     it('S6 同一家族之串流輸出等於非串流輸出(同一段文字經回調與結果物件所見一致)', function() {

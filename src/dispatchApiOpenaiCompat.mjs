@@ -12,7 +12,7 @@ import getErrorResult from './getErrorResult.mjs'
 import { readCallerObj, errMsg, errField, asText } from './callUserFn.mjs'
 import { checkReadObj } from './readSafeOpt.mjs'
 import { readKey } from './readKeyOpt.mjs'
-import { secretHeaderValues, redactApiKeyText } from './redactText.mjs'
+import redactText, { secretHeaderValues, redactApiKeyText, redactDeep } from './redactText.mjs'
 import dfTimeoutMs from './dfTimeoutMs.mjs'
 import { TRUNCATION_REASONS, normalizeFinishReason, safeValidateAsync, judgeTruncated } from './checkTruncation.mjs'
 import describeNonJsonBody from './describeNonJsonBody.mjs'
@@ -73,7 +73,8 @@ import { readAttemptHints, retryFits, capByHints, createCutTracker } from './att
 //
 // 【key不外洩(2026-11-24 tdai4b; 帳本R-REDACT-3, 比照dispatchApiAnthropic)】錯誤路徑(fetch例外訊息、HTTP錯誤本體、非JSON診斷之回應標頭值、tool_calls／截斷／驗證失敗之stdout與stderr、
 //   validate例外訊息、啟動前params錯誤之外來例外訊息)一律先經redactApiKeyText: 遮蔽本次全部機密標頭值與key本身(伺服器常回顯去掉Bearer前綴之本體)、金鑰樣式集與內建憑證樣式(見redactText.mjs), 字樣***。
-//   成功之stdout為模型輸出, 不遮蔽(既有; validate收到原文); usage、finishReason為伺服器回傳值原樣透傳。
+//   【成功路徑(2026-11-25 t628; 帳本R-REDACT-3, 比照dispatchApiAnthropic)】成功之stdout為模型輸出: 只精確遮蔽本次機密值(redactText, 不套樣式集; validate收到原文);
+//   取自伺服器回應之usage(深層)與finishReason亦先遮蔽(診斷家族)。
 // 【結果結構對齊execCli】{ ok, stdout, stderr, code, error, durationMs, attempts, usage },
 //   usage為原始回應之token用量原樣透傳(無則null; 驗證失敗等已耗token之失敗亦帶出),
 //   CLI類轉接器無可靠來源故無此欄——呼叫端可據此把「真實用量」與「只能估算」分開處理。
@@ -115,6 +116,11 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
 
     //red, 錯誤路徑文字(外來之回應本體、診斷、validate例外訊息、fetch例外訊息)一律先遮蔽機密值與金鑰樣式集(2026-11-24 tdai4b起比照dispatchApiAnthropic; 見redactText.mjs)
     let red = (s) => redactApiKeyText(s, secrets)
+
+    //redOk, 成功路徑之模型輸出(stdout)只精確遮蔽機密值, 不套樣式集(合法內容可含「sk-…」範例字樣; 同dispatchApiAnthropic; 2026-11-25 t628);
+    //redV, 取自伺服器回應之結構化外來值(usage)深層遮蔽(診斷家族: 屬回應中介資料而非模型輸出, 與modelResolved、finishReason同)
+    let redOk = (s) => redactText(s, secrets)
+    let redV = (v) => redactDeep(v, secrets, true)
 
     //mkResult, 結果形狀之單一來源(欄位對齊execCli, 追加errorType與usage),
     //durationMs於呼叫當下計算; 失敗分支各自給errorType, 成功分支不帶(僅失敗結果有此欄)
@@ -193,6 +199,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
     catch {
         parsed = false
     }
+    usage = redV(usage) //原樣透傳之token用量物件, 其字串值與屬性名屬外來文字(成功與失敗結果皆帶出), 先遮蔽(置於解析之try外: 遮蔽失敗不得被誤報為本體非JSON; redV永不拋錯, 失敗時為null)
 
     //本體非JSON, 與「JSON缺content」分開回報並附原始位元組資訊; 遞補層據前綴整組跳過(見describeNonJsonBody.mjs)
     if (!parsed) {
@@ -208,7 +215,9 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
 
     //fin, 自此起之每個結果皆外顯正規化終止原因與是否截斷(規則見checkTruncation.mjs)
     let finishReason = normalizeFinishReason(finishReasonRaw)
-    let fin = { finishReason, truncated: TRUNCATION_REASONS.includes(finishReason) }
+    //外顯之終止原因取自伺服器回應: 先遮蔽原值、正規化(轉小寫)、再遮蔽一次(前者遮大小寫相符者, 後者遮「轉小寫後才與登錄值相同」者——
+    //如全小寫之金鑰而伺服器回顯其大寫版); 判斷用之finishReason維持原值
+    let fin = { finishReason: red(normalizeFinishReason(isestr(finishReasonRaw) ? red(finishReasonRaw) : finishReasonRaw)), truncated: TRUNCATION_REASONS.includes(finishReason) }
 
     //tool_calls, 本轉接器不支援工具迴圈(見檔頭), 明確回報而不假裝成功
     //(Agnes於tool_calls時content為"\n\n"非null, 不攔截會靜默回傳空白內容)
@@ -253,7 +262,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
                 ...fin,
             })
         }
-        return mkResult({ ok: true, stdout: content, code: res.status, usage, ...fin })
+        return mkResult({ ok: true, stdout: redOk(content), code: res.status, usage, ...fin })
     }
 
     if (content === null) {
@@ -285,7 +294,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
 
     return mkResult({
         ok: true,
-        stdout: content,
+        stdout: redOk(content), //成功之stdout為模型輸出: 只精確遮蔽(validate已於上方收原文)
         code: res.status,
         usage,
         ...fin,
@@ -321,7 +330,7 @@ async function callOnce(url, headers, bodyText, timeoutMs, validator, acceptTrun
  * @param {Boolean} [opt.acceptTruncated=false] 輸入是否接受被截斷(finish_reason為length)之內容布林值，true代表交validate裁決(無validate則直接接受)且結果標truncated:true；content_filter與可見輸出為空者一律失敗，預設false代表截斷一律失敗(errorType incomplete)
  * @param {Number} [opt.maxRetries=0] 輸入失敗後最大重試次數非負整數(0至4294967295之整數或其十進位數字字串，Infinity、小數、負數、'0x10'與超過上限者視為未給)，4xx(429除外)與截斷不重試，預設0
  * @param {Number} [opt.retryDelayMs=5000] 輸入重試間隔毫秒正整數，實際間隔為retryDelayMs乘以重試次數且上限15000ms，預設5000
- * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件原樣透傳，無則null)、finishReason(已取得回應時之正規化終止原因字串，缺值為'')、truncated(已取得回應時是否被截斷布林值)，本函數不會reject
+ * @returns {Promise} 回傳Promise，resolve回傳結果物件，內含ok(是否成功布林值)、stdout(回覆內容字串)、stderr(失敗時之原始回應本體)、code(HTTP狀態碼，網路錯誤與逾時為null)、error(錯誤訊息字串，成功時為空字串)、errorType(僅失敗時，機器可讀錯誤類別字串，一覽見getErrorType.mjs檔頭)、durationMs(耗時毫秒)、attempts(實際嘗試次數)、usage(原始回應之token用量物件，字串值已遮蔽金鑰、其餘原樣透傳，無則null)、finishReason(已取得回應時之正規化終止原因字串，缺值為'')、truncated(已取得回應時是否被截斷布林值)，本函數不會reject
  * @example
  * //need network, no cli required
  *

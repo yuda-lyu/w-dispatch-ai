@@ -10,7 +10,7 @@ import { clearAgyStdinSupportCache } from '../src/checkAgyStdinSupport.mjs'
 import createFakeCli from './tools/fakeCliForTest.mjs'
 
 
-//帳本: sgud/rule/rulebook_agy.md「R-AGY-5 agy 真防寫:readOnly 以 --settings 帶 permissions.deny」(排程第445項, 2026-11-24 tdai3)
+//帳本: sgud/rule/rulebook_agyreadonly.md「R-AGY-5 agy 真防寫:readOnly 以 --settings 帶 permissions.deny」(排程第445項, 2026-11-24 tdai3)
 //規格(皆為本機以 agy 1.5.12 實測 + 官方〈Agent permissions〉頁):
 //  S1 agy 之 skipPermissions:false 只擋工作區外之寫入, 工作區內之寫入(write_file 與 shell 指令)皆自動放行而落地;
 //  S2 `--settings '{"permissions":{"deny":["write_file(*)","command(*)"]}}'`(本次工作階段限定、不存檔)令工作區內寫入被擋(模型回「Permission denied … Matches user-configured deny rule」)、讀取照常;

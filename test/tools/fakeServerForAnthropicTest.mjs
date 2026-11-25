@@ -156,6 +156,12 @@ async function fakeServerForAnthropicTest() {
             else if (model === 'echo-text') { //成功回覆回顯收到的x-api-key(測成功路徑之精確遮蔽)
                 msg([{ type: 'text', text: `echo ${key}` }])
             }
+            else if (model === 'echo-meta') { //成功回覆之回應中介資料回顯x-api-key: stop_reason(未知值, 正規化會轉小寫)與usage之字串值、屬性名、巢狀陣列(2026-11-25 t628)
+                msg([{ type: 'text', text: 'hello' }], key, { usage: { ...usage, served_by: key, [key]: 1, trace: [{ k: key }] } })
+            }
+            else if (model === 'echo-meta-upper') { //stop_reason回顯x-api-key之大寫版(全小寫之金鑰經正規化轉小寫後即還原為金鑰本體; 2026-11-25 t628)
+                msg([{ type: 'text', text: 'hello' }], key.toUpperCase())
+            }
             else if (model === 'echo-text-max') { //max_tokens截斷之回覆回顯x-api-key(測acceptTruncated放行路徑之精確遮蔽)
                 msg([{ type: 'text', text: `echo ${key}` }], 'max_tokens')
             }

@@ -397,6 +397,21 @@ describe('dispatchApiAnthropic', function() {
         assert.strict.deepEqual(o, oo)
     })
 
+    it('金鑰不外洩(2026-11-25 t628): 成功結果之回應中介資料回顯本次key時(usage之字串值、屬性名、巢狀陣列, stop_reason先遮原值再正規化), 與三家REST一致亦已遮蔽, 數值原樣', async function() {
+        //金鑰本體刻意不屬任何金鑰樣式(非sk-ant-, 否則樣式集即使在先正規化後遮蔽之錯誤順序下亦會遮到小寫殘段), 令斷言只靠已登錄之機密值
+        let K = 'LEAKKEY-anthropic-0123456789'
+        let t = await call('echo-meta', { key: K })
+        let u = t.usage
+        let o = [t.ok, t.finishReason, t.truncated, u.served_by, u[MASK], u.trace, u.input_tokens, u.output_tokens, JSON.stringify(t).includes(K), JSON.stringify(t).includes(K.toLowerCase())]
+        assert.strict.deepEqual(o, [true, MASK, false, MASK, 1, [{ k: MASK }], 3, 7, false, false])
+    })
+
+    it('金鑰不外洩(2026-11-25 t628獨立複審L2): 全小寫之金鑰而stop_reason回顯其大寫版時, finishReason(正規化轉小寫後即等於金鑰本體)仍遮蔽為***', async function() {
+        let K = 'leakkey-lower-0123456789' //不屬sk-ant-樣式, 令斷言只靠已登錄之機密值
+        let t = await call('echo-meta-upper', { key: K })
+        assert.strict.deepEqual([t.ok, t.finishReason, JSON.stringify(t).includes(K)], [true, MASK, false])
+    })
+
     it('金鑰不外洩: 成功stdout只精確遮蔽, 不套sk-ant-樣式(模型輸出可含合法範例字樣); validate仍收到原文', async function() {
         let seen = []
         let t = await call('text-with-example-key', {

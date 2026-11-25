@@ -52,7 +52,7 @@ describe('dispatchApiOpenaiCompat', function() {
 
     it('成功時stdout為回覆內容, 請求含Bearer金鑰與model與user訊息', async function() {
         let t = await dispatchApiOpenaiCompat('中文prompt\n第二行', { baseURL: svr.url, key: 'sk-good-1', model: 'echo' })
-        let o = JSON.parse(t.stdout)
+        let o = svr.lastRequest() //伺服器端取證通道(成功之stdout回聲之金鑰已遮蔽為***, 2026-11-25 t628; 不以回聲驗標頭)
         let r = [
             t.ok,
             t.code,
@@ -76,9 +76,9 @@ describe('dispatchApiOpenaiCompat', function() {
 
     it('未給key時不帶Authorization標頭', async function() {
         let t = await dispatchApiOpenaiCompat('abc', { baseURL: svr.url, model: 'echo' })
-        let o = JSON.parse(t.stdout)
-        let r = [t.ok, o.auth]
-        let rr = [true, '']
+        let o = svr.lastRequest() //伺服器端取證通道
+        let r = [t.ok, o.auth, Object.keys(o.headers).includes('authorization')]
+        let rr = [true, '', false]
         assert.strict.deepEqual(r, rr)
     })
 
@@ -433,7 +433,7 @@ describe('dispatchApiOpenaiCompat', function() {
                 keys: ['sk-bad-r0', 'sk-good-r1'],
             }],
         })
-        let o = JSON.parse(t.stdout)
+        let o = svr.lastRequest() //伺服器端取證通道: 最後一個請求為第2把金鑰之成功請求(成功之stdout回聲之金鑰已遮蔽為***)
         let r = [
             t.ok,
             t.providerId,
@@ -491,7 +491,7 @@ describe('dispatchApiOpenaiCompat', function() {
             spec: { use: 'api-echo' },
             check: (j) => j.body.model === 'echo',
         })
-        let r = [t.ok, t.providerId, t.keyId, t.json.auth, t.json.body.messages[0].content]
+        let r = [t.ok, t.providerId, t.keyId, svr.lastRequest().auth, t.json.body.messages[0].content] //auth改讀伺服器端取證通道(t.json為遮蔽後之stdout所解析)
         let rr = [true, 'api-echo', 'api-echo#0', 'Bearer sk-good-w0', 'abc']
         assert.strict.deepEqual(r, rr)
     })

@@ -14,7 +14,7 @@
 
 > 2026-11-24 再整理(檔約 54KB,超過約 30KB 門檻;tdai4b):2026-11-13～11-21 之 Poolside 下架(dl583)、可讀性探針與金鑰型 opt 收嚴(dai492i2)、訂閱 `opencode-go` 到頂(wda158)、免費池用盡／免費層 429(wda156)、`timeoutMs` 判定單一來源與 Hydrogen 條目(da-hy)、連網守門紅燈(wda530)共六節,已逐字抽出至 `experience_20261124.md`;2026-11-19～11-23 之 tdai1、tdai1b、wsemi 1.9.69(dai492i)、tdai2、tdai2b 共五節,已逐字抽出至 `experience_20261124b.md`(節號與標題不變,只搬移,不刪內容).主檔留 tdai3 以後各節;需要久遠經驗時再調閱.
 
-## 2026-11-24 tdai3:免費池重新盤點與 agy 真防寫(排程第 341、445 項;帳本 `rulebook_opencodefree.md` R-OCFREE-2⑦、`rulebook_agy.md` R-AGY-5)
+## 2026-11-24 tdai3:免費池重新盤點與 agy 真防寫(排程第 341、445 項;帳本 `rulebook_opencodefree.md` R-OCFREE-2⑦、`rulebook_agyreadonly.md` R-AGY-5)
 
 - **有限度外部呼叫之作法(opencode 免費模型 ≤ 30、agy ≤ 15 次)**:先備好「證據檔＋次數守門」再呼叫——`./tmp/tdai3/lib.mjs` 之 `guard(svc)` 於每次呼叫前讀證據 JSONL 計次、達上限即拋錯,`record()` 追加一行(模型、目的、結果、耗時、檔案是否落地);所有呼叫一律經本套件之 `dispatchOpencode`／`dispatchAntigravity`(生產路徑,附帶 `--print-logs` 額度偵測與 `denied` 判別)而非手組命令列;目錄查詢與官方文件 GET 不計次但以 `counted:false` 備註.額度字樣(`quota`／`rate-limit`、agy 之 `RESOURCE_EXHAUSTED`)出現即以離開碼 3 停.失敗之呼叫(agy 第 1 次因 OAuth 刷新網路逾時)照算次數.
 - **先讀官方 Privacy 再決定能送什麼**:`tidepool-alpha-free` 之 CLI 四項實測送完後才讀到官方〈Zen〉Privacy 載明「collected data is retained and used to improve the model」(iceman 同),已無法補救(所送皆為無害固定提示詞,但違反「訓練類只送回覆」之界線精神).**下次順序:查目錄 → 讀官方 Privacy／Free models 段(`curl -sL https://opencode.ai/docs/zen/` 以 `html2txt` 去標籤後 Grep 模型名) → 才決定每個候選可送之提示詞範圍**.官方文字:hy4 為零保留不訓練;beam 保留 30 天不訓練;deepseek 零保留不訓練;其餘 stealth／NVIDIA 試用者皆為「改進模型」類.
@@ -47,3 +47,14 @@
 - **互為備援之冗餘遮蔽,變異判等價之辨識**:S05(`redactResult` 之 `errorDetail` 再遮)、C08／X02(`diagSecrets`)、O03(`authSecretsOf` 另收 `key` 參數)皆為「下層遮蔽＋上層以同一清單再遮」或「注入內容必含 key」之冗餘,拿掉任一道都有另一道擋住;判等價之依據須寫明「無輸入可區分」並說明兩道使用同一清單.與之對照:O10(走訪略過屬性名 `type` 之整個子樹)初次存活是因 `key` 參數備援,補「只靠解析 auth 內容(env 自給、不給 key)且 provider 名稱恰為 `type`」之案(只有它抓得到)後轉殺死.
 - **內部監看與呼叫端回調之包裝順序**:`dispatchOpencode` 之事件流累積、限額監看、ask 被拒監看都以 `userOnStdout`／`userOnStderr` 轉交呼叫端回調;遮蔽包裝須先於這些包裝(`optCli = omit(...)` 之後立即),內部判讀才仍收原文、只有呼叫端回調收遮蔽文字(`dispatchClaude` 之 `tap` 同).`authSecretsOf` 以「子進程實際收到之值」為準:`opt.env` 內名稱不分大小寫、`undefined` 表移除(不取本行程環境之值)、未給則取 `process.env`.
 - **經驗檔整理**:`experience.md` 54KB→11.8KB,第 0～5 節抽至 `experience_20261124.md`(23.6KB)、第 6～10 節抽至 `experience_20261124b.md`(20.2KB);腳本自驗「抽出之檔去標頭＋主檔去註記後串回等於原檔」(逐字);同時 `rulebook_spawn.md` 逾 30KB(35KB)而把 R-REDACT 區段抽至 `rulebook_redact.md`(自驗同法);抽出後逐一更新引用該節之 `state_tdai*.md` 與帳本內之指標.
+
+## 2026-11-25 t628:三家 REST 成功路徑與繼承金鑰之遮蔽(排程第 628 項;承 tdai4b 需裁示①②;帳本 `rulebook_redact.md` R-REDACT-4)
+
+- **盤點「以輸出回聲取證」之測試,以兩法對照**:遮蔽改動後先跑全套一次(約 7 分鐘)取得轉紅清單,另以 `Grep "\.auth\b|echoAuth"` 靜態盤點——兩者吻合共 9 案(上輪估約 30 處為高估);3 案「未給 key 不帶 Authorization」於遮蔽後仍綠(空字串無可遮),亦改讀取證通道(斷言更強)。全套紅者另有 `unit-redactSites` S1 一案:新增程式碼誤寫 `'***'` 字面值(盤點測試守門),改為「過深子樹序列化後遮蔽」而不另寫字面值。
+- **成功路徑遮蔽不能對序列化文字再遮**:typesafe 之 `stdout` 由 `JSON.stringify(answers)` 而來,含引號或反斜線之金鑰於 JSON 文字內已被跳脫,精確比對不到——改為對 `answers` 遞迴遮蔽字串值與屬性名(`redactDeep`),`stdout` 由遮蔽後之 `answers` 序列化;獨立複審另指出同一類成因(`red(txt)`、compat 陣列形態 content)而在 `secretList` 加 JSON 跳脫形變體一處修全部.
+- **終止原因須「先遮、正規化、再遮」**:`normalizeFinishReason` 轉小寫——只先遮則全小寫之金鑰而伺服器回顯大寫版時,轉小寫後即還原為金鑰本體;只後遮則大小寫混合之金鑰已不等於登錄值.測試金鑰須參數化含「大小寫混合」與「全小寫」兩種;`api-anthropic` 之測試金鑰屬 `sk-ant-` 樣式,診斷家族之樣式集會掩蓋順序錯誤(A03 變異首輪存活),須另用不屬樣式之金鑰.
+- **預設拒絕把過遮由診斷訊息擴及合法輸出**(M1,獨立複審):`secretHeaderValues` 把自給之非白名單標頭值全登錄為機密,成功路徑起其字樣出現於模型輸出即被靜默改成 `***`(`api-anthropic` 修前即如此);值為 `undefined`(送出前字串化為字面值)亦被登錄——已排除 `undefined`／`null`,其餘維持並以測試 S25 釘住、列需裁示.
+- **`dispatchClaude` 繼承金鑰僅遮蔽、不併入 `ckKey`**:`ckKey` 決定 `failureKind` 分類與「沒額度」之 REST 交叉確認(會以該金鑰發真實請求);把環境繼承之金鑰併入會改變失敗結果形狀並新增對外請求,超出「遮蔽」範圍.以變異 K04 證明該界線有測試鎖.
+- **發布包配置跑全套之守門**:守門(`NODE_OPTIONS=--import`)啟用後,mocha 須安裝於沙箱內(`npm install --no-save --omit=dev --min-release-age=0 mocha@<版>`),否則連 mocha 自身之解析一併被擋;另以「匯入只存在於上層 devDependency 之套件須被擋」自檢守門確實觸發.
+- **獨立複審之價值**:自派 sonnet(唯讀)412 個探測格找出作者之 46 案與 40 項變異皆未涵蓋之維度(含引號反斜線之金鑰、全小寫金鑰、自給標頭、超深巢狀);複審前先把程式碼與文件收斂至「可審」狀態、複審期間並行跑全套(複審唯讀),省去一輪等待.
+- **sgud 整理**:六個規則帳本依類型抽出節(節號與標題不變、主檔留標題與一行指標,腳本由 git HEAD 取原檔、逐節自驗「新檔本文逐字放回指標處即等於原檔」);`spawngate` 之「變異驗證(68 個)」屬放行判定(R-SPAWNGATE-1)之紀錄而非 #85,故留主檔、只抽 #85 三節;`feedback.md` 把「已有處置列」之舊列連同處置列(25 列)抽出——處置列文內之「第 N 列」為抽出前之行號,於新檔檔頭附原行號→新檔行號對照.
