@@ -61,7 +61,7 @@ let OPT_DIAG = { patterns: DIAG_PATTERNS }
 
 
 /**
- * 取可交給wsemi遮罩器之機密值清單：非陣列視為空，非字串與長度不足6者略過；每個機密值另展開去頭尾空白與去Bearer前綴之變體(各須達長度下限)
+ * 取可交給wsemi遮罩器之機密值清單：非陣列視為空，非字串與長度不足6者略過；每個機密值另展開去頭尾空白與去Bearer前綴之變體(各須達長度下限)，並去重；JSON跳脫形不在此展開(wsemi遮罩器內建)
  *
  * @param {Array} secrets 輸入機密值陣列
  * @returns {Array} 回傳機密值字串陣列
@@ -74,17 +74,16 @@ function secretList(secrets) {
         }
 
         //變體: 原值、去頭尾空白(fetch送出前會去掉標頭值之頭尾空白, 伺服器回顯之金鑰即為去空白者)、再去Authorization之Bearer前綴(伺服器常回顯去前綴之本體);
-        //各變體須達長度下限(原值之下限判定同修前: 長度不足者不處理); 各變體另展開JSON跳脫形(含引號、反斜線、換行等之金鑰,
-        //於伺服器回應之JSON文字或本轉接器之JSON.stringify結果內已被跳脫, 原值比對不到; 2026-11-25 t628獨立複審L1)
+        //各變體須達長度下限(原值之下限判定同修前: 長度不足者不處理)。
+        //不在此展開JSON跳脫形(含引號、反斜線、換行等之金鑰於JSON文字內已被跳脫, 原值比對不到): wsemi 1.9.82起由遮罩器內建
+        //(_diagKit getMatcher對清單內每個值另加JSON.stringify(x).slice(1, -1)之形; 排程第650項), 本檔直接交wsemi, 不重複展開
         let t = v.trim()
         for (let x of [v, t, t.replace(/^Bearer\s+/i, '')]) {
             if (x.length < SECRET_MIN_LEN) {
                 continue
             }
-            for (let y of [x, JSON.stringify(x).slice(1, -1)]) {
-                if (!out.includes(y)) {
-                    out.push(y)
-                }
+            if (!out.includes(x)) {
+                out.push(x)
             }
         }
     }

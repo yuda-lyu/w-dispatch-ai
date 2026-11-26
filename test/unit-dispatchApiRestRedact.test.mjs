@@ -265,7 +265,7 @@ describe('三家REST轉接器之錯誤路徑金鑰遮蔽(tdai4b)', function() {
 
     //========== 獨立複審(2026-11-25 t628)補案: 特殊字元金鑰、全小寫金鑰、自給標頭 ==========
 
-    //含引號與反斜線之金鑰(HTTP標頭值可含; 於伺服器回應之JSON文字或本轉接器之JSON.stringify結果內被跳脫, 原值比對不到——secretList須展開JSON跳脫形)
+    //含引號與反斜線之金鑰(HTTP標頭值可含; 於伺服器回應之JSON文字或本轉接器之JSON.stringify結果內被跳脫, 原值比對不到——由wsemi遮罩器內建展開JSON跳脫形, wsemi 1.9.82起)
     let KEYQ = 'LEAKKEY"quo\\te-0123456789'
 
     for (let a of ADAPTERS) {

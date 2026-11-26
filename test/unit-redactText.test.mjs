@@ -377,6 +377,57 @@ describe('redactText', function() {
         )
     })
 
+    it('S9b 機密值各形(引號、反斜線、換行、CRLF、定位字元、控制字元、孤立代理碼元、中文)與各變體(原值、去空白、去Bearer前綴)之JSON跳脫形皆遮蔽——JSON跳脫形由wsemi遮罩器內建、本庫不自行展開(排程第650項); 四個入口(精確、診斷、串流、redactDeep)', function() {
+        let CASES = [
+            ['引號', 'LEAKa"quo-0123456789'],
+            ['反斜線', 'LEAKb\\back-0123456789'],
+            ['引號與反斜線', 'LEAKc"q\\b-0123456789'],
+            ['換行', 'LEAKd\nline-0123456789'],
+            ['CRLF', 'LEAKe\r\nline-0123456789'],
+            ['定位字元', 'LEAKf\ttab-0123456789'],
+            ['控制字元', 'LEAKg\u{1}\u{1f}ctl-0123456789'],
+            ['孤立高代理碼元', 'LEAKh\u{D800}hi-0123456789'],
+            ['孤立低代理碼元', 'LEAKi\u{DC00}lo-0123456789'],
+            ['中文與引號', 'LEAKj中文"含引號-0123456789'],
+        ]
+        //機密值登錄形態: 原值; 前後帶空白(fetch送出前去空白, 伺服器回顯去空白者); Authorization標頭值(伺服器回顯去Bearer前綴之本體)
+        let REG = [
+            ['原值', (s) => s],
+            ['前後帶空白', (s) => `  ${s}  `],
+            ['Bearer前綴', (s) => `Bearer ${s}`],
+        ]
+        let bad = []
+        let tested = 0
+        for (let [cn, s] of CASES) {
+            for (let [rn, reg] of REG) {
+                let secrets = [reg(s)]
+                //被測文字: 機密值本體於JSON文字內之跳脫形(伺服器回應本體、轉接器序列化結果)與原值形態, 各自嵌入
+                let jsonText = JSON.stringify({ msg: `bad ${s} end`, n: 1 })
+                let jsonInner = `x ${JSON.stringify(s).slice(1, -1)} y`
+                let raw = `x ${s} y`
+                //前提: JSON文字之跳脫形與原值不同者, 原值比對不到(證明此案確在驗JSON跳脫形; 無須跳脫之機密值如純英數不在此列)
+                let needEsc = JSON.stringify(s).slice(1, -1) !== s
+                assert.ok(needEsc, `前提: ${cn}之機密值於JSON文字內須與原值形態不同`)
+                for (let [fn, t] of [['jsonText', jsonText], ['jsonInner', jsonInner], ['raw', raw]]) {
+                    let outs = [
+                        ['精確', redactText(t, secrets)],
+                        ['診斷', redactApiKeyText(t, secrets)],
+                        ['串流', streamAll(createStreamRedactor(secrets), [t.slice(0, 9), t.slice(9)])],
+                        ['redactDeep', JSON.stringify(redactDeep({ [t]: t }, secrets))],
+                    ]
+                    for (let [en, o] of outs) {
+                        tested++
+                        if (o.includes('LEAK') || !o.includes('***')) {
+                            bad.push(`${cn}/${rn}/${fn}/${en}`)
+                        }
+                    }
+                }
+            }
+        }
+        assert.ok(tested === CASES.length * REG.length * 3 * 4, `案數: ${tested}`)
+        assert.ok(bad.length === 0, `仍漏遮或未遮: ${bad.join(', ')}`)
+    })
+
     it('S10 redactDeep: 永不拋錯、fail-closed——走訪失敗(存取器拋錯)時回傳null而非原樣放行或拋出', function() {
         let K2 = 'DEEPSECRET-0123456789'
         let bad = { ok: K2 }

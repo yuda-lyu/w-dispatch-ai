@@ -26,7 +26,17 @@
 | responses S01～S07(7 項) | 同 compat(`finishReason` 為 `finishOf(redS(…))` 與先正規化後遮之對照) | 全殺死 |
 | typesafe T01～T06(6 項) | `answers` 不遮;`stdout` 由未遮之 `answers` 序列化;`usage` 不遮;`answers` 誤用診斷家族;`usage` 誤用精確家族;`stdout` 改對序列化文字再遮(`answers` 不遮) | 全殺死 |
 | anthropic A01～A04(4 項) | `usage` 不遮;`finishReason` 不遮／先正規化後遮／只遮原值不再遮(A04,L2) | 全殺死(A03 首輪存活:測試金鑰屬 `sk-ant-` 樣式,診斷家族之樣式集於錯誤順序下仍遮到小寫殘段;改用不屬任何樣式之金鑰後殺死) |
-| 獨立複審後之修正 J01～J06(6 項) | `secretList` 不展開 JSON 跳脫形(L1);compat／responses 之 `finishReason` 只遮原值、正規化後不再遮(L2);`secretHeaderValues` 登錄值為 `undefined`／`null` 之標頭值(M1);`redactDeep` 不包 `try/catch`／失敗時原樣放行(C3) | 全殺死 |
+| 獨立複審後之修正 J01～J06(6 項) | `secretList` 不展開 JSON 跳脫形(L1;2026-11-27 dai650 起展開改由 wsemi 內建,本項改於 wsemi 側注入,見下 R-REDACT-5 變異驗證);compat／responses 之 `finishReason` 只遮原值、正規化後不再遮(L2);`secretHeaderValues` 登錄值為 `undefined`／`null` 之標頭值(M1);`redactDeep` 不包 `try/catch`／失敗時原樣放行(C3) | 全殺死 |
 | `dispatchClaude` K01～K07(7 項) | 不收繼承值;不看 `opt.env` 是否已含該名稱(`undefined` 明示移除者仍收);漏長度下限(短繼承值亦包回調);繼承值併入 `ckKey`(參與失敗分類);`opt.key` 有效時亦收繼承值;取錯變數名;非字串檢查換為真值檢查(K07) | 6 殺死;**K07 等價**(`process.env` 之值恆為字串,`isestr(v)` 與 `v &&` 對任何環境變數值結果相同) |
 
 修前紅:以本輪開始前之 `src`(`git archive HEAD`,須以 `core.autocrlf=false` 取出為 LF:預設之 `core.autocrlf=true` 使匯出檔為 CRLF,令 `unit-redactSites` S1 之逐列去註解失配而假紅)疊上本輪全部測試(9 檔,276 案)——**238 passing／38 failing**:`unit-dispatchApiRestRedact` 57 案中 30 紅(S12／S13／S14／S15／S17 各 3、S19～S22 各 1、S23／S24／S25 各 3、S26、S27;其餘 27 為原 21 案與保持案 S16×3、S18×3)、`unit-dispatchClaudeKey` R09 6 案中 5 紅(長度不足 6／無變數之保持案 1)、`unit-dispatchApiAnthropic` 2 紅(`echo-meta`、`echo-meta-upper`)、`unit-redactSites` S5 紅、`unit-redactText` 因該版無 `redactDeep` 匯出而載入即失敗;改讀取證通道之 12 案於該版皆綠(其斷言不依賴回聲)。另遮蔽改動後原測試轉紅 10 案(9 案取證通道、1 案 `redactSites` S1 字面值)見「既有測試之調整」。逐案追溯與全套結果見 `sgud/state/state_general.md`。
+
+### R-REDACT-5 變異驗證(2026-11-27 dai650〔排程第 650 項〕;鏡像根逐項單點變異;10 項:9 殺死、1 等價)
+
+鏡像根作法(可重跑):在 `./tmp/<案名>/` 建兩個根——「新」＝本庫現行 `src/`＋`test/tools/`＋所跑測試檔＋`node_modules/wsemi` 複本(自建、不建目錄連結);「舊」＝同上但 `src/redactText.mjs` 為改前版(`git show HEAD:src/redactText.mjs`,各根之 `package.json` 取本庫之複本);以腳本於各根之 `node_modules/wsemi/src/_diagKit.mjs` 對錨點 `        return JSON.stringify(s).slice(1, -1)\n`(`jsonEscOf` 內,須在乾淨檔恰出現 1 次)逐項替換為變異,每項以 `node <本庫>/node_modules/mocha/bin/mocha.js --no-parallel test/unit-redactText.test.mjs test/unit-dispatchApiRestRedact.test.mjs` 於該根為工作目錄執行(`quiet-run --lock --cwd <根>`),結束還原並 `cmp` 驗證乾淨。
+
+| 範圍 | 變異(每項一處) | 結果 |
+|---|---|---|
+| wsemi 側 M1～M6(6 項;新根) | M1 `jsonEscOf` 回空字串(wsemi 退回不內建跳脫形);M2 `\n`／`\r`／`\t` 不跳脫;M3 反斜線不加倍;M4 引號不跳脫;M5 孤立代理碼元不跳脫;M6 控制字元(`\u00XX`)不跳脫 | 全殺死:M1、M3、M4 各 7 案轉紅(S9、S9b、S10 深度後備、S26、三家 S23);M2 2 案(S9、S9b);**M5、M6 各 1 案(只有 S9b 抓得到)**;M0 乾淨對照 85 passing |
+| 同上對「改前 src」之舊根(對照) | M1～M6 同上 | 全存活(85 passing):改前 `secretList` 自行展開,wsemi 退化不影響——證明改後測試確實把守 wsemi 之退化 |
+| `secretList` 保留職責 L1～L4(4 項;新根,加跑 `unit-redactSites`) | L1 不展開去空白變體;L2 不展開去 `Bearer` 變體;L3 去重拿掉;L4 長度下限取消 | L1 殺死 2(S9 變體、REST S11);L2 殺死 2(S9、S9b);L4 殺死 4(S1、S3、S9、S10);**L3 等價**(wsemi `getMatcher` 以 `Set` 去重,`_diagKit.mjs` 之 `set.add`;本庫去重為同修前之冗餘,保留) |
